@@ -9,10 +9,9 @@ import {
   LayoutTemplate,
   FileBarChart,
   Settings,
-  Moon,
-  Sun,
 } from "lucide-react";
 import { useProjects } from "../store/projects";
+import favicon from "../../favicon.png";
 
 const nav = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -59,19 +58,18 @@ function ToggleRow({ label, checked, onChange }: {
 
 export function Sidebar() {
   const darkMode = useProjects((s) => s.darkMode);
-  const toggleDarkMode = useProjects((s) => s.toggleDarkMode);
   const setDarkMode = useProjects((s) => s.setDarkMode);
 
   return (
     <aside className="w-56 flex-shrink-0 bg-[var(--app-sidebar)] border-r border-[var(--app-border)] flex flex-col h-full transition-colors duration-200">
       <div className="px-4 py-5 flex items-center gap-2.5">
-      <div className="w-8 h-8 rounded-lg overflow-hidden flex items-center justify-center shadow-lg shadow-blue-600/30">
-        <img
-          src="/favicon.png"
-          alt="ElectroLab"
-          className="w-full h-full object-cover"
-        />
-      </div>
+        <div className="w-8 h-8 rounded-lg overflow-hidden flex items-center justify-center shadow-lg shadow-blue-600/30">
+          <img
+            src={favicon}
+            alt="ElectroLab"
+            className="w-full h-full object-cover"
+          />
+        </div>
         <span className="font-semibold text-lg tracking-tight text-[var(--app-heading)]">
           ElectroLab
         </span>
@@ -113,8 +111,7 @@ export function Sidebar() {
           </div>
         </NavLink>
 
-          <ToggleRow label="Dark mode" checked={darkMode} onChange={setDarkMode} />
-
+        <ToggleRow label="Dark mode" checked={darkMode} onChange={setDarkMode} />
       </div>
     </aside>
   );
