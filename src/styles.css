@@ -1,0 +1,73 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --navy: #101d36;
+  --navy-deep: #07101e;
+  --paper: #e8eef8;
+  --accent: #5eead4;
+  --accent-fg: #062523;
+  --ok: #16a34a;
+  --danger: #dc2626;
+}
+
+/*
+ * Host node that the explore view mounts into. When the simulator is opened,
+ * simulator-entry.jsx promotes this node to a fixed full-viewport overlay.
+ * Styles below only apply in that open state (class is added on mount).
+ */
+.ece-circuit-sim-host {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 9999;
+  overflow: hidden;
+  background: var(--navy-deep);
+}
+
+/* Soften page scroll only while the lab is open */
+html[data-ece-sim-open="1"],
+body[data-ece-sim-open="1"] {
+  overflow: hidden;
+}
+
+.ece-circuit-lab {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+  overflow: hidden;
+  background: var(--navy-deep);
+  color: var(--paper);
+}
+
+.ece-circuit-lab button,
+.ece-circuit-lab input,
+.ece-circuit-lab select {
+  font: inherit;
+}
+
+.ece-circuit-lab button:focus-visible,
+.ece-circuit-lab input:focus-visible,
+.ece-circuit-lab select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Ghost preview while dragging a component from the palette */
+.ece-drag-ghost {
+  position: fixed;
+  z-index: 10000;
+  pointer-events: none;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(15, 39, 68, 0.92);
+  border: 1px solid #5eead4;
+  color: #e8eef8;
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+  transform: translate(-50%, -50%);
+}

@@ -1,0 +1,405 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --app-bg: #0a0f1a;
+  --app-sidebar: #0f172a;
+  --app-surface: #111827;
+  --app-surface-2: #0f172a;
+  --app-control: #0b1321;
+  --app-border: #1e293b;
+  --app-text: #e2e8f0;
+  --app-heading: #f8fafc;
+  --app-muted: #94a3b8;
+  --app-hover: rgba(51, 65, 85, 0.55);
+  --app-grid: rgba(59, 130, 246, 0.04);
+}
+
+html.light {
+  --app-bg: #f8fafc;
+  --app-sidebar: #ffffff;
+  --app-surface: #ffffff;
+  --app-surface-2: #f1f5f9;
+  --app-control: #f8fafc;
+  --app-border: #dbe3ee;
+  --app-text: #334155;
+  --app-heading: #0f172a;
+  --app-muted: #64748b;
+  --app-hover: rgba(226, 232, 240, 0.85);
+  --app-grid: rgba(37, 99, 235, 0.07);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  font-family: "Inter", system-ui, sans-serif;
+}
+
+html {
+  background: var(--app-bg);
+  transition: background-color 180ms ease;
+}
+
+body {
+  background: var(--app-bg);
+  color: var(--app-text);
+  transition: background-color 180ms ease, color 180ms ease;
+}
+
+/* Mobile hardening: no tap-flash, no accidental pull-to-refresh/rubber-band
+   over the app shell, and safe-area padding for notched phones. */
+html {
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  overscroll-behavior-y: none;
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+@supports (height: 100dvh) {
+  html,
+  body {
+    height: 100dvh;
+  }
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 3px;
+}
+html.light .scrollbar-thin::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+}
+
+.grid-bg {
+  background-image:
+    linear-gradient(var(--app-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--app-grid) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+/* Tailwind color utilities used by the main ElectroLab shell. These aliases
+   make existing pages theme-aware without touching every component file. */
+html.light .theme-surface .bg-\[\#0a0f1a\] {
+  background-color: var(--app-bg) !important;
+}
+html.light .theme-surface .bg-\[\#0f172a\] {
+  background-color: var(--app-sidebar) !important;
+}
+html.light .theme-surface .bg-\[\#111827\] {
+  background-color: var(--app-surface) !important;
+}
+html.light .theme-surface .bg-\[\#07101e\] {
+  background-color: #eef2f7 !important;
+}
+html.light .theme-surface .border-\[\#1e293b\] {
+  border-color: var(--app-border) !important;
+}
+
+html.light .theme-surface .text-slate-100,
+html.light .theme-surface .text-slate-200 {
+  color: var(--app-heading) !important;
+}
+html.light .theme-surface .text-slate-300 {
+  color: #475569 !important;
+}
+html.light .theme-surface .text-slate-400 {
+  color: #64748b !important;
+}
+html.light .theme-surface .text-slate-500 {
+  color: #64748b !important;
+}
+html.light .theme-surface .text-slate-600 {
+  color: #94a3b8 !important;
+}
+
+html.light .theme-surface .hover\:bg-slate-800:hover,
+html.light .theme-surface .hover\:bg-slate-800\/60:hover,
+html.light .theme-surface .hover\:bg-slate-800\/80:hover,
+html.light .theme-surface .hover\:bg-slate-700:hover {
+  background-color: var(--app-hover) !important;
+}
+
+html.light .theme-surface .bg-slate-800 {
+  background-color: #e2e8f0 !important;
+}
+html.light .theme-surface .bg-slate-800\/60 {
+  background-color: rgba(226, 232, 240, 0.72) !important;
+}
+
+/* Bridge original simulator CSS variables into the ElectroLab theme. */
+:root {
+  --navy: #0f172a;
+  --navy-deep: #07101e;
+  --paper: #e2e8f0;
+  --accent: #3b82f6;
+  --accent-fg: #eff6ff;
+  --ok: #22c55e;
+  --danger: #ef4444;
+}
+
+.ece-circuit-lab {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+  overflow: hidden;
+  background: var(--navy-deep);
+  color: var(--paper);
+}
+
+.editor-tool {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  color: #64748b;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.editor-tool:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #e2e8f0;
+}
+
+/* Circuit Lab intentionally remains dark. The application Light/Dark switch
+   controls the surrounding ElectroLab product UI, not the 3D electronics bench. */
+.ece-circuit-lab {
+  isolation: isolate;
+  --lab-surface: #0d1524;
+  --lab-surface-2: #101a2b;
+  --lab-border: rgba(148, 163, 184, 0.13);
+  --lab-border-strong: rgba(148, 163, 184, 0.2);
+  --lab-text: #f8fafc;
+  --lab-muted: #8190a7;
+  --lab-blue: #2563eb;
+  --lab-blue-soft: rgba(37, 99, 235, 0.13);
+  background:
+    radial-gradient(circle at 50% 45%, rgba(30, 64, 175, 0.055), transparent 42%),
+    #070d18 !important;
+}
+
+.ece-circuit-lab aside.lab-side-panel {
+  backdrop-filter: blur(18px) saturate(125%);
+  -webkit-backdrop-filter: blur(18px) saturate(125%);
+  background: rgba(8, 15, 28, 0.86) !important;
+  border-color: rgba(148, 163, 184, 0.14) !important;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.025);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(100, 116, 139, 0.45) transparent;
+}
+
+.ece-circuit-lab aside.lab-components-panel {
+  width: 350px !important;
+  left: 22px !important;
+  padding: 18px !important;
+}
+
+.ece-circuit-lab aside.lab-output-panel {
+  width: 410px !important;
+  right: 22px !important;
+  padding: 18px !important;
+}
+
+.ece-circuit-lab aside.lab-side-panel::-webkit-scrollbar {
+  width: 5px;
+}
+.ece-circuit-lab aside.lab-side-panel::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.42);
+  border-radius: 999px;
+}
+
+.ece-circuit-lab input,
+.ece-circuit-lab select,
+.ece-circuit-lab textarea {
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+.ece-circuit-lab input:hover,
+.ece-circuit-lab select:hover,
+.ece-circuit-lab textarea:hover {
+  border-color: rgba(148, 163, 184, 0.24) !important;
+}
+.ece-circuit-lab button {
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.12s ease;
+}
+.ece-circuit-lab button:active {
+  transform: translateY(1px);
+}
+
+.ece-circuit-lab .lab-topbar {
+  top: 22px !important;
+  left: 22px !important;
+  right: 22px !important;
+}
+.ece-circuit-lab .lab-title-card {
+  min-width: 218px;
+  border-radius: 13px !important;
+  background: rgba(9, 17, 30, 0.96) !important;
+  border: 1px solid var(--lab-border-strong) !important;
+  box-shadow: 0 14px 35px rgba(0, 0, 0, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.025);
+}
+.ece-circuit-lab .lab-power-cluster {
+  border-radius: 14px !important;
+  padding: 7px !important;
+  background: rgba(9, 17, 30, 0.96) !important;
+  border: 1px solid var(--lab-border-strong) !important;
+  box-shadow: 0 14px 35px rgba(0, 0, 0, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.025);
+}
+.ece-circuit-lab .lab-power-cluster button {
+  min-width: 156px;
+  min-height: 43px;
+  border-radius: 10px !important;
+  letter-spacing: 0.01em;
+}
+.ece-circuit-lab .lab-power-cluster > div {
+  min-height: 43px;
+  display: flex;
+  align-items: center;
+  border-radius: 9px !important;
+  background: #121c2c !important;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+.ece-circuit-lab aside.lab-side-panel {
+  top: 108px !important;
+  bottom: 18px !important;
+  border-radius: 16px !important;
+  background: rgba(10, 18, 31, 0.97) !important;
+  border: 1px solid var(--lab-border) !important;
+  box-shadow: 0 22px 55px rgba(0, 0, 0, 0.30), inset 0 1px 0 rgba(255, 255, 255, 0.025);
+  backdrop-filter: blur(16px) saturate(115%);
+  -webkit-backdrop-filter: blur(16px) saturate(115%);
+}
+.ece-circuit-lab aside.lab-components-panel button {
+  border-radius: 10px !important;
+  border-color: rgba(148, 163, 184, 0.10) !important;
+  background: #111a29 !important;
+  min-height: 58px !important;
+}
+.ece-circuit-lab aside.lab-components-panel button:hover {
+  background: #162235 !important;
+  border-color: rgba(96, 165, 250, 0.28) !important;
+}
+.ece-circuit-lab input,
+.ece-circuit-lab select,
+.ece-circuit-lab textarea {
+  border-radius: 9px !important;
+  background: #0b1321 !important;
+  border-color: rgba(148, 163, 184, 0.13) !important;
+  color: #e5edf8 !important;
+}
+.ece-circuit-lab input:focus,
+.ece-circuit-lab select:focus,
+.ece-circuit-lab textarea:focus {
+  outline: none;
+  border-color: rgba(59, 130, 246, 0.55) !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.10);
+}
+.ece-circuit-lab aside.lab-output-panel > div > div:nth-child(2) {
+  border-radius: 11px !important;
+  background: #020711 !important;
+  border-color: rgba(56, 189, 248, 0.18) !important;
+  min-height: 84px !important;
+}
+.ece-circuit-lab aside.lab-output-panel textarea {
+  border-radius: 10px !important;
+  background: #09111f !important;
+}
+.ece-circuit-lab .lab-instructions {
+  right: 438px !important;
+  bottom: 20px !important;
+  max-width: 300px !important;
+  border-radius: 12px !important;
+  padding: 12px 14px !important;
+  background: rgba(9, 17, 30, 0.96) !important;
+  border: 1px solid var(--lab-border-strong) !important;
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.28);
+}
+.ece-circuit-lab .lab-voltmeter {
+  right: 438px !important;
+  top: 108px !important;
+  border-radius: 13px !important;
+  background: rgba(9, 17, 30, 0.96) !important;
+  border-color: rgba(234, 179, 8, 0.30) !important;
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.28);
+}
+.ece-circuit-lab .lab-tool-button.is-active {
+  background: #123f50 !important;
+  border-color: #3fc1d5 !important;
+  box-shadow: inset 0 0 0 1px rgba(63, 193, 213, 0.08), 0 5px 18px rgba(8, 145, 178, 0.08);
+}
+
+@media (max-width: 1280px) {
+  .ece-circuit-lab aside.lab-components-panel { width: 300px !important; }
+  .ece-circuit-lab aside.lab-output-panel { width: 350px !important; }
+  .ece-circuit-lab .lab-instructions,
+  .ece-circuit-lab .lab-voltmeter { right: 372px !important; }
+}
+@media (max-width: 1100px) {
+  .ece-circuit-lab aside.lab-components-panel { width: 260px !important; }
+  .ece-circuit-lab aside.lab-output-panel { width: 300px !important; }
+  .ece-circuit-lab .lab-instructions,
+  .ece-circuit-lab .lab-voltmeter { right: 322px !important; }
+}
+@media (max-height: 760px) {
+  .ece-circuit-lab aside.lab-side-panel {
+    top: 76px !important;
+    bottom: 12px !important;
+  }
+}
+@media (max-width: 768px) {
+  .ece-circuit-lab .lab-topbar {
+    top: 10px !important;
+    left: 10px !important;
+    right: 10px !important;
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+  .ece-circuit-lab .lab-title-card {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+  .ece-circuit-lab .lab-power-cluster button {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+  /* Side-by-side 300px+ rails don't fit next to a 3D canvas on a phone —
+     drop them to full-width bottom sheets instead. */
+  .ece-circuit-lab aside.lab-side-panel {
+    top: auto !important;
+    left: 10px !important;
+    right: 10px !important;
+    bottom: 10px !important;
+    width: auto !important;
+    max-height: 45vh;
+  }
+}
+
+@media (max-width: 480px) {
+  .ece-circuit-lab .lab-power-cluster button {
+    min-height: 38px;
+    font-size: 0.8rem;
+  }
+  .ece-circuit-lab aside.lab-side-panel {
+    max-height: 40vh;
+    padding: 10px !important;
+  }
+}
