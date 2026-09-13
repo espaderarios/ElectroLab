@@ -1,0 +1,37 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "ElectroLab",
+  "version": "1.0.0",
+  "identifier": "tech.electrolab.desktop",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "devUrl": "http://localhost:5173",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "ElectroLab – Design. Simulate. Innovate.",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 1100,
+        "minHeight": 700,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis", "msi"],
+    "category": "Education",
+    "shortDescription": "Electronics design, circuit simulation, and learning tools.",
+    "longDescription": "ElectroLab is an electronics workspace for designing, simulating, and learning circuits.",
+    "publisher": "ElectroLab"
+  }
+}
