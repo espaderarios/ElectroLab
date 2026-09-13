@@ -32,6 +32,12 @@
     "category": "Education",
     "shortDescription": "Electronics design, circuit simulation, and learning tools.",
     "longDescription": "ElectroLab is an electronics workspace for designing, simulating, and learning circuits.",
-    "publisher": "ElectroLab"
+    "publisher": "ElectroLab",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico"
+    ]
   }
 }
