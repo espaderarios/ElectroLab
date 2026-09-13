@@ -37,6 +37,11 @@ jobs:
       - name: Build ElectroLab
         run: npm run build
 
+      # GitHub Pages has no SPA fallback for React Router routes.
+      # Serving the built app as 404.html lets BrowserRouter handle direct loads/reloads.
+      - name: Add SPA fallback
+        run: cp dist/index.html dist/404.html
+
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
 
