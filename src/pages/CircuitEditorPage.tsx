@@ -13,7 +13,9 @@ import {
   MousePointer2,
   Trash2,
   RotateCw,
+  HelpCircle,
 } from 'lucide-react'
+import HelpModal from '../components/HelpModal'
 import { Suspense, lazy, useEffect, useMemo, useRef, useState, Component, type ReactNode } from 'react'
 import { useLab } from '../store/lab'
 import { useProjects } from '../store/projects'
@@ -1075,6 +1077,7 @@ export function CircuitEditorPage() {
   const navigate = useNavigate()
   const { projectId } = useParams()
   const [use3D, setUse3D] = useState(true)
+  const [helpOpen, setHelpOpen] = useState(false)
   const boardPreset = useLab((state) => state.boardId)
   const setBoard = useLab((state) => state.setBoard)
   const loadCircuit = useLab((state) => state.loadCircuit)
@@ -1402,6 +1405,14 @@ export function CircuitEditorPage() {
           </button>
 
           <button
+            onClick={() => setHelpOpen(true)}
+            className="flex items-center gap-2 border border-[#1e293b] hover:bg-slate-800 text-sm px-3 py-1.5 rounded-lg text-slate-300 transition"
+            title="Help"
+          >
+            <HelpCircle size={16} /> Help
+          </button>
+
+          <button
             className="flex items-center gap-2 border border-[#1e293b] hover:bg-slate-800 text-sm px-3 py-1.5 rounded-lg text-slate-300 transition"
             title="Share project"
           >
@@ -1600,6 +1611,8 @@ export function CircuitEditorPage() {
           )}
         </main>
       </div>
+
+      <HelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
     </div>
   )
 }

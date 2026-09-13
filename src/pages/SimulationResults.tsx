@@ -223,7 +223,7 @@ export function SimulationResults() {
         >
           <ChevronLeft size={20} />
         </button>
-        <span className="text-sm font-medium text-white">Simulation Results – {title}</span>
+        <span className="text-sm font-medium">Simulation Results – {title}</span>
         <div className="flex-1" />
         <button
           type="button"
@@ -443,7 +443,7 @@ export function SimulationResults() {
 
           <div className="space-y-4">
             <div className="bg-[#111827] border border-[#1e293b] rounded-xl p-4">
-              <div className="text-sm font-medium text-white mb-3">Quick stats</div>
+              <div className="text-sm font-medium mb-3">Quick stats</div>
               <div className="space-y-2 text-sm">
                 <Row k="Project" v={title} />
                 <Row k="Board parts" v={String(parts.length)} />

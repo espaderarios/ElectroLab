@@ -38,7 +38,7 @@ export function SimulationsPage() {
   return (
     <div className="flex-1 overflow-y-auto scrollbar-thin p-6">
       <div className="mb-5">
-        <h1 className="text-xl font-semibold text-white">Simulations</h1>
+        <h1 className="text-xl font-semibold">Simulations</h1>
         <p className="text-sm text-slate-500 mt-0.5">
           History of lab runs across your projects.
         </p>

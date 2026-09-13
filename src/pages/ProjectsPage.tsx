@@ -71,7 +71,7 @@ export function ProjectsPage() {
     <div className="flex-1 overflow-y-auto scrollbar-thin p-6">
       <div className="flex items-center justify-between mb-5 gap-3 flex-wrap">
         <div>
-          <h1 className="text-xl font-semibold text-white">Projects</h1>
+          <h1 className="text-xl font-semibold">Projects</h1>
           <p className="text-sm text-slate-500 mt-0.5">
             Open, create, rename, or remove breadboard lab projects.
           </p>

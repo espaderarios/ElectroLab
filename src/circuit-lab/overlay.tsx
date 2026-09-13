@@ -246,6 +246,202 @@ const PIN_ORDER: Partial<Record<ToolId, string[]>> = {
   mcu: ["VCC +", "GND −"],
 };
 
+/** Short placement guidance shown while a tool is active. */
+const PLACEMENT_HELP: Partial<
+  Record<
+    ToolId,
+    { title: string; steps: string[]; tip?: string }
+  >
+> = {
+  select: {
+    title: "Select mode",
+    steps: [
+      "Click a component or wire to select it.",
+      "Use the inspector on the right to edit values.",
+    ],
+  },
+  wire: {
+    title: "Place a wire",
+    steps: [
+      "Click the first breadboard hole (start).",
+      "Click the second hole (end).",
+      "Endpoints must snap to real holes — visual contact is not enough.",
+    ],
+    tip: "A wire that only looks connected is not electrically connected.",
+  },
+  resistor: {
+    title: "Place a resistor",
+    steps: [
+      "Click a hole for the first lead.",
+      "The second lead is placed automatically a few columns away.",
+      "Set the resistance value in the panel before or after placing.",
+    ],
+  },
+  led: {
+    title: "Place an LED",
+    steps: [
+      "Click a hole for the anode (+ / longer lead).",
+      "The cathode (-) is placed automatically nearby.",
+      "Match polarity: anode toward positive, cathode toward ground.",
+    ],
+    tip: "LEDs need correct polarity and usually a series resistor.",
+  },
+  diode: {
+    title: "Place a diode",
+    steps: [
+      "Click a hole for the anode (+).",
+      "Cathode (-) is placed automatically.",
+      "Current flows mainly anode to cathode.",
+    ],
+  },
+  switch: {
+    title: "Place a switch",
+    steps: [
+      "Click a hole for the first terminal.",
+      "The second terminal is placed automatically.",
+      "Click the switch on the board to open or close it while simulating.",
+    ],
+  },
+  button: {
+    title: "Place a push button",
+    steps: [
+      "Click a hole for the first terminal.",
+      "The second terminal is placed automatically.",
+      "Press the button during simulation to close the contact.",
+    ],
+  },
+  capacitor: {
+    title: "Place a capacitor",
+    steps: [
+      "Click a hole for the first lead.",
+      "The second lead is placed automatically.",
+      "Set capacitance in the panel (watch polarity for electrolytics).",
+    ],
+  },
+  inductor: {
+    title: "Place an inductor",
+    steps: [
+      "Click a hole for the first lead.",
+      "The second lead is placed automatically.",
+    ],
+  },
+  buzzer: {
+    title: "Place a buzzer",
+    steps: [
+      "Click a hole for the + terminal.",
+      "The - terminal is placed automatically.",
+      "Observe polarity before powering.",
+    ],
+  },
+  speaker: {
+    title: "Place a speaker",
+    steps: [
+      "Click a hole for the + terminal.",
+      "The - terminal is placed automatically.",
+    ],
+  },
+  transistor: {
+    title: "Place a transistor",
+    steps: [
+      "Click the hole for the first pin (Emitter).",
+      "Base and Collector fill adjacent holes automatically.",
+      "Check pin order in the inspector after placing.",
+    ],
+    tip: "Wrong pin order is a common reason a transistor circuit fails.",
+  },
+  thyristor: {
+    title: "Place a thyristor (SCR)",
+    steps: [
+      "Click a hole for the cathode (K).",
+      "Anode and gate are placed on adjacent holes.",
+      "Confirm pin order in the inspector.",
+    ],
+  },
+  triac: {
+    title: "Place a TRIAC",
+    steps: [
+      "Click a hole for MT1.",
+      "Gate and MT2 are placed on adjacent holes.",
+    ],
+  },
+  diac: {
+    title: "Place a DIAC",
+    steps: [
+      "Click a hole for the first terminal.",
+      "The second terminal is placed automatically.",
+    ],
+  },
+  motor: {
+    title: "Place a DC motor",
+    steps: [
+      "Click a hole for the + terminal.",
+      "The - terminal is placed automatically.",
+      "Drive it through a safe path (often a transistor or driver).",
+    ],
+  },
+  pot: {
+    title: "Place a potentiometer",
+    steps: [
+      "Click a hole for end A.",
+      "Wiper and end B are placed on nearby holes.",
+      "Set the resistance value in the inspector.",
+    ],
+  },
+  relay: {
+    title: "Place a relay",
+    steps: [
+      "Click a hole for the first coil terminal.",
+      "Remaining pins (coil, COM, NO) fill adjacent holes.",
+      "Power the coil and wire the switched contacts separately.",
+    ],
+  },
+  mcu: {
+    title: "Place an Arduino / MCU",
+    steps: [
+      "Click a hole for VCC (+).",
+      "GND is placed automatically.",
+      "Wire power, ground, and I/O to your other parts.",
+    ],
+  },
+  lcd: {
+    title: "Place an LCD",
+    steps: [
+      "Click a hole for VDD (+).",
+      "VSS (-) is placed automatically.",
+      "Connect power and ground for the display to work.",
+    ],
+  },
+  oled: {
+    title: "Place an OLED",
+    steps: [
+      "Click a hole for VCC.",
+      "GND / SDA / SCL fill adjacent holes.",
+      "Connect I2C lines to the MCU when using code.",
+    ],
+  },
+  probe: {
+    title: "Voltmeter probe",
+    steps: [
+      "Click any hole to measure voltage on that net.",
+      "Read the value in the probe panel.",
+    ],
+  },
+  "psu-positive": {
+    title: "Connect supply (+)",
+    steps: [
+      "Click the breadboard hole where the positive supply clip should attach.",
+    ],
+  },
+  "psu-negative": {
+    title: "Connect ground (-)",
+    steps: [
+      "Click the breadboard hole where ground should attach.",
+    ],
+  },
+};
+
+
+
 function formatCurrent(value: number) {
   const abs = Math.abs(value);
 
@@ -818,7 +1014,7 @@ export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
             lineHeight: 1.5,
           }}
         >
-          Click a part then click holes, or drag a component onto the board to place it.
+          1. Click a component in the palette  2. Click a hole on the breadboard to place it  (or drag it onto the board).
         </div>
 
         <div style={{ marginBottom: 10, padding: 9, borderRadius: 10, background: "rgba(37,99,235,.08)", border: "1px solid rgba(96,165,250,.14)" }}>
@@ -2820,50 +3016,134 @@ export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
         </>
       )}
 
-      {/* INSTRUCTIONS */}
+      {/* INSTRUCTIONS — contextual placement help */}
 
-      <div
-        style={{
-          position: "absolute",
-          bottom: 18,
-          right: instructionsRight,
-          zIndex: 90,
-          maxWidth: 280,
-          padding: 13,
-          borderRadius: 14,
-          background:
-            "rgba(8,15,28,.92)",
-          border:
-            "1px solid rgba(255,255,255,.12)",
-          color: "white",
-          fontSize: 11,
-          lineHeight: 1.55,
-          transition: "right 0.18s ease",
-        }}
-      >
-        <strong>
-          {pending.length
-            ? `Pins ${pending.length}/${pinOrder.length}: ${pending.join(", ")}`
+      {(() => {
+        const help = PLACEMENT_HELP[tool];
+        const isPlacing = Boolean(
+          tool &&
+            tool !== "none" &&
+            tool !== "select" &&
+            (pinOrder.length > 0 || help),
+        );
+
+        const title = pending.length
+          ? `Pins ${pending.length}/${pinOrder.length || "?"}: ${pending.join(", ")}`
+          : help?.title
+            ? help.title
             : tool === "wire"
-            ? "Wire mode"
-            : tool === "select"
-            ? "Select mode"
-            : `${tool} mode`}
-        </strong>
+              ? "Wire mode"
+              : tool === "select"
+                ? "Select mode"
+                : tool && tool !== "none"
+                  ? `${String(tool)} mode`
+                  : "Ready to place";
 
-        <div
-          style={{
-            marginTop: 4,
-            color: "#94a3b8",
-          }}
-        >
-          {pending.length
-            ? `Next pin: ${pinOrder[pending.length] ?? "complete the placement"}.`
-            : pinOrder.length
-              ? `Pin order: ${pinOrder.join(" ??? ")}.`
-              : "Choose a component, then click the breadboard holes where its pins should connect."}
-        </div>
-      </div>
+        const body = pending.length
+          ? `Next pin: ${pinOrder[pending.length] ?? "complete the placement"}. Click the next hole on the breadboard.`
+          : null;
+
+        return (
+          <div
+            style={{
+              position: "absolute",
+              bottom: 18,
+              right: instructionsRight,
+              zIndex: 90,
+              maxWidth: 300,
+              padding: 14,
+              borderRadius: 14,
+              background: "rgba(8,15,28,.94)",
+              border: isPlacing
+                ? "1px solid rgba(96,165,250,.35)"
+                : "1px solid rgba(255,255,255,.12)",
+              boxShadow: isPlacing
+                ? "0 12px 40px rgba(37,99,235,.15)"
+                : "0 10px 30px rgba(0,0,0,.25)",
+              color: "white",
+              fontSize: 11,
+              lineHeight: 1.55,
+              transition: "right 0.18s ease, border 0.15s ease",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                marginBottom: 6,
+              }}
+            >
+              <span
+                style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: "50%",
+                  background: isPlacing ? "#60a5fa" : "#64748b",
+                  boxShadow: isPlacing ? "0 0 10px #60a5fa88" : "none",
+                  flexShrink: 0,
+                }}
+              />
+              <strong style={{ fontSize: 12 }}>{title}</strong>
+            </div>
+
+            {body ? (
+              <div style={{ color: "#94a3b8", marginTop: 2 }}>{body}</div>
+            ) : help ? (
+              <>
+                <ol
+                  style={{
+                    margin: "6px 0 0 0",
+                    paddingLeft: 18,
+                    color: "#cbd5e1",
+                  }}
+                >
+                  {help.steps.map((step, i) => (
+                    <li key={i} style={{ marginBottom: 4 }}>
+                      {step}
+                    </li>
+                  ))}
+                </ol>
+                {help.tip && (
+                  <div
+                    style={{
+                      marginTop: 8,
+                      padding: "8px 10px",
+                      borderRadius: 10,
+                      background: "rgba(37,99,235,.12)",
+                      border: "1px solid rgba(96,165,250,.2)",
+                      color: "#93c5fd",
+                      fontSize: 10,
+                      lineHeight: 1.45,
+                    }}
+                  >
+                    <strong style={{ color: "#bfdbfe" }}>Tip: </strong>
+                    {help.tip}
+                  </div>
+                )}
+              </>
+            ) : (
+              <div style={{ color: "#94a3b8", marginTop: 2 }}>
+                {pinOrder.length
+                  ? `Pin order: ${pinOrder.join(" → ")}. Click a breadboard hole to place.`
+                  : "Choose a component from the palette, then click a hole on the breadboard to place it. You can also drag a component onto the board."}
+              </div>
+            )}
+
+            {isPlacing && !pending.length && (
+              <div
+                style={{
+                  marginTop: 10,
+                  fontSize: 10,
+                  color: "#64748b",
+                }}
+              >
+                Click any empty hole on the breadboard to place.
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* VOLTMETER */}
 
