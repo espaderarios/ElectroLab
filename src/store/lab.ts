@@ -22,6 +22,64 @@ import type {
 import { MOTOR_MODELS } from "@/circuit/types";
 import { uid } from "@/lib/utils";
 
+/** Suppress accidental double placement from drag-drop + hole-click on the same gesture. */
+let _lastPlace: { key: string; at: number; tool: string } = {
+  key: "",
+  at: 0,
+  tool: "",
+};
+/** Hole clicks are ignored until this timestamp (ms). */
+let _suppressHolePlaceUntil = 0;
+
+/** Terminal-strip row groups (same half of the board). */
+const ROW_GROUPS: string[][] = [
+  ["A", "B", "C", "D", "E"],
+  ["F", "G", "H", "I", "J"],
+  ["K", "L", "M", "N", "O"],
+  ["P", "Q", "R", "S", "T"],
+];
+
+/**
+ * Rotate pin holes 90° clockwise in the breadboard grid, staying in the same
+ * half (A–E / F–J / …). Used by rotateSelected for 90° steps.
+ */
+function rotatePins90Clockwise(
+  pins: Record<string, HoleId>,
+): Record<string, HoleId> | null {
+  const entries = Object.entries(pins).filter(
+    ([, hole]) => hole && /^[A-T]\d+$/.test(hole),
+  ) as [string, HoleId][];
+  if (entries.length === 0) return null;
+
+  const first = parseTerminalHole(entries[0][1]);
+  if (!first) return null;
+  const group =
+    ROW_GROUPS.find((g) => g.includes(first.row)) ?? ROW_GROUPS[0];
+
+  const parsed = entries.map(([name, hole]) => {
+    const p = parseTerminalHole(hole)!;
+    let ri = group.indexOf(p.row);
+    if (ri < 0) ri = 0; // snap foreign-half pins into this half
+    return { name, col: p.col, ri };
+  });
+
+  const cols = parsed.map((p) => p.col);
+  const ris = parsed.map((p) => p.ri);
+  const centerC = (Math.min(...cols) + Math.max(...cols)) / 2;
+  const centerR = (Math.min(...ris) + Math.max(...ris)) / 2;
+
+  const newPins = { ...pins };
+  for (const p of parsed) {
+    // 90° CW in (col, rowIndex) space: (c, r) → (c0+(r-r0), r0-(c-c0))
+    let nc = Math.round(centerC + (p.ri - centerR));
+    let nr = Math.round(centerR - (p.col - centerC));
+    nc = Math.min(BOARD.cols, Math.max(1, nc));
+    nr = Math.min(group.length - 1, Math.max(0, nr));
+    newPins[p.name] = `${group[nr]}${nc}` as HoleId;
+  }
+  return newPins;
+}
+
 interface LabSnapshot {
   parts: PlacedPart[];
   wires: Wire[];
@@ -50,6 +108,30 @@ interface LabState {
   selectedId: string | null;
   probeHole: HoleId | null;
 
+  /**
+   * When set, the next hole click reassigns this pin on the part
+   * (edit where individual nodes go).
+   */
+  pinEditTarget: { partId: string; pinName: string } | null;
+
+  /**
+   * When true, the next hole click moves the selected part's whole footprint
+   * so its first pin lands on that hole.
+   */
+  movingSelected: boolean;
+
+  /**
+   * True while the user is mid drag-from-palette. Hole clicks must not also
+   * place a part (that was causing double placement on drop).
+   */
+  paletteDragging: boolean;
+
+  /**
+   * When true, long-press / drag can move placed components on the board.
+   * When false, parts behave like the original lab (click to select only).
+   */
+  partDragEnabled: boolean;
+
   parts: PlacedPart[];
   wires: Wire[];
 
@@ -76,8 +158,19 @@ interface LabState {
   /**
    * Place a component in one gesture starting at `anchor` hole.
    * Multi-pin parts fan out across adjacent columns automatically.
+   * Pass `explicitPins` to place with user-chosen holes (pin-by-pin mode).
    */
-  placePartAt: (tool: ToolId, anchor: HoleId) => void;
+  placePartAt: (
+    tool: ToolId,
+    anchor: HoleId,
+    explicitPins?: Record<string, HoleId>,
+  ) => void;
+
+  /** Mark palette drag in progress so hole-click does not double-place. */
+  setPaletteDragging: (active: boolean) => void;
+
+  /** Enable / disable long-press drag-to-move for placed components. */
+  setPartDragEnabled: (enabled: boolean) => void;
 
   setTool: (tool: ToolId) => void;
   setWireColor: (color: WireColor) => void;
@@ -124,8 +217,20 @@ interface LabState {
   setButtonPressed: (id: string, pressed: boolean) => void;
 
   deleteSelected: () => void;
-  /** Rotate selected part 180° on the breadboard (swap / reverse pin holes). */
+  /** Rotate selected part 90° clockwise on the breadboard (pin grid + visual). */
   rotateSelected: () => void;
+  /**
+   * Move the selected part so its footprint is re-anchored at `anchor`
+   * (same relative pin layout as when first placed).
+   */
+  moveSelectedTo: (anchor: HoleId) => void;
+  /** Toggle "click a hole to move the selected part" mode. */
+  setMovingSelected: (active: boolean) => void;
+  /** Begin editing a single pin: next hole click assigns that node. */
+  startPinEdit: (partId: string, pinName: string) => void;
+  cancelPinEdit: () => void;
+  /** Directly set one pin of a part to a hole (used by pin editor). */
+  setPartPin: (partId: string, pinName: string, hole: HoleId) => void;
   undo: () => void;
   redo: () => void;
 
@@ -269,6 +374,177 @@ function getTwoPinKind(tool: ToolId): PartKind | "wire" | null {
     default:
       return null;
   }
+}
+
+/**
+ * Compute the hole list / pin map for placing (or previewing) a tool at an anchor.
+ * Returns null if the anchor is invalid for that tool.
+ */
+export function computePinLayout(
+  tool: ToolId,
+  anchor: HoleId,
+): { holes: HoleId[]; pins: Record<string, HoleId>; kind: PartKind | "wire" } | null {
+  const placement = getPlacement(tool);
+  if (!placement) return null;
+
+  const parsed = parseTerminalHole(anchor);
+  if (!parsed && placement.kind !== "wire") {
+    return null;
+  }
+
+  const holes: HoleId[] = [];
+  if (placement.kind === "wire") {
+    holes.push(anchor);
+    const next = offsetHole(anchor, 1) ?? anchor;
+    holes.push(next);
+  } else if (placement.pins.length === 2) {
+    holes.push(anchor);
+    // LED / diode: adjacent columns on the same row (typical breadboard span).
+    // Never jump the center trench — that left the body floating mid-board
+    // with no connecting leads.
+    if (placement.kind === "led" || placement.kind === "diode") {
+      const next = offsetHole(anchor, 1) ?? offsetHole(anchor, -1) ?? anchor;
+      holes.push(next);
+    } else {
+      // Resistors etc.: span ~3 columns when possible.
+      const b = offsetHole(anchor, 3) ?? offsetHole(anchor, 1) ?? anchor;
+      holes.push(b);
+    }
+  } else {
+    const maxStartCol = Math.max(1, BOARD.cols - placement.pins.length + 1);
+    const startCol = Math.min(parsed!.col, maxStartCol);
+    const row = parsed!.row;
+    for (let i = 0; i < placement.pins.length; i++) {
+      holes.push(`${row}${startCol + i}` as HoleId);
+    }
+  }
+
+  const pins = Object.fromEntries(
+    placement.pins.map((name, index) => [name, holes[index] ?? anchor]),
+  ) as Record<string, HoleId>;
+
+  return { holes, pins, kind: placement.kind };
+}
+
+/**
+ * Build a transient PlacedPart used as a 3D mesh ghost while dragging/placing.
+ */
+export function buildPreviewPart(
+  tool: ToolId,
+  anchor: HoleId,
+  defaults?: {
+    resistorValue?: number;
+    capacitorValue?: number;
+    ledColor?: NonNullable<PlacedPart["props"]["ledColor"]>;
+    transistorModel?: import("@/circuit/types").TransistorModelId;
+    thyristorModel?: import("@/circuit/types").ThyristorModelId;
+    triacModel?: import("@/circuit/types").TriacModelId;
+    diacModel?: import("@/circuit/types").DiacModelId;
+    motorModel?: import("@/circuit/types").MotorModelId;
+  },
+): PlacedPart | null {
+  const layout = computePinLayout(tool, anchor);
+  if (!layout || layout.kind === "wire") return null;
+
+  const kind = layout.kind as PartKind;
+  return {
+    id: "__preview__",
+    kind,
+    pins: layout.pins,
+    props: {
+      resistance:
+        kind === "resistor" || kind === "pot"
+          ? defaults?.resistorValue ?? 1000
+          : undefined,
+      capacitance:
+        kind === "capacitor" ? defaults?.capacitorValue ?? 10e-6 : undefined,
+      tolerance: kind === "resistor" ? 5 : undefined,
+      powerRating: kind === "resistor" || kind === "pot" ? 0.25 : undefined,
+      ledColor: kind === "led" ? defaults?.ledColor ?? "red" : undefined,
+      closed:
+        kind === "switch" || kind === "button" ? false : undefined,
+      mcuModel: kind === "mcu" ? "arduino-uno" : undefined,
+      transistorModel:
+        kind === "transistor" ? defaults?.transistorModel : undefined,
+      thyristorModel:
+        kind === "thyristor" ? defaults?.thyristorModel : undefined,
+      triacModel: kind === "triac" ? defaults?.triacModel : undefined,
+      diacModel: kind === "diac" ? defaults?.diacModel : undefined,
+      motorModel: kind === "motor" ? defaults?.motorModel : undefined,
+      capacitorType: kind === "capacitor" ? "ceramic" : undefined,
+      diodeType: kind === "diode" ? "silicon" : undefined,
+    },
+  };
+}
+
+/**
+ * Re-anchor an existing part's footprint at a new hole, preserving the current
+ * relative pin layout (including after 90° rotations).
+ * Exported so the move-ghost can preview the same orientation the drop will use.
+ */
+export function reanchorPartPins(
+  part: PlacedPart,
+  anchor: HoleId,
+): Record<string, HoleId> | null {
+  const parsed = parseTerminalHole(anchor);
+  if (!parsed) return null;
+
+  const entries = Object.entries(part.pins).filter(
+    ([, hole]) => hole && /^[A-T]\d+$/.test(hole),
+  ) as [string, HoleId][];
+  if (entries.length === 0) return null;
+
+  // Sort so the "first" pin is a stable anchor (leftmost, then topmost).
+  entries.sort((a, b) => {
+    const pa = parseTerminalHole(a[1])!;
+    const pb = parseTerminalHole(b[1])!;
+    if (pa.col !== pb.col) return pa.col - pb.col;
+    return pa.row.localeCompare(pb.row);
+  });
+
+  // Anchor = first pin in sorted order; every other pin keeps the same
+  // (Δcol, Δrow) relative offset so a 90°/180°/270° footprint stays oriented.
+  const origin = parseTerminalHole(entries[0][1])!;
+  const originGroup =
+    ROW_GROUPS.find((g) => g.includes(origin.row)) ?? ROW_GROUPS[0];
+  const targetGroup =
+    ROW_GROUPS.find((g) => g.includes(parsed.row)) ?? originGroup;
+  const originRi = Math.max(0, originGroup.indexOf(origin.row));
+  const targetRi = Math.max(0, targetGroup.indexOf(parsed.row));
+
+  const newPins = { ...part.pins };
+  for (const [name, hole] of entries) {
+    const p = parseTerminalHole(hole)!;
+    const srcGroup =
+      ROW_GROUPS.find((g) => g.includes(p.row)) ?? originGroup;
+    const ri = Math.max(0, srcGroup.indexOf(p.row));
+    const relCol = p.col - origin.col;
+    const relRow = ri - originRi;
+    let nc = parsed.col + relCol;
+    let nr = targetRi + relRow;
+    nc = Math.min(BOARD.cols, Math.max(1, nc));
+    nr = Math.min(targetGroup.length - 1, Math.max(0, nr));
+    newPins[name] = `${targetGroup[nr]}${nc}` as HoleId;
+  }
+  return newPins;
+}
+
+/**
+ * Build a preview of `part` as it would look after moving its footprint so the
+ * first pin sits on `anchor` — keeps rotation / relative pin layout.
+ */
+export function previewMovedPart(
+  part: PlacedPart,
+  anchor: HoleId,
+): PlacedPart | null {
+  const newPins = reanchorPartPins(part, anchor);
+  if (!newPins) return null;
+  return {
+    ...part,
+    id: "__move_preview__",
+    pins: newPins,
+    props: { ...part.props },
+  };
 }
 
 function getPlacement(tool: ToolId) {
@@ -613,6 +889,14 @@ export const useLab = create<LabState>((set, get) => ({
 
   probeHole: null,
 
+  pinEditTarget: null,
+
+  movingSelected: false,
+
+  paletteDragging: false,
+
+  partDragEnabled: true,
+
   parts: initialPreset.parts,
 
   wires: initialPreset.wires,
@@ -706,56 +990,57 @@ export const useLab = create<LabState>((set, get) => ({
   });
 },
 
-  placePartAt: (tool, anchor) => {
+  setPaletteDragging: (active) => set({ paletteDragging: active }),
+
+  setPartDragEnabled: (enabled) =>
+    set({
+      partDragEnabled: enabled,
+      // Switching modes cancels in-progress move / pin picks.
+      movingSelected: false,
+      pinEditTarget: null,
+      pendingHole: null,
+      pendingHoles: [],
+    }),
+
+  placePartAt: (tool, anchor, explicitPins) => {
     const state = get();
     const placement = getPlacement(tool);
     if (!placement) return;
 
-    const parsed = parseTerminalHole(anchor);
-    if (!parsed && placement.kind !== "wire") {
-      // Anchor must be a terminal strip hole for components.
-      return;
+    // Dedupe: drag-drop + hole-click (or double pointerup) often fire together.
+    // Block any second place of the same tool within 500ms, even on a nearby hole.
+    // Skip dedupe when the user is placing pin-by-pin with explicit holes.
+    if (!explicitPins) {
+      const now = Date.now();
+      const key = `${tool}:${anchor}`;
+      if (
+        now - _lastPlace.at < 500 &&
+        (_lastPlace.key === key || _lastPlace.tool === tool)
+      ) {
+        return;
+      }
+      _lastPlace = { key, at: now, tool };
+      _suppressHolePlaceUntil = now + 500;
     }
 
-    // Map pin names → holes by walking across adjacent columns.
-    const holes: HoleId[] = [];
-    if (placement.kind === "wire") {
-      holes.push(anchor);
-      const next = offsetHole(anchor, 1) ?? anchor;
-      holes.push(next);
-    } else if (placement.pins.length === 2) {
-      holes.push(anchor);
-      const b =
-        offsetHole(anchor, placement.kind === "led" || placement.kind === "diode" ? 0 : 3) ??
-        anchor;
-      // LEDs/diodes: a and k on same column different rows when possible
-      if (placement.kind === "led" || placement.kind === "diode") {
-        const row = parsed!.row;
-        const opposite =
-          "ABCDE".includes(row)
-            ? (`F${parsed!.col}` as HoleId)
-            : (`E${parsed!.col}` as HoleId);
-        holes.push(opposite);
-      } else {
-        holes.push(b === anchor ? (offsetHole(anchor, 1) ?? anchor) : b);
-      }
+    let pins: Record<string, HoleId>;
+    let holes: HoleId[];
+
+    if (explicitPins) {
+      pins = explicitPins;
+      holes = placement.pins
+        .map((name) => explicitPins[name])
+        .filter(Boolean) as HoleId[];
     } else {
-      // Multi-pin parts must fit completely on the board. The old code used
-      // offsetHole(), which clamps at BOARD.cols; placing an LCD/Arduino near
-      // the right edge therefore collapsed several pins onto the same hole.
-      // That made VCC/GND (and unrelated GPIO pins) share one breadboard net,
-      // producing the fake 2 A short shown in the lab.
-      const maxStartCol = Math.max(1, BOARD.cols - placement.pins.length + 1);
-      const startCol = Math.min(parsed!.col, maxStartCol);
-      const row = parsed!.row;
-      for (let i = 0; i < placement.pins.length; i++) {
-        holes.push(`${row}${startCol + i}` as HoleId);
-      }
+      const pinResult = computePinLayout(tool, anchor);
+      if (!pinResult) return;
+      pins = pinResult.pins;
+      holes = pinResult.holes;
     }
 
     if (placement.kind === "wire") {
       const [a, b] = holes;
-      if (a === b || holeStrip(a) === holeStrip(b)) return;
+      if (!a || !b || a === b || holeStrip(a) === holeStrip(b)) return;
       const wire: Wire = {
         id: uid("wire"),
         a,
@@ -775,10 +1060,6 @@ export const useLab = create<LabState>((set, get) => ({
       });
       return;
     }
-
-    const pins = Object.fromEntries(
-      placement.pins.map((name, index) => [name, holes[index] ?? anchor]),
-    ) as Record<string, HoleId>;
 
     const part: PlacedPart = {
       id: uid(placement.kind),
@@ -905,6 +1186,7 @@ export const useLab = create<LabState>((set, get) => ({
       psuNegative: powered.psuNegative,
       pendingHole: null,
       pendingHoles: [],
+      hoverHole: null,
       selectedId: part.id,
       sim: runSimulation(next),
       history: [...state.history, snapshot(state)],
@@ -918,6 +1200,8 @@ export const useLab = create<LabState>((set, get) => ({
       tool,
       pendingHole: null,
       pendingHoles: [],
+      pinEditTarget: null,
+      movingSelected: false,
       // Idle tool clears selection so nothing stays highlighted
       ...(tool === "none" ? { selectedId: null as string | null } : {}),
     })),
@@ -1168,6 +1452,8 @@ export const useLab = create<LabState>((set, get) => ({
           selectedId: null,
           pendingHole: null,
           pendingHoles: [],
+          pinEditTarget: null,
+          movingSelected: false,
           sim: runSimulation(next),
           history: [...state.history, snapshot(state)],
           future: [],
@@ -1188,6 +1474,13 @@ export const useLab = create<LabState>((set, get) => ({
         selectedId,
         pendingHole: null,
         pendingHoles: [],
+        // Switching selection cancels in-progress pin edit / move.
+        pinEditTarget:
+          selectedId && state.pinEditTarget?.partId === selectedId
+            ? state.pinEditTarget
+            : null,
+        movingSelected:
+          selectedId != null && state.movingSelected ? true : false,
       };
     }),
 
@@ -1677,26 +1970,10 @@ setSelectedCapacitance: (capacitance) =>
       const part = state.parts.find((p) => p.id === state.selectedId);
       if (!part) return state;
 
-      // Collect pin entries that sit on terminal holes (letter+column).
-      const entries = Object.entries(part.pins).filter(
-        ([, hole]) => hole && /^[A-T]\d+$/.test(hole),
-      ) as [string, HoleId][];
-      if (entries.length < 2) return state;
+      const newPins = rotatePins90Clockwise(part.pins);
+      if (!newPins) return state;
 
-      // Sort left→right by column so we can reverse for a 180° footprint flip.
-      entries.sort((a, b) => {
-        const ca = Number(a[1].slice(1));
-        const cb = Number(b[1].slice(1));
-        if (ca !== cb) return ca - cb;
-        return a[1].localeCompare(b[1]);
-      });
-
-      const holes = entries.map(([, h]) => h);
-      const reversedHoles = [...holes].reverse();
-      const newPins = { ...part.pins };
-      entries.forEach(([pin], i) => {
-        newPins[pin] = reversedHoles[i];
-      });
+      const nextRotation = ((Number(part.props.rotation) || 0) + 90) % 360;
 
       const parts = state.parts.map((p) =>
         p.id === part.id
@@ -1705,7 +1982,7 @@ setSelectedCapacitance: (capacitance) =>
               pins: newPins,
               props: {
                 ...p.props,
-                rotation: ((Number(p.props.rotation) || 0) + 180) % 360,
+                rotation: nextRotation,
               },
             }
           : p,
@@ -1719,6 +1996,74 @@ setSelectedCapacitance: (capacitance) =>
         future: [],
       };
     }),
+
+  setMovingSelected: (active) =>
+    set({
+      movingSelected: active,
+      pinEditTarget: null,
+      tool: active ? "select" : get().tool,
+    }),
+
+  moveSelectedTo: (anchor) => {
+    const state = get();
+    if (!state.selectedId) return;
+    const part = state.parts.find((p) => p.id === state.selectedId);
+    if (!part) return;
+
+    const newPins = reanchorPartPins(part, anchor);
+    if (!newPins) return;
+
+    // Keep props (including rotation) so orientation survives the move.
+    const parts = state.parts.map((p) =>
+      p.id === part.id
+        ? {
+            ...p,
+            pins: newPins,
+            props: { ...p.props },
+          }
+        : p,
+    );
+    const next = { ...state, parts };
+    set({
+      parts,
+      movingSelected: false,
+      pinEditTarget: null,
+      selectedId: part.id,
+      sim: runSimulation(next),
+      history: [...state.history, snapshot(state)],
+      future: [],
+    });
+  },
+
+  startPinEdit: (partId, pinName) =>
+    set({
+      pinEditTarget: { partId, pinName },
+      movingSelected: false,
+      selectedId: partId,
+      tool: "select",
+    }),
+
+  cancelPinEdit: () => set({ pinEditTarget: null }),
+
+  setPartPin: (partId, pinName, hole) => {
+    const state = get();
+    const part = state.parts.find((p) => p.id === partId);
+    if (!part || !(pinName in part.pins)) return;
+
+    const parts = state.parts.map((p) =>
+      p.id === partId
+        ? { ...p, pins: { ...p.pins, [pinName]: hole } }
+        : p,
+    );
+    const next = { ...state, parts };
+    set({
+      parts,
+      pinEditTarget: null,
+      sim: runSimulation(next),
+      history: [...state.history, snapshot(state)],
+      future: [],
+    });
+  },
 
   undo: () =>
     set((state) => {
@@ -1779,6 +2124,23 @@ setSelectedCapacitance: (capacitance) =>
 
   clickHole: (hole) => {
     const state = get();
+
+    /*
+     * PIN EDIT — reassign a single node of the selected (or targeted) part.
+     */
+    if (state.pinEditTarget) {
+      const { partId, pinName } = state.pinEditTarget;
+      get().setPartPin(partId, pinName, hole);
+      return;
+    }
+
+    /*
+     * MOVE SELECTED — re-anchor the whole footprint at this hole.
+     */
+    if (state.movingSelected && state.selectedId) {
+      get().moveSelectedTo(hole);
+      return;
+    }
 
     /*
      * VOLTMETER
@@ -1873,20 +2235,30 @@ setSelectedCapacitance: (capacitance) =>
     const placement = getPlacement(state.tool);
     if (!placement) return;
 
-    // Components with three or four terminals (potentiometers and relays)
-    // use the same direct placement flow as two-terminal parts.
-    if (state.pendingHoles.includes(hole)) {
-      set({ pendingHole: null, pendingHoles: [] });
+    // While a palette drag is in progress (or just finished), hole-click must
+    // not place again — the drop handler already called placePartAt.
+    if (
+      placement.kind !== "wire" &&
+      (state.paletteDragging || Date.now() < _suppressHolePlaceUntil)
+    ) {
       return;
     }
 
-    const holes = [...state.pendingHoles, hole];
-    if (holes.length < placement.pins.length) {
-      set({ pendingHole: holes[0], pendingHoles: holes });
-      return;
-    }
-
+    /*
+     * WIRES always need two clicks (from → to).
+     */
     if (placement.kind === "wire") {
+      if (state.pendingHoles.includes(hole)) {
+        set({ pendingHole: null, pendingHoles: [] });
+        return;
+      }
+
+      const holes = [...state.pendingHoles, hole];
+      if (holes.length < 2) {
+        set({ pendingHole: holes[0], pendingHoles: holes });
+        return;
+      }
+
       const [a, b] = holes;
       if (holeStrip(a) === holeStrip(b)) {
         set({ pendingHole: null, pendingHoles: [] });
@@ -1907,125 +2279,38 @@ setSelectedCapacitance: (capacitance) =>
       return;
     }
 
-    const pins = Object.fromEntries(
-      placement.pins.map((name, index) => [name, holes[index]]),
-    ) as Record<string, HoleId>;
-    const part: PlacedPart = {
-      id: uid(placement.kind),
-      kind: placement.kind,
-      pins,
-      props: {
-        resistance:
-          placement.kind === "resistor" || placement.kind === "pot"
-            ? state.resistorValue
-            : undefined,
-
-        capacitance:
-          placement.kind === "capacitor"
-            ? state.capacitorValue
-            : undefined,
-        ledColor: placement.kind === "led" ? state.ledColor : undefined,
-        closed:
-          placement.kind === "switch" || placement.kind === "button"
-            ? false
-            : undefined,
-        mcuModel:
-          placement.kind === "mcu" ? "arduino-uno" : undefined,
-        code: placement.kind === "mcu" ? DEFAULT_MCU_CODE : undefined,
-        transistorModel:
-          placement.kind === "transistor" ? state.transistorModel : undefined,
-        thyristorModel:
-          placement.kind === "thyristor" ? state.thyristorModel : undefined,
-        triacModel:
-          placement.kind === "triac" ? state.triacModel : undefined,
-        diacModel:
-          placement.kind === "diac" ? state.diacModel : undefined,
-        motorModel:
-          placement.kind === "motor" ? state.motorModel : undefined,
-        label:
-          placement.kind === "diode"
-            ? "D1"
-            : placement.kind === "relay"
-              ? "K1"
-              : placement.kind === "buzzer"
-                ? "BZ1"
-                : placement.kind === "lcd"
-                  ? "LCD 16x2"
-                  : placement.kind === "oled"
-                    ? "OLED 128x64"
-                    : placement.kind === "transistor"
-                      ? state.transistorModel.toUpperCase()
-                      : placement.kind === "thyristor"
-                        ? state.thyristorModel.toUpperCase()
-                        : placement.kind === "triac"
-                          ? state.triacModel.toUpperCase()
-                          : placement.kind === "diac"
-                            ? state.diacModel.toUpperCase()
-                            : placement.kind === "motor"
-                              ? (MOTOR_MODELS[state.motorModel]?.label ?? "Motor")
-                              : placement.kind === "speaker"
-                                ? "Speaker"
-                                : placement.kind === "mcu"
-                                  ? "Arduino Uno"
-                                  : undefined,
-      },
-    };
-
-    let parts = [...state.parts, part];
-    let wires = state.wires;
-
-    if (
-      placement.kind === "mcu" ||
-      placement.kind === "lcd" ||
-      placement.kind === "oled"
-    ) {
-      const mcu =
-        placement.kind === "mcu"
-          ? part
-          : parts.find((p) => p.kind === "mcu");
-      const lcd =
-        placement.kind === "lcd"
-          ? part
-          : parts.find((p) => p.kind === "lcd");
-      const oled =
-        placement.kind === "oled"
-          ? part
-          : parts.find((p) => p.kind === "oled");
-      if (mcu && lcd) {
-        wires = autoWireMcuLcd(mcu, lcd, wires);
+    /*
+     * Drag OFF (classic mode): click one hole per node.
+     * Example: resistor → click hole for lead A, then hole for lead B.
+     */
+    if (!state.partDragEnabled) {
+      if (state.pendingHoles.includes(hole)) {
+        // Re-clicking a chosen hole cancels the in-progress placement.
+        set({ pendingHole: null, pendingHoles: [] });
+        return;
       }
-      if (mcu && oled) {
-        wires = autoWireMcuOled(mcu, oled, wires);
+
+      const holes = [...state.pendingHoles, hole];
+      const needed = placement.pins.length;
+
+      if (holes.length < needed) {
+        set({
+          pendingHole: holes[0] ?? hole,
+          pendingHoles: holes,
+        });
+        return;
       }
+
+      const explicitPins: Record<string, HoleId> = {};
+      placement.pins.forEach((name, i) => {
+        explicitPins[name] = holes[i]!;
+      });
+
+      get().placePartAt(state.tool, holes[0]!, explicitPins);
+      return;
     }
 
-    const powered = ensurePowerWiring({
-      parts,
-      wires,
-      psuPositive: state.psuPositive,
-      psuNegative: state.psuNegative,
-    });
-    wires = powered.wires;
-
-    const next = {
-      ...state,
-      parts,
-      wires,
-      psuPositive: powered.psuPositive,
-      psuNegative: powered.psuNegative,
-    };
-    set({
-      parts,
-      wires,
-      psuPositive: powered.psuPositive,
-      psuNegative: powered.psuNegative,
-      pendingHole: null,
-      pendingHoles: [],
-      selectedId: part.id,
-      sim: runSimulation(next),
-      history: [...state.history, snapshot(state)],
-      future: [],
-      tool: "select",
-    });
+    // Drag ON: single-click / drag-drop places the whole footprint at once.
+    get().placePartAt(state.tool, hole);
   },
 }));

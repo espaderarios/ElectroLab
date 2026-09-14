@@ -1078,320 +1078,158 @@ export function LedMesh({
   selected: boolean;
   sim: SimResult;
 }) {
-
-
   // ---------------------------------------------------------
-  // PINS
+  // PINS — body sits between the two holes, slightly above board
   // ---------------------------------------------------------
-
   const a = vec(part.pins.a);
   const k = vec(part.pins.k);
 
-  // Center of the LED between the two breadboard holes.
-  const body = a.clone().lerp(k, 0.5);
+  const mid = a.clone().lerp(k, 0.5);
+  const baseY = BOARD.height + 0.05;
+  const body = new THREE.Vector3(mid.x, baseY + 0.09, mid.z);
 
-  // LED stands vertically above the breadboard.
-  const baseY = BOARD.height + 0.045;
-  const bodyY = BOARD.height + 0.145;
-
-  body.y = bodyY;
-
-  // ---------------------------------------------------------
-  // LED COLOR
-  // ---------------------------------------------------------
+  // Lead bend height (where vertical pin turns toward the body)
+  const bendY = BOARD.height + 0.07;
 
   const color =
-    LED_HEX[
-      part.props.ledColor ?? "red"
-    ] ?? "#ef4444";
-
-  // ---------------------------------------------------------
-  // SIMULATION STATE
-  // ---------------------------------------------------------
+    LED_HEX[part.props.ledColor ?? "red"] ?? "#ef4444";
 
   const state = sim.leds[part.id];
-
-  const brightness =
-    state?.brightness ?? 0;
-
-  const isOn =
-    Boolean(state?.on);
-
+  const brightness = state?.brightness ?? 0;
+  const isOn = Boolean(state?.on);
   const isBurned =
-    Boolean(state?.overcurrent) ||
-    Boolean(sim.burned?.[part.id]);
+    Boolean(state?.overcurrent) || Boolean(sim.burned?.[part.id]);
 
   const displayColor = isBurned ? "#1c1917" : color;
   const glowColor = isBurned ? "#ea580c" : color;
 
-  // ---------------------------------------------------------
-  // MATERIALS
-  // ---------------------------------------------------------
-
-  const lensMaterial =
-    useRef<THREE.MeshStandardMaterial>(null);
-
-  const dieMaterial =
-    useRef<THREE.MeshStandardMaterial>(null);
-
-  const lensEnergy =
-    useRef(0);
-
-  // ---------------------------------------------------------
-  // LED LIGHT ANIMATION
-  // ---------------------------------------------------------
+  const lensMaterial = useRef<THREE.MeshStandardMaterial>(null);
+  const dieMaterial = useRef<THREE.MeshStandardMaterial>(null);
+  const lensEnergy = useRef(0);
 
   useFrame(({ clock }, delta) => {
-    lensEnergy.current =
-      THREE.MathUtils.damp(
-        lensEnergy.current,
-        isOn ? brightness : 0,
-        10,
-        delta,
-      );
-
-    const energy =
-      lensEnergy.current;
-
+    lensEnergy.current = THREE.MathUtils.damp(
+      lensEnergy.current,
+      isOn ? brightness : 0,
+      10,
+      delta,
+    );
+    const energy = lensEnergy.current;
     if (lensMaterial.current) {
-      const shimmer =
-        0.97 +
-        Math.sin(
-          clock.getElapsedTime() * 6,
-        ) * 0.03;
-
-      lensMaterial.current.emissiveIntensity =
-        0.08 +
-        energy * 3.8 * shimmer;
+      const shimmer = 0.97 + Math.sin(clock.getElapsedTime() * 6) * 0.03;
+      lensMaterial.current.emissiveIntensity = 0.08 + energy * 3.8 * shimmer;
     }
-
     if (dieMaterial.current) {
-      dieMaterial.current.emissiveIntensity =
-        0.15 +
-        energy * 5;
+      dieMaterial.current.emissiveIntensity = 0.15 + energy * 5;
     }
   });
 
-  // ---------------------------------------------------------
-  // DIMENSIONS
-  // ---------------------------------------------------------
+  const baseRadius = 0.07;
+  const baseHeight = 0.05;
+  const domeRadius = 0.09;
+  const leadRadius = 0.011;
 
-  const baseRadius = 0.063;
-  const baseHeight = 0.045;
+  /** Vertical stub from hole up to bend, then horizontal/diagonal to body. */
+  function Lead({
+    from,
+    metal = "#b8bcc2",
+  }: {
+    from: THREE.Vector3;
+    metal?: string;
+  }) {
+    const bend = new THREE.Vector3(from.x, bendY, from.z);
+    const toBody = new THREE.Vector3(body.x, bendY, body.z);
+    const vertH = Math.max(0.01, bendY - from.y);
+    const horiz = bend.distanceTo(toBody);
+    const horizMid = bend.clone().lerp(toBody, 0.5);
+    // Orient a thin cylinder along XZ from bend → body
+    const dir = new THREE.Vector3().subVectors(toBody, bend);
+    const yaw = Math.atan2(dir.x, dir.z);
 
-  const domeRadius = 0.078;
-  const domeHeight = 0.105;
-
-  const leadRadius = 0.009;
-
-  // ---------------------------------------------------------
-  // LEAD HEIGHT
-  // ---------------------------------------------------------
-
-  const leadTopY =
-    BOARD.height + 0.075;
-
-  // ---------------------------------------------------------
-  // RENDER
-  // ---------------------------------------------------------
+    return (
+      <group>
+        {/* Vertical into the hole */}
+        <mesh position={[from.x, from.y + vertH / 2, from.z]} castShadow>
+          <cylinderGeometry args={[leadRadius, leadRadius, vertH, 8]} />
+          <meshStandardMaterial color={metal} metalness={0.92} roughness={0.2} />
+        </mesh>
+        {/* Run toward the LED body */}
+        {horiz > 0.005 && (
+          <mesh
+            position={[horizMid.x, bendY, horizMid.z]}
+            rotation={[Math.PI / 2, 0, -yaw]}
+            castShadow
+          >
+            <cylinderGeometry args={[leadRadius, leadRadius, horiz, 8]} />
+            <meshStandardMaterial color={metal} metalness={0.92} roughness={0.2} />
+          </mesh>
+        )}
+        {/* Short riser into the package */}
+        <mesh
+          position={[body.x * 0.15 + from.x * 0.85, (bendY + baseY) / 2, body.z * 0.15 + from.z * 0.85]}
+          castShadow
+        >
+          <cylinderGeometry
+            args={[leadRadius * 0.95, leadRadius * 0.95, Math.max(0.01, baseY - bendY + 0.02), 8]}
+          />
+          <meshStandardMaterial color={metal} metalness={0.92} roughness={0.2} />
+        </mesh>
+      </group>
+    );
+  }
 
   return (
     <group
       onClick={(e) => {
         e.stopPropagation();
-
-        useLab
-          .getState()
-          .select(part.id);
+        useLab.getState().select(part.id);
       }}
     >
-      {/* =====================================================
-          ANODE LEAD
-      ===================================================== */}
+      {/* Anode lead (slightly longer look: stays silver) */}
+      <Lead from={a} metal="#c5c9ce" />
+      {/* Cathode lead */}
+      <Lead from={k} metal="#9ca3af" />
 
+      {/* Flat epoxy base */}
       <mesh
-        position={[
-          a.x,
-          (a.y + leadTopY) / 2,
-          a.z,
-        ]}
-        castShadow
-      >
-        <cylinderGeometry
-          args={[
-            leadRadius,
-            leadRadius,
-            Math.max(
-              0.01,
-              leadTopY - a.y,
-            ),
-            10,
-          ]}
-        />
-
-        <meshStandardMaterial
-          color="#b8bcc2"
-          metalness={0.9}
-          roughness={0.22}
-        />
-      </mesh>
-
-      {/* =====================================================
-          CATHODE LEAD
-      ===================================================== */}
-
-      <mesh
-        position={[
-          k.x,
-          (k.y + leadTopY) / 2,
-          k.z,
-        ]}
-        castShadow
-      >
-        <cylinderGeometry
-          args={[
-            leadRadius,
-            leadRadius,
-            Math.max(
-              0.01,
-              leadTopY - k.y,
-            ),
-            10,
-          ]}
-        />
-
-        <meshStandardMaterial
-          color="#aeb3b8"
-          metalness={0.9}
-          roughness={0.22}
-        />
-      </mesh>
-
-      {/* =====================================================
-          LED BASE / COLLAR
-      ===================================================== */}
-
-      <mesh
-        position={[
-          body.x,
-          baseY,
-          body.z,
-        ]}
-        scale={
-          selected
-            ? [1.1, 1.1, 1.1]
-            : [1, 1, 1]
-        }
+        position={[body.x, baseY, body.z]}
+        scale={selected ? [1.08, 1.08, 1.08] : [1, 1, 1]}
         castShadow
         receiveShadow
       >
-        <cylinderGeometry
-          args={[
-            baseRadius,
-            baseRadius * 1.05,
-            baseHeight,
-            24,
-          ]}
-        />
-
-        <meshStandardMaterial
-          color="#e5e7eb"
-          metalness={0.2}
-          roughness={0.3}
-        />
+        <cylinderGeometry args={[baseRadius, baseRadius * 1.06, baseHeight, 24]} />
+        <meshStandardMaterial color="#e8eaed" metalness={0.15} roughness={0.35} />
       </mesh>
 
-      {/* =====================================================
-          LED COLLAR
-      ===================================================== */}
-
-      <mesh
-        position={[
-          body.x,
-          baseY + 0.025,
-          body.z,
-        ]}
-        castShadow
-      >
-        <cylinderGeometry
-          args={[
-            0.053,
-            0.058,
-            0.032,
-            24,
-          ]}
-        />
-
-        <meshStandardMaterial
-          color="#f1f5f9"
-          metalness={0.12}
-          roughness={0.28}
-        />
+      {/* Rim / collar */}
+      <mesh position={[body.x, baseY + 0.028, body.z]} castShadow>
+        <cylinderGeometry args={[0.058, 0.064, 0.03, 24]} />
+        <meshStandardMaterial color="#f1f5f9" metalness={0.1} roughness={0.3} />
       </mesh>
 
-      {/* =====================================================
-          COLORED LED DOME
-      ===================================================== */}
-
+      {/* Colored dome (hemisphere) */}
       <mesh
-        position={[
-          body.x,
-          baseY +
-            baseHeight * 0.55 +
-            domeHeight * 0.47,
-          body.z,
-        ]}
-        scale={
-          selected
-            ? [1.08, 1.08, 1.08]
-            : [1, 1, 1]
-        }
+        position={[body.x, baseY + baseHeight * 0.55 + domeRadius * 0.35, body.z]}
+        scale={selected ? [1.06, 1.06, 1.06] : [1, 1, 1]}
         castShadow
       >
-        <sphereGeometry
-          args={[
-            domeRadius,
-            32,
-            24,
-            0,
-            Math.PI * 2,
-            0,
-            Math.PI / 2,
-          ]}
-        />
-
+        <sphereGeometry args={[domeRadius, 32, 24, 0, Math.PI * 2, 0, Math.PI / 2]} />
         <meshStandardMaterial
           ref={lensMaterial}
           color={displayColor}
           emissive={isBurned ? "#ea580c" : color}
           emissiveIntensity={0.08}
-          roughness={0.18}
+          roughness={0.16}
           metalness={0}
           transparent
-          opacity={0.78}
-          depthWrite={true}
+          opacity={0.82}
+          depthWrite
         />
       </mesh>
 
-      {/* =====================================================
-          INNER LED DIE
-      ===================================================== */}
-
-      <mesh
-        position={[
-          body.x,
-          baseY + 0.075,
-          body.z,
-        ]}
-      >
-        <boxGeometry
-          args={[
-            0.018,
-            0.024,
-            0.018,
-          ]}
-        />
-
+      {/* Inner die */}
+      <mesh position={[body.x, baseY + 0.08, body.z]}>
+        <boxGeometry args={[0.02, 0.026, 0.02]} />
         <meshStandardMaterial
           ref={dieMaterial}
           color="#fff7d6"
@@ -1402,36 +1240,11 @@ export function LedMesh({
         />
       </mesh>
 
-      {/* =====================================================
-          INTERNAL REFLECTOR
-      ===================================================== */}
-
-      <mesh
-        position={[
-          body.x,
-          baseY + 0.058,
-          body.z,
-        ]}
-      >
-        <cylinderGeometry
-          args={[
-            0.034,
-            0.023,
-            0.012,
-            20,
-          ]}
-        />
-
-        <meshStandardMaterial
-          color="#f8fafc"
-          metalness={0.8}
-          roughness={0.18}
-        />
+      {/* Reflector cup */}
+      <mesh position={[body.x, baseY + 0.062, body.z]}>
+        <cylinderGeometry args={[0.038, 0.024, 0.014, 20]} />
+        <meshStandardMaterial color="#f8fafc" metalness={0.85} roughness={0.16} />
       </mesh>
-
-      {/* =====================================================
-          LED GLOW
-      ===================================================== */}
 
       <LedAura
         position={body}
@@ -1439,37 +1252,18 @@ export function LedMesh({
         active={isOn || isBurned}
         brightness={isBurned ? 1 : brightness}
       />
-
       <SmokePuffs
-        position={new THREE.Vector3(body.x, body.y + 0.05, body.z)}
+        position={new THREE.Vector3(body.x, body.y + 0.06, body.z)}
         active={isBurned}
       />
 
-      {/* =====================================================
-          HOVER LABELS
-      ===================================================== */}
-
-
-      {/* =====================================================
-          COMPONENT NAME
-      ===================================================== */}
-
-      <Html
-        position={[
-          body.x,
-          body.y + 0.24,
-          body.z,
-        ]}
-        center
-        distanceFactor={5}
-      >
+      <Html position={[body.x, body.y + 0.22, body.z]} center distanceFactor={5}>
         <div
           style={{
             color: "#f8fafc",
             fontSize: "10px",
             fontWeight: 900,
-            textShadow:
-              "0 2px 6px #000",
+            textShadow: "0 2px 6px #000",
             pointerEvents: "none",
             whiteSpace: "nowrap",
           }}
@@ -6870,9 +6664,68 @@ export function LcdMesh({
   const glass = powered ? "#0b3d2e" : "#020617";
 
   // Split text into up to two 16-char rows for a classic HD44780 look.
+  // Prefer explicit newlines when the sketch used println / \n.
   const raw = (text ?? "").replace(/\r/g, "");
-  const line1 = raw.slice(0, 16).padEnd(16, " ");
-  const line2 = raw.slice(16, 32).padEnd(16, " ");
+  let line1: string;
+  let line2: string;
+  if (raw.includes("\n")) {
+    const parts = raw.split("\n");
+    line1 = (parts[0] ?? "").slice(0, 16).padEnd(16, " ");
+    line2 = (parts[1] ?? "").slice(0, 16).padEnd(16, " ");
+  } else {
+    line1 = raw.slice(0, 16).padEnd(16, " ");
+    line2 = raw.slice(16, 32).padEnd(16, " ");
+  }
+
+  // Draw characters onto a canvas so they sit ON the glass (not floating Html).
+  const screenMap = useMemo(() => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 256;
+    canvas.height = 64;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+
+    ctx.fillStyle = powered ? "#0a3328" : "#020617";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    if (powered) {
+      // Soft character-cell grid
+      ctx.strokeStyle = "rgba(16, 185, 129, 0.12)";
+      ctx.lineWidth = 1;
+      for (let c = 0; c <= 16; c++) {
+        const x = 8 + c * 15;
+        ctx.beginPath();
+        ctx.moveTo(x, 6);
+        ctx.lineTo(x, 58);
+        ctx.stroke();
+      }
+      ctx.beginPath();
+      ctx.moveTo(8, 32);
+      ctx.lineTo(248, 32);
+      ctx.stroke();
+
+      ctx.fillStyle = "#a7f3d0";
+      ctx.font = "bold 18px 'IBM Plex Mono', ui-monospace, monospace";
+      ctx.textBaseline = "middle";
+      ctx.shadowColor = "rgba(52, 211, 153, 0.55)";
+      ctx.shadowBlur = 4;
+      ctx.fillText(line1, 10, 18);
+      ctx.fillText(line2, 10, 46);
+      ctx.shadowBlur = 0;
+    }
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = 4;
+    tex.needsUpdate = true;
+    return tex;
+  }, [line1, line2, powered]);
+
+  useEffect(() => {
+    return () => {
+      screenMap?.dispose();
+    };
+  }, [screenMap]);
 
   return (
     <group
@@ -6911,47 +6764,21 @@ export function LcdMesh({
           <meshStandardMaterial color={bezel} roughness={0.55} />
         </mesh>
 
-        {/* Glass / active area */}
+        {/* Glass / active area — text is painted onto this surface */}
         <mesh position={[0, 0.078, 0]}>
           <boxGeometry args={[width * 0.84, 0.015, depth * 0.58]} />
           <meshStandardMaterial
-            color={glass}
+            color={screenMap ? "#ffffff" : glass}
+            map={screenMap ?? undefined}
             emissive={powered ? "#064e3b" : "#000000"}
-            emissiveIntensity={powered ? 0.55 : 0}
-            roughness={0.2}
-            metalness={0.05}
+            emissiveMap={screenMap ?? undefined}
+            emissiveIntensity={powered ? 0.85 : 0}
+            roughness={0.25}
+            metalness={0.02}
           />
         </mesh>
 
-        {/* Character text when powered */}
-        {powered && (
-          <Html
-            position={[0, 0.1, 0]}
-            center
-            distanceFactor={5.5}
-            style={{
-              pointerEvents: "none",
-              color: "#a7f3d0",
-              fontFamily: "IBM Plex Mono, ui-monospace, monospace",
-              fontSize: "13px",
-              fontWeight: 600,
-              letterSpacing: "0.12em",
-              lineHeight: 1.35,
-              textAlign: "left",
-              whiteSpace: "pre",
-              textShadow: "0 0 6px rgba(52, 211, 153, 0.45)",
-              userSelect: "none",
-              background: "transparent",
-            }}
-          >
-            <div>
-              <div>{line1}</div>
-              <div>{line2}</div>
-            </div>
-          </Html>
-        )}
-
-        {/* Small label on the edge */}
+        {/* Small label on the edge (not the display text) */}
         <Html
           position={[0, 0.02, depth * 0.42]}
           center
@@ -8621,6 +8448,7 @@ export function BreadboardBody() {
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const dummy = useMemo(() => new THREE.Object3D(), []);
   const clickHole = useLab((s) => s.clickHole);
+  const setHover = useLab((s) => s.setHover);
 
   const boardId = useLab((s) => s.boardId);
   const holes = useMemo(() => getAllHoles(), [boardId]);
@@ -8711,7 +8539,21 @@ export function BreadboardBody() {
         onPointerDown={(e) => {
           e.stopPropagation();
           if (e.button !== 0 || e.instanceId == null) return;
+          // Ignore hole clicks while a palette drag is finishing — that was
+          // placing a second copy of the same component.
+          const lab = useLab.getState();
+          if (lab.paletteDragging) return;
           clickHole(holes[e.instanceId]);
+        }}
+        onPointerMove={(e) => {
+          if (e.instanceId == null) return;
+          // Don't steal hover from an active palette drag raycast.
+          if (useLab.getState().paletteDragging) return;
+          setHover(holes[e.instanceId]);
+        }}
+        onPointerOut={() => {
+          if (useLab.getState().paletteDragging) return;
+          setHover(null);
         }}
       >
         <cylinderGeometry args={[0.036, 0.036, 0.1, 10]} />

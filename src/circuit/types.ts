@@ -262,7 +262,7 @@ export interface PlacedPart {
 
     code?: string;
 
-    /** Visual / placement rotation in degrees (0, 180, …). */
+    /** Visual / placement rotation in degrees (0, 90, 180, 270). */
     rotation?: number;
   };
 }

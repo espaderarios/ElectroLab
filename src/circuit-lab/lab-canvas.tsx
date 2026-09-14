@@ -2,6 +2,13 @@ import { Canvas } from "@react-three/fiber";
 import * as THREE from "three";
 import { LabScene } from "./scene";
 
+declare global {
+  interface Window {
+    __eceLabCamera?: THREE.Camera;
+    __eceLabCanvas?: HTMLCanvasElement;
+  }
+}
+
 export function LabCanvas() {
   return (
     <Canvas
@@ -10,10 +17,13 @@ export function LabCanvas() {
       camera={{ position: [3.8, 4.4, 5.6], fov: 42, near: 0.1, far: 60 }}
       gl={{ antialias: true, alpha: false, powerPreference: "high-performance" }}
       style={{ width: "100%", height: "100%", touchAction: "none", background: "#0a1018" }}
-      onCreated={({ gl }) => {
+      onCreated={({ gl, camera }) => {
         gl.shadowMap.type = THREE.PCFSoftShadowMap;
         gl.toneMapping = THREE.ACESFilmicToneMapping;
         gl.toneMappingExposure = 1.12;
+        // Expose live camera + canvas for palette drag → board raycasting.
+        window.__eceLabCamera = camera;
+        window.__eceLabCanvas = gl.domElement;
       }}
       onPointerMissed={() => {
         /* selection cleared in scene floor handler */

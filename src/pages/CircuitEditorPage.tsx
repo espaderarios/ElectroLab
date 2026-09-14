@@ -14,7 +14,9 @@ import {
   Trash2,
   RotateCw,
   HelpCircle,
+  Hand,
 } from 'lucide-react'
+
 import HelpModal from '../components/HelpModal'
 import { Suspense, lazy, useEffect, useMemo, useRef, useState, Component, type ReactNode } from 'react'
 import { useLab } from '../store/lab'
@@ -24,8 +26,10 @@ import { Button } from '@/components/ui/button';
 import {
   BOARD_PRESETS,
   holeStrip,
+  nearestHole,
   type BoardPresetId,
 } from '../circuit/breadboard'
+import * as THREE from 'three'
 
 const CircuitLab = lazy(() =>
   import('../circuit-lab/index').then((m) => ({ default: m.CircuitLab })),
@@ -728,6 +732,8 @@ function SchematicFallback() {
   const psuVoltage = useLab((s) => s.psuVoltage)
   const psuPositive = useLab((s) => s.psuPositive)
   const psuNegative = useLab((s) => s.psuNegative)
+  const partDragEnabled = useLab((state) => state.partDragEnabled)
+  const setPartDragEnabled = useLab((state) => state.setPartDragEnabled)
 
   // ---- electrical nets (strip + explicit wires) ----
   type UF = { parent: Map<string, string> }
@@ -1093,6 +1099,9 @@ export function CircuitEditorPage() {
   const setActiveProjectId = useProjects((s) => s.setActiveProjectId)
   const touchProject = useProjects((s) => s.touchProject)
 
+  const partDragEnabled = useLab((state) => state.partDragEnabled)
+  const setPartDragEnabled = useLab((state) => state.setPartDragEnabled)
+
   const activeIdRef = useRef<string | null>(null)
   const skipSaveRef = useRef(false)
 
@@ -1162,7 +1171,22 @@ export function CircuitEditorPage() {
   const [moveMode, setMoveMode] = useState(false)
   const [search, setSearch] = useState('')
 
+  /** Floating component while the user drags from the palette onto the board. */
+  const [dragPreview, setDragPreview] = useState<{
+    tool: ToolId
+    label: string
+    symbol: ReactNode
+    x: number
+    y: number
+  } | null>(null)
+  const dragActiveRef = useRef(false)
+  const dragToolRef = useRef<ToolId | null>(null)
+  const dragMovedRef = useRef(false)
+  const dragStartRef = useRef({ x: 0, y: 0 })
+
   const activeTool = useLab((state) => state.tool)
+  const placePartAt = useLab((state) => state.placePartAt)
+  const setHover = useLab((state) => state.setHover)
 
   const cameraCommand = (type: string, active?: boolean) => {
     window.dispatchEvent(
@@ -1190,6 +1214,191 @@ export function CircuitEditorPage() {
     cameraCommand('move-mode', false)
     useLab.getState().setTool(tool)
   }
+
+  /**
+   * Project cursor onto the breadboard plane using the live 3D camera when
+   * available (so orbiting the view does not break drop targeting).
+   */
+  const screenToBoardPoint = (clientX: number, clientY: number) => {
+    const w = window as Window & {
+      __eceLabCanvas?: HTMLCanvasElement
+      __eceLabCamera?: THREE.Camera
+    }
+    const canvas =
+      w.__eceLabCanvas ||
+      (document.querySelector(
+        '.ece-circuit-lab canvas',
+      ) as HTMLCanvasElement | null)
+    if (!canvas) return null
+
+    const rect = canvas.getBoundingClientRect()
+    if (
+      clientX < rect.left ||
+      clientX > rect.right ||
+      clientY < rect.top ||
+      clientY > rect.bottom
+    ) {
+      return null
+    }
+
+    const ndcX = ((clientX - rect.left) / rect.width) * 2 - 1
+    const ndcY = -((clientY - rect.top) / rect.height) * 2 + 1
+
+    let camera = w.__eceLabCamera
+    if (!camera) {
+      const fallback = new THREE.PerspectiveCamera(
+        42,
+        rect.width / Math.max(rect.height, 1),
+        0.1,
+        60,
+      )
+      fallback.position.set(3.8, 4.4, 5.6)
+      fallback.lookAt(0, 0.2, 0)
+      fallback.updateMatrixWorld()
+      camera = fallback
+    } else {
+      camera.updateMatrixWorld()
+    }
+
+    const raycaster = new THREE.Raycaster()
+    raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera)
+    const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -0.34)
+    const hit = new THREE.Vector3()
+    if (!raycaster.ray.intersectPlane(plane, hit)) return null
+    return { x: hit.x, z: hit.z }
+  }
+
+  const resolveDropHole = (clientX: number, clientY: number) => {
+    const point = screenToBoardPoint(clientX, clientY)
+    if (point) {
+      // Generous radius so dropping near a hole still snaps.
+      const hole = nearestHole({ x: point.x, y: 0.34, z: point.z }, 0.55)
+      if (hole) return hole
+    }
+    // Fallback: last hole highlighted while dragging.
+    return useLab.getState().hoverHole
+  }
+
+  const beginPaletteDrag = (
+    event: React.PointerEvent,
+    tool: ToolId,
+    label: string,
+    symbol: ReactNode,
+  ) => {
+    if (event.button !== 0) return
+    // Don't preventDefault on pointerdown — allows click-to-select when
+    // the pointer never moves far enough to count as a drag.
+    event.stopPropagation()
+
+    if (!useLab.getState().partDragEnabled) {
+      setMoveMode(false)
+      cameraCommand('move-mode', false)
+      useLab.getState().setTool(tool)
+      return
+    }
+    
+    dragActiveRef.current = true
+    dragMovedRef.current = false
+    dragStartRef.current = { x: event.clientX, y: event.clientY }
+    dragToolRef.current = tool
+    setMoveMode(false)
+    cameraCommand('move-mode', false)
+    useLab.getState().setTool(tool)
+    useLab.getState().setPaletteDragging(true)
+    setDragPreview({
+      tool,
+      label,
+      symbol,
+      x: event.clientX,
+      y: event.clientY,
+    })
+
+    try {
+      ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const updatePaletteDrag = (event: React.PointerEvent | PointerEvent) => {
+    if (!dragActiveRef.current) return
+
+    const dx = event.clientX - dragStartRef.current.x
+    const dy = event.clientY - dragStartRef.current.y
+    if (Math.hypot(dx, dy) > 6) {
+      dragMovedRef.current = true
+    }
+
+    setDragPreview((prev) =>
+      prev
+        ? { ...prev, x: event.clientX, y: event.clientY }
+        : prev,
+    )
+
+    const point = screenToBoardPoint(event.clientX, event.clientY)
+    if (point) {
+      const hole = nearestHole({ x: point.x, y: 0.34, z: point.z }, 0.55)
+      setHover(hole)
+    } else {
+      setHover(null)
+    }
+  }
+
+  const endPaletteDrag = (event: React.PointerEvent | PointerEvent) => {
+    if (!dragActiveRef.current) return
+    dragActiveRef.current = false
+
+    const tool = dragToolRef.current
+    const didDrag = dragMovedRef.current
+    dragToolRef.current = null
+    dragMovedRef.current = false
+
+    // Capture hover before clearing so drop still works if raycast is flaky.
+    const hole = didDrag ? resolveDropHole(event.clientX, event.clientY) : null
+
+    setDragPreview(null)
+    setHover(null)
+
+    // Pure click on the palette: only select the tool (then click a hole).
+    if (!didDrag || !tool || !hole) {
+      // Keep paletteDragging briefly so a synthetic hole-click on release is ignored.
+      window.setTimeout(() => {
+        useLab.getState().setPaletteDragging(false)
+      }, 50)
+      return
+    }
+
+    placePartAt(tool, hole)
+    // Block clickHole from placing a second copy of the same drop.
+    window.setTimeout(() => {
+      useLab.getState().setPaletteDragging(false)
+    }, 500)
+  }
+
+  useEffect(() => {
+    if (!dragPreview) return
+
+    const onMove = (e: PointerEvent) => updatePaletteDrag(e)
+    const onUp = (e: PointerEvent) => endPaletteDrag(e)
+    const onCancel = () => {
+      dragActiveRef.current = false
+      dragToolRef.current = null
+      dragMovedRef.current = false
+      setDragPreview(null)
+      setHover(null)
+      useLab.getState().setPaletteDragging(false)
+    }
+
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onCancel)
+    return () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onCancel)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dragPreview?.tool])
 
   const filteredPalette = useMemo(() => {
     const query = search.trim().toLowerCase()
@@ -1246,7 +1455,7 @@ export function CircuitEditorPage() {
               setMoveMode(false)
               cameraCommand('move-mode', false)
             }}
-            className={`hidden lg:inline-flex p-2 rounded-lg border transition ${
+            className={`hidden lg:inline-flex p-2 rounded-lg border transition flex-col items-center ${
               activeTool === 'select' && !moveMode
                 ? 'border-blue-500/40 bg-blue-600/15 text-blue-400'
                 : 'border-transparent hover:border-[#1e293b] hover:bg-slate-800 text-slate-400'
@@ -1258,6 +1467,26 @@ export function CircuitEditorPage() {
             }
           >
             <MousePointer2 size={16} />
+            <label className="text-[10px] text-slate-400 mt-0.5">
+              Select
+            </label>
+          </button>
+          <button
+            onClick={() => setPartDragEnabled(!partDragEnabled)}
+            className={`hidden lg:inline-flex p-2 rounded-lg border transition flex-col items-center ${
+              partDragEnabled
+                ? 'border-emerald-500/40 bg-emerald-600/15 text-emerald-400'
+                : 'border-transparent hover:border-[#1e293b] hover:bg-slate-800 text-slate-400'
+            }`}
+            title={
+              partDragEnabled
+                ? 'Drag parts ON — long-press a component to move it (click to turn off)'
+                : 'Drag parts OFF — click to select components and choose where the nodes go in the breadboard manually (click to enable)'
+            }
+            aria-pressed={partDragEnabled}
+          >
+            <Hand size={16} />
+            <span className="text-[10px] text-slate-400 mt-0.5">Drag</span>
           </button>
 
           <button
@@ -1275,7 +1504,7 @@ export function CircuitEditorPage() {
               setMoveMode(false)
               cameraCommand('move-mode', false)
             }}
-            className={`hidden lg:inline-flex p-2 rounded-lg border transition ${
+            className={`hidden lg:inline-flex p-2 rounded-lg border transition flex-col items-center ${
               activeTool === 'delete'
                 ? 'border-red-500/40 bg-red-600/15 text-red-400'
                 : 'border-transparent hover:border-[#1e293b] hover:bg-slate-800 text-slate-400'
@@ -1287,19 +1516,25 @@ export function CircuitEditorPage() {
             }
           >
             <Trash2 size={16} />
+            <label className="text-[10px] text-slate-400 mt-0.5">
+              Delete
+            </label>
           </button>
 
           <button
             onClick={() => useLab.getState().rotateSelected()}
-            className="hidden lg:inline-flex p-2 rounded-lg border border-transparent hover:border-[#1e293b] hover:bg-slate-800 text-slate-400 transition"
-            title="Rotate selected component 180° (pins swap / reverse on the board)"
+            className="hidden lg:inline-flex p-2 rounded-lg border border-transparent hover:border-[#1e293b] hover:bg-slate-800 text-slate-400 transition flex-col items-center"
+            title="Rotate selected component clockwise on the breadboard"
           >
             <RotateCw size={16} />
+            <label className="text-[10px] text-slate-400 mt-0.5">
+              Rotate
+            </label>
           </button>
 
           <button
             onClick={toggleMoveMode}
-            className={`hidden lg:inline-flex p-2 rounded-lg border transition ${
+            className={`hidden lg:inline-flex p-2 rounded-lg border transition flex-col items-center ${
               moveMode
                 ? 'border-blue-500/40 bg-blue-600/15 text-blue-400'
                 : 'border-transparent hover:border-[#1e293b] hover:bg-slate-800 text-slate-400'
@@ -1308,46 +1543,63 @@ export function CircuitEditorPage() {
             aria-pressed={moveMode}
           >
             <Move size={16} />
+            <label className="text-[10px] text-slate-400 mt-0.5">
+              Move
+            </label>
           </button>
 
           <button
             onClick={() => useLab.getState().undo()}
-            className="hidden lg:inline-flex p-2 rounded-lg border border-transparent hover:border-[#1e293b] hover:bg-slate-800 text-slate-400 transition"
+            className="hidden lg:inline-flex p-2 rounded-lg border border-transparent hover:border-[#1e293b] hover:bg-slate-800 text-slate-400 transition flex-col items-center"
             title="Undo"
           >
             <Undo2 size={16} />
+            <label className="text-[10px] text-slate-400 mt-0.5">
+              Undo
+            </label>
           </button>
 
           <button
             onClick={() => useLab.getState().redo()}
-            className="hidden lg:inline-flex p-2 rounded-lg border border-transparent hover:border-[#1e293b] hover:bg-slate-800 text-slate-400 transition"
+            className="hidden lg:inline-flex p-2 rounded-lg border border-transparent hover:border-[#1e293b] hover:bg-slate-800 text-slate-400 transition flex-col items-center"
             title="Redo"
           >
             <Redo2 size={16} />
+            <label className="text-[10px] text-slate-400 mt-0.5">
+              Redo
+            </label>
           </button>
 
           <button
             onClick={() => cameraCommand('zoom-in')}
-            className="hidden lg:inline-flex p-2 rounded-lg border border-transparent hover:border-[#1e293b] hover:bg-slate-800 text-slate-400 transition"
+            className="hidden lg:inline-flex p-2 rounded-lg border border-transparent hover:border-[#1e293b] hover:bg-slate-800 text-slate-400 transition flex-col items-center"
             title="Zoom Out"
           >
             <ZoomOut size={16} />
+            <label className="text-[10px] text-slate-400 mt-0.5">
+              Zoom Out
+            </label>
           </button>
 
           <button
             onClick={() => cameraCommand('zoom-out')}
-            className="hidden lg:inline-flex p-2 rounded-lg border border-transparent hover:border-[#1e293b] hover:bg-slate-800 text-slate-400 transition"
+            className="hidden lg:inline-flex p-2 rounded-lg border border-transparent hover:border-[#1e293b] hover:bg-slate-800 text-slate-400 transition flex-col items-center"
             title="Zoom In"
           >
             <ZoomIn size={16} />
+            <label className="text-[10px] text-slate-400 mt-0.5">
+              Zoom In
+            </label>
           </button>
 
           <button
             onClick={() => cameraCommand('reset-view')}
-            className="hidden xl:inline-flex px-2 py-2 rounded-lg border border-transparent hover:border-[#1e293b] hover:bg-slate-800 text-[11px] text-slate-500 transition"
+            className="hidden xl:inline-flex px-2 py-2 rounded-lg border border-transparent hover:border-[#1e293b] hover:bg-slate-800 text-[11px] text-slate-500 transition flex-col items-center"
             title="Reset camera view"
           >
-            Reset
+            <label className="text-[10px] text-slate-400 mt-0.5">
+              Reset
+            </label>
           </button>
         </div>
 
@@ -1515,36 +1767,34 @@ export function CircuitEditorPage() {
                           key={item.id}
                           type="button"
                           disabled={disabled}
-                          onClick={() => selectTool(item.tool)}
-                          draggable={!disabled}
-                          onDragStart={(event) => {
-                            if (!item.tool) {
-                              event.preventDefault()
-                              return
-                            }
-
-                            event.dataTransfer.setData(
-                              'application/x-ece-tool',
-                              item.tool,
-                            )
-                            event.dataTransfer.effectAllowed = 'copy'
+                          onClick={() => {
+                            if (dragActiveRef.current) return
                             selectTool(item.tool)
                           }}
-                          className={`group flex flex-col items-center gap-1 p-1.5 rounded-md text-[10px] transition border ${
+                          onPointerDown={(event) => {
+                            if (disabled || !item.tool) return
+                            beginPaletteDrag(
+                              event,
+                              item.tool,
+                              item.label,
+                              item.symbol,
+                            )
+                          }}
+                          className={`group flex flex-col items-center gap-1 p-1.5 rounded-md text-[10px] transition border select-none touch-none ${
                             active
                               ? 'bg-blue-600/15 border-blue-500/40 text-blue-300'
                               : disabled
                                 ? 'border-transparent text-slate-700 opacity-60 cursor-not-allowed'
-                                : 'border-transparent hover:bg-slate-800/80 hover:border-[#1e293b] text-slate-400 hover:text-slate-200 cursor-pointer'
+                                : 'border-transparent hover:bg-slate-800/80 hover:border-[#1e293b] text-slate-400 hover:text-slate-200 cursor-grab active:cursor-grabbing'
                           }`}
                           title={
                             disabled
                               ? `${item.label} is not available yet`
-                              : `Select ${item.label}`
+                              : `Drag ${item.label} onto the breadboard, or click then click a hole`
                           }
                         >
                           <div
-                            className={`w-9 h-9 rounded-md bg-[#0a0f1a] border flex items-center justify-center text-xs font-mono ${
+                            className={`w-9 h-9 rounded-md bg-[#0a0f1a] border flex items-center justify-center text-xs font-mono pointer-events-none ${
                               active
                                 ? 'border-blue-500/50 text-blue-300'
                                 : 'border-[#1e293b] text-slate-300 group-hover:border-slate-600'
@@ -1552,7 +1802,7 @@ export function CircuitEditorPage() {
                           >
                             {item.symbol}
                           </div>
-                          <span className="truncate w-full text-center">
+                          <span className="truncate w-full text-center pointer-events-none">
                             {item.label}
                           </span>
                         </button>
@@ -1613,6 +1863,36 @@ export function CircuitEditorPage() {
       </div>
 
       <HelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
+
+      {/* Floating component that follows the cursor while dragging from the palette */}
+      {dragPreview && (
+        <div
+          className="pointer-events-none fixed z-[9999] -translate-x-1/2 -translate-y-1/2"
+          style={{
+            left: dragPreview.x,
+            top: dragPreview.y,
+          }}
+        >
+          <div
+            className="flex flex-col items-center gap-1.5 px-3 py-2.5 rounded-xl border border-blue-400/50 bg-[#0b1220]/95 shadow-2xl shadow-blue-500/20 backdrop-blur-sm"
+            style={{
+              transform: 'scale(1.08) rotate(-2deg)',
+              boxShadow:
+                '0 12px 40px rgba(0,0,0,.55), 0 0 0 1px rgba(96,165,250,.25)',
+            }}
+          >
+            <div className="w-11 h-11 rounded-lg bg-[#0a0f1a] border border-blue-500/40 flex items-center justify-center text-blue-200 text-sm font-mono">
+              {dragPreview.symbol}
+            </div>
+            <div className="text-[11px] font-semibold text-slate-100 whitespace-nowrap">
+              {dragPreview.label}
+            </div>
+            <div className="text-[9px] text-blue-300/90 font-medium tracking-wide uppercase">
+              Drop on breadboard
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

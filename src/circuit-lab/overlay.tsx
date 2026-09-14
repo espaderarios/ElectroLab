@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   ArrowLeft,
@@ -20,6 +20,7 @@ import {
   CircuitBoard,
   Monitor,
   X,
+  Hand,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -256,8 +257,10 @@ const PLACEMENT_HELP: Partial<
   select: {
     title: "Select mode",
     steps: [
-      "Click a component or wire to select it.",
-      "Use the inspector on the right to edit values.",
+      "Click a component to select it.",
+      "With Drag parts ON: long-press (~½ s) to move a component to another hole.",
+      "With Drag parts OFF: original behavior — click only selects (no drag-move).",
+      "Use the inspector to edit values, rotate 90°, or reassign pins.",
     ],
   },
   wire: {
@@ -265,158 +268,158 @@ const PLACEMENT_HELP: Partial<
     steps: [
       "Click the first breadboard hole (start).",
       "Click the second hole (end).",
-      "Endpoints must snap to real holes — visual contact is not enough.",
+      "Both ends must be real holes — visual contact is not enough.",
     ],
     tip: "A wire that only looks connected is not electrically connected.",
   },
   resistor: {
     title: "Place a resistor",
     steps: [
-      "Click a hole for the first lead.",
-      "The second lead is placed automatically a few columns away.",
-      "Set the resistance value in the panel before or after placing.",
+      "Click one hole (or drag from the palette onto a hole).",
+      "Both leads are placed in one step on nearby columns.",
+      "Set the resistance in the inspector.",
     ],
   },
   led: {
     title: "Place an LED",
     steps: [
-      "Click a hole for the anode (+ / longer lead).",
-      "The cathode (-) is placed automatically nearby.",
-      "Match polarity: anode toward positive, cathode toward ground.",
+      "Click one hole (or drag onto the board).",
+      "Anode and cathode land on adjacent holes automatically.",
+      "Anode (+) toward positive; cathode (−) toward ground.",
     ],
     tip: "LEDs need correct polarity and usually a series resistor.",
   },
   diode: {
     title: "Place a diode",
     steps: [
-      "Click a hole for the anode (+).",
-      "Cathode (-) is placed automatically.",
-      "Current flows mainly anode to cathode.",
+      "Click one hole (or drag onto the board).",
+      "Anode and cathode are placed on adjacent holes.",
+      "Current flows mainly anode → cathode.",
     ],
   },
   switch: {
     title: "Place a switch",
     steps: [
-      "Click a hole for the first terminal.",
-      "The second terminal is placed automatically.",
-      "Click the switch on the board to open or close it while simulating.",
+      "Click one hole (or drag onto the board).",
+      "Both terminals are placed automatically.",
+      "Click the switch while simulating to open or close it.",
     ],
   },
   button: {
     title: "Place a push button",
     steps: [
-      "Click a hole for the first terminal.",
-      "The second terminal is placed automatically.",
-      "Press the button during simulation to close the contact.",
+      "Click one hole (or drag onto the board).",
+      "Both terminals are placed automatically — one step.",
+      "Hold the button during simulation to close the contact.",
     ],
   },
   capacitor: {
     title: "Place a capacitor",
     steps: [
-      "Click a hole for the first lead.",
-      "The second lead is placed automatically.",
-      "Set capacitance in the panel (watch polarity for electrolytics).",
+      "Click one hole (or drag onto the board).",
+      "Both leads are placed automatically.",
+      "Set capacitance in the inspector (watch polarity for electrolytics).",
     ],
   },
   inductor: {
     title: "Place an inductor",
     steps: [
-      "Click a hole for the first lead.",
-      "The second lead is placed automatically.",
+      "Click one hole (or drag onto the board).",
+      "Both leads are placed automatically.",
     ],
   },
   buzzer: {
     title: "Place a buzzer",
     steps: [
-      "Click a hole for the + terminal.",
-      "The - terminal is placed automatically.",
+      "Click one hole (or drag onto the board).",
+      "+ and − terminals are placed automatically.",
       "Observe polarity before powering.",
     ],
   },
   speaker: {
     title: "Place a speaker",
     steps: [
-      "Click a hole for the + terminal.",
-      "The - terminal is placed automatically.",
+      "Click one hole (or drag onto the board).",
+      "+ and − terminals are placed automatically.",
     ],
   },
   transistor: {
     title: "Place a transistor",
     steps: [
-      "Click the hole for the first pin (Emitter).",
-      "Base and Collector fill adjacent holes automatically.",
-      "Check pin order in the inspector after placing.",
+      "Click one hole (or drag onto the board).",
+      "E, B, and C fill adjacent holes in one step.",
+      "Confirm pin order in the inspector.",
     ],
     tip: "Wrong pin order is a common reason a transistor circuit fails.",
   },
   thyristor: {
     title: "Place a thyristor (SCR)",
     steps: [
-      "Click a hole for the cathode (K).",
-      "Anode and gate are placed on adjacent holes.",
+      "Click one hole (or drag onto the board).",
+      "K, A, and G land on adjacent holes automatically.",
       "Confirm pin order in the inspector.",
     ],
   },
   triac: {
     title: "Place a TRIAC",
     steps: [
-      "Click a hole for MT1.",
-      "Gate and MT2 are placed on adjacent holes.",
+      "Click one hole (or drag onto the board).",
+      "MT1, gate, and MT2 are placed on adjacent holes.",
     ],
   },
   diac: {
     title: "Place a DIAC",
     steps: [
-      "Click a hole for the first terminal.",
-      "The second terminal is placed automatically.",
+      "Click one hole (or drag onto the board).",
+      "Both terminals are placed automatically.",
     ],
   },
   motor: {
     title: "Place a DC motor",
     steps: [
-      "Click a hole for the + terminal.",
-      "The - terminal is placed automatically.",
+      "Click one hole (or drag onto the board).",
+      "+ and − terminals are placed automatically.",
       "Drive it through a safe path (often a transistor or driver).",
     ],
   },
   pot: {
     title: "Place a potentiometer",
     steps: [
-      "Click a hole for end A.",
-      "Wiper and end B are placed on nearby holes.",
-      "Set the resistance value in the inspector.",
+      "Click one hole (or drag onto the board).",
+      "End A, wiper, and end B fill nearby holes.",
+      "Set the resistance in the inspector.",
     ],
   },
   relay: {
     title: "Place a relay",
     steps: [
-      "Click a hole for the first coil terminal.",
-      "Remaining pins (coil, COM, NO) fill adjacent holes.",
+      "Click one hole (or drag onto the board).",
+      "Coil and contact pins fill adjacent holes.",
       "Power the coil and wire the switched contacts separately.",
     ],
   },
   mcu: {
     title: "Place an Arduino / MCU",
     steps: [
-      "Click a hole for VCC (+).",
-      "GND is placed automatically.",
-      "Wire power, ground, and I/O to your other parts.",
+      "Click one hole (or drag onto the board).",
+      "Power and I/O pins are laid out automatically.",
+      "Wire power, ground, and signals to your other parts.",
     ],
   },
   lcd: {
     title: "Place an LCD",
     steps: [
-      "Click a hole for VDD (+).",
-      "VSS (-) is placed automatically.",
+      "Click one hole (or drag onto the board).",
+      "The full pin row is placed automatically.",
       "Connect power and ground for the display to work.",
     ],
   },
   oled: {
     title: "Place an OLED",
     steps: [
-      "Click a hole for VCC.",
-      "GND / SDA / SCL fill adjacent holes.",
-      "Connect I2C lines to the MCU when using code.",
+      "Click one hole (or drag onto the board).",
+      "VCC, GND, SDA, and SCL fill adjacent holes.",
+      "Connect I²C lines to the MCU when using code.",
     ],
   },
   probe: {
@@ -433,7 +436,7 @@ const PLACEMENT_HELP: Partial<
     ],
   },
   "psu-negative": {
-    title: "Connect ground (-)",
+    title: "Connect ground (−)",
     steps: [
       "Click the breadboard hole where ground should attach.",
     ],
@@ -556,25 +559,48 @@ function screenToBoardPoint(
   clientX: number,
   clientY: number,
 ): { x: number; z: number } | null {
-  const canvas = document.querySelector(
-    ".ece-circuit-lab canvas",
-  ) as HTMLCanvasElement | null;
+  const canvas =
+    (typeof window !== "undefined" &&
+      (window as Window & { __eceLabCanvas?: HTMLCanvasElement })
+        .__eceLabCanvas) ||
+    (document.querySelector(
+      ".ece-circuit-lab canvas",
+    ) as HTMLCanvasElement | null);
   if (!canvas) return null;
 
   const rect = canvas.getBoundingClientRect();
+  if (
+    clientX < rect.left ||
+    clientX > rect.right ||
+    clientY < rect.top ||
+    clientY > rect.bottom
+  ) {
+    return null;
+  }
+
   const ndcX = ((clientX - rect.left) / rect.width) * 2 - 1;
   const ndcY = -((clientY - rect.top) / rect.height) * 2 + 1;
 
-  // Match the default camera from LabCanvas / CameraRig.
-  const camera = new THREE.PerspectiveCamera(
-    42,
-    rect.width / Math.max(rect.height, 1),
-    0.1,
-    60,
-  );
-  camera.position.set(3.8, 4.4, 5.6);
-  camera.lookAt(0, 0.2, 0);
-  camera.updateMatrixWorld();
+  const liveCamera = (
+    window as Window & { __eceLabCamera?: THREE.Camera }
+  ).__eceLabCamera;
+
+  let camera: THREE.Camera;
+  if (liveCamera) {
+    liveCamera.updateMatrixWorld();
+    camera = liveCamera;
+  } else {
+    const fallback = new THREE.PerspectiveCamera(
+      42,
+      rect.width / Math.max(rect.height, 1),
+      0.1,
+      60,
+    );
+    fallback.position.set(3.8, 4.4, 5.6);
+    fallback.lookAt(0, 0.2, 0);
+    fallback.updateMatrixWorld();
+    camera = fallback;
+  }
 
   const raycaster = new THREE.Raycaster();
   raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera);
@@ -584,8 +610,30 @@ function screenToBoardPoint(
   return { x: hit.x, z: hit.z };
 }
 
+function resolveDropHole(
+  clientX: number,
+  clientY: number,
+): import("@/circuit/types").HoleId | null {
+  const point = screenToBoardPoint(clientX, clientY);
+  if (point) {
+    const hole = nearestHole({ x: point.x, y: 0.34, z: point.z }, 0.55);
+    if (hole) return hole;
+  }
+  return useLab.getState().hoverHole;
+}
+
 export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
   const [monitorOpen, setMonitorOpen] = useState(false);
+  const [dragGhost, setDragGhost] = useState<{
+    tool: ToolId;
+    label: string;
+    x: number;
+    y: number;
+  } | null>(null);
+  const dragGhostToolRef = useRef<ToolId | null>(null);
+  const dragGhostActiveRef = useRef(false);
+  const dragGhostMovedRef = useRef(false);
+  const dragGhostStartRef = useRef({ x: 0, y: 0 });
 
   const tool = useLab((s) => s.tool);
 
@@ -593,6 +641,7 @@ export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
   const boardId = useLab((s) => s.boardId);
   const setBoard = useLab((s) => s.setBoard);
   const placePartAt = useLab((s) => s.placePartAt);
+  const setHover = useLab((s) => s.setHover);
 
   const wireColor = useLab((s) => s.wireColor);
 
@@ -725,6 +774,14 @@ export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
   const deleteSelected = useLab(
     (s) => s.deleteSelected
   );
+  const rotateSelected = useLab((s) => s.rotateSelected);
+  const movingSelected = useLab((s) => s.movingSelected);
+  const setMovingSelected = useLab((s) => s.setMovingSelected);
+  const partDragEnabled = useLab((s) => s.partDragEnabled);
+  const setPartDragEnabled = useLab((s) => s.setPartDragEnabled);
+  const pinEditTarget = useLab((s) => s.pinEditTarget);
+  const startPinEdit = useLab((s) => s.startPinEdit);
+  const cancelPinEdit = useLab((s) => s.cancelPinEdit);
 
   const selected = selectedId
     ? parts.find(
@@ -772,7 +829,7 @@ export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
 
   const pinOrder = PIN_ORDER[tool] ?? [];
 
-  // Global drop target: drag a component from the palette onto the 3D board.
+  // Global drop target: HTML5 drag from external / legacy palette + pointer ghost drag.
   useEffect(() => {
     const onDragOver = (e: DragEvent) => {
       if (
@@ -792,16 +849,7 @@ export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
       if (!toolId) return;
       e.preventDefault();
 
-      const point = screenToBoardPoint(
-        e.clientX,
-        e.clientY,
-      );
-      if (!point) return;
-
-      const hole = nearestHole(
-        { x: point.x, y: 0.34, z: point.z },
-        0.35,
-      );
+      const hole = resolveDropHole(e.clientX, e.clientY);
       if (!hole) return;
 
       placePartAt(toolId, hole);
@@ -817,6 +865,77 @@ export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
       window.removeEventListener("drop", onDrop);
     };
   }, [placePartAt]);
+
+  // Pointer-based floating ghost drag (from this overlay palette).
+  useEffect(() => {
+    if (!dragGhost) return;
+
+    const onMove = (e: PointerEvent) => {
+      if (!dragGhostActiveRef.current) return;
+      const dx = e.clientX - dragGhostStartRef.current.x;
+      const dy = e.clientY - dragGhostStartRef.current.y;
+      if (Math.hypot(dx, dy) > 6) {
+        dragGhostMovedRef.current = true;
+      }
+      setDragGhost((prev) =>
+        prev ? { ...prev, x: e.clientX, y: e.clientY } : prev,
+      );
+      const point = screenToBoardPoint(e.clientX, e.clientY);
+      if (point) {
+        const hole = nearestHole(
+          { x: point.x, y: 0.34, z: point.z },
+          0.55,
+        );
+        setHover(hole);
+      } else {
+        setHover(null);
+      }
+    };
+
+    const onUp = (e: PointerEvent) => {
+      if (!dragGhostActiveRef.current) return;
+      dragGhostActiveRef.current = false;
+      const toolId = dragGhostToolRef.current;
+      const didDrag = dragGhostMovedRef.current;
+      dragGhostToolRef.current = null;
+      dragGhostMovedRef.current = false;
+
+      const hole = didDrag ? resolveDropHole(e.clientX, e.clientY) : null;
+      setDragGhost(null);
+      setHover(null);
+
+      // Click without drag: only select the tool (place by clicking a hole).
+      if (!didDrag || !toolId || !hole) {
+        window.setTimeout(() => {
+          useLab.getState().setPaletteDragging(false);
+        }, 50);
+        return;
+      }
+      placePartAt(toolId, hole);
+      // Prevent the hole under the cursor from also calling placePartAt.
+      window.setTimeout(() => {
+        useLab.getState().setPaletteDragging(false);
+      }, 500);
+    };
+
+    const onCancel = () => {
+      dragGhostActiveRef.current = false;
+      dragGhostToolRef.current = null;
+      dragGhostMovedRef.current = false;
+      setDragGhost(null);
+      setHover(null);
+      useLab.getState().setPaletteDragging(false);
+    };
+
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onCancel);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onCancel);
+    };
+  }, [dragGhost?.tool, placePartAt, setHover]);
 
   // Close the monitor with Escape so it never gets in the way of the canvas.
   useEffect(() => {
@@ -1014,7 +1133,7 @@ export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
             lineHeight: 1.5,
           }}
         >
-          1. Click a component in the palette  2. Click a hole on the breadboard to place it  (or drag it onto the board).
+          1. Drag a component from the palette — it floats under your cursor  2. Drop it on a breadboard hole to place it (or click the tool, then click a hole).
         </div>
 
         <div style={{ marginBottom: 10, padding: 9, borderRadius: 10, background: "rgba(37,99,235,.08)", border: "1px solid rgba(96,165,250,.14)" }}>
@@ -1132,18 +1251,38 @@ export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
                     ? `${item.hint} — drag onto the board to place`
                     : item.hint
                 }
-                draggable={placeable}
-                onDragStart={(e) => {
-                  if (!placeable) return;
-                  e.dataTransfer.setData(
-                    "application/x-ece-tool",
-                    item.id,
-                  );
-                  e.dataTransfer.effectAllowed = "copy";
+                onPointerDown={(e) => {
+                  if (!placeable || e.button !== 0) return;
+                  e.stopPropagation();
+                  if (!useLab.getState().partDragEnabled) {
+                    setTool(item.id);
+                    return;
+                  }
+                  dragGhostActiveRef.current = true;
+                  dragGhostMovedRef.current = false;
+                  dragGhostStartRef.current = { x: e.clientX, y: e.clientY };
+                  dragGhostToolRef.current = item.id;
                   setTool(item.id);
+                  useLab.getState().setPaletteDragging(true);
+                  setDragGhost({
+                    tool: item.id,
+                    label: item.label,
+                    x: e.clientX,
+                    y: e.clientY,
+                  });
+                  try {
+                    (e.currentTarget as HTMLElement).setPointerCapture(
+                      e.pointerId,
+                    );
+                  } catch {
+                    /* ignore */
+                  }
                 }}
                 onClick={() => {
-                  // Select tool toggles on/off like the top-nav pointer button
+                  // Select / non-placeable tools still use click.
+                  // Placeable tools are selected in pointerdown; a pure click
+                  // leaves the tool active so the next hole click places.
+                  if (placeable) return;
                   if (item.id === "select" && tool === "select") {
                     setTool("none");
                     useLab.getState().select(null);
@@ -1169,6 +1308,8 @@ export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
                     ? "grab"
                     : "pointer",
                   textAlign: "left",
+                  userSelect: "none",
+                  touchAction: "none",
                 }}
               >
                 <Icon size={17} />
@@ -1602,6 +1743,224 @@ export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
                 ID: {selectedWire ? selectedWire.id : selected?.id}
               </div>
             </div>
+
+            {selected && !selectedWire && (
+              <div
+                style={{
+                  marginTop: 12,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 8,
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 700,
+                    textTransform: "uppercase",
+                    letterSpacing: 1.2,
+                    opacity: 0.55,
+                  }}
+                >
+                  Placement
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPartDragEnabled(!partDragEnabled)}
+                  style={{
+                    width: "100%",
+                    minHeight: 36,
+                    borderRadius: 9,
+                    border: partDragEnabled
+                      ? "1px solid #34d399"
+                      : "1px solid rgba(255,255,255,.12)",
+                    background: partDragEnabled
+                      ? "rgba(52,211,153,.16)"
+                      : "rgba(255,255,255,.05)",
+                    color: "#e2e8f0",
+                    fontSize: 11,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    textAlign: "left",
+                    padding: "0 12px",
+                  }}
+                  title={
+                    partDragEnabled
+                      ? "Turn off drag-to-move (original click-to-select behavior)"
+                      : "Turn on long-press / drag to move parts on the board"
+                  }
+                >
+                  {partDragEnabled
+                    ? "Drag parts: ON — long-press to move"
+                    : "Drag parts: OFF — click to select only"}
+                </button>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!partDragEnabled) return;
+                      setMovingSelected(!movingSelected);
+                    }}
+                    disabled={!partDragEnabled}
+                    style={{
+                      flex: 1,
+                      minHeight: 36,
+                      borderRadius: 9,
+                      border: movingSelected
+                        ? "1px solid #38bdf8"
+                        : "1px solid rgba(255,255,255,.12)",
+                      background: movingSelected
+                        ? "rgba(56,189,248,.18)"
+                        : "rgba(255,255,255,.05)",
+                      color: partDragEnabled ? "#e2e8f0" : "#64748b",
+                      fontSize: 11,
+                      fontWeight: 600,
+                      cursor: partDragEnabled ? "pointer" : "not-allowed",
+                      opacity: partDragEnabled ? 1 : 0.5,
+                    }}
+                    title={
+                      partDragEnabled
+                        ? "Long-press a component on the board to move it, or click this then click a hole"
+                        : "Enable “Drag parts” first"
+                    }
+                  >
+                    {movingSelected ? "Drop on a hole…" : "Move on board"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => rotateSelected()}
+                    style={{
+                      flex: 1,
+                      minHeight: 36,
+                      borderRadius: 9,
+                      border: "1px solid rgba(255,255,255,.12)",
+                      background: "rgba(255,255,255,.05)",
+                      color: "#e2e8f0",
+                      fontSize: 11,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                    }}
+                    title="Rotate 90° clockwise on the breadboard"
+                  >
+                    Rotate 90°
+                  </button>
+                </div>
+                {movingSelected && partDragEnabled && (
+                  <div
+                    style={{
+                      fontSize: 10,
+                      color: "#7dd3fc",
+                      lineHeight: 1.4,
+                    }}
+                  >
+                    Hover the board to preview the mesh, then click a hole to
+                    place the component there.
+                  </div>
+                )}
+
+                <div
+                  style={{
+                    marginTop: 4,
+                    fontSize: 10,
+                    fontWeight: 700,
+                    textTransform: "uppercase",
+                    letterSpacing: 1.2,
+                    opacity: 0.55,
+                  }}
+                >
+                  Nodes / pins
+                </div>
+                <div
+                  style={{
+                    fontSize: 10,
+                    color: "#94a3b8",
+                    marginBottom: 4,
+                  }}
+                >
+                  Click a pin, then click a breadboard hole to reassign that
+                  node.
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 6,
+                    maxHeight: 180,
+                    overflowY: "auto",
+                  }}
+                >
+                  {Object.entries(selected.pins).map(([pinName, holeId]) => {
+                    const editing =
+                      pinEditTarget?.partId === selected.id &&
+                      pinEditTarget?.pinName === pinName;
+                    return (
+                      <button
+                        key={pinName}
+                        type="button"
+                        onClick={() => {
+                          if (editing) cancelPinEdit();
+                          else startPinEdit(selected.id, pinName);
+                        }}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: 8,
+                          padding: "8px 10px",
+                          borderRadius: 8,
+                          border: editing
+                            ? "1px solid #fbbf24"
+                            : "1px solid rgba(255,255,255,.1)",
+                          background: editing
+                            ? "rgba(251,191,36,.15)"
+                            : "rgba(255,255,255,.04)",
+                          color: "#e2e8f0",
+                          cursor: "pointer",
+                          textAlign: "left",
+                        }}
+                      >
+                        <span
+                          style={{
+                            fontSize: 11,
+                            fontWeight: 700,
+                            textTransform: "uppercase",
+                            letterSpacing: 0.6,
+                          }}
+                        >
+                          {pinName}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: 11,
+                            fontFamily: "ui-monospace, monospace",
+                            color: editing ? "#fde68a" : "#94a3b8",
+                          }}
+                        >
+                          {editing ? "click hole…" : holeId}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                {pinEditTarget && (
+                  <button
+                    type="button"
+                    onClick={() => cancelPinEdit()}
+                    style={{
+                      fontSize: 10,
+                      color: "#94a3b8",
+                      background: "transparent",
+                      border: "none",
+                      cursor: "pointer",
+                      textAlign: "left",
+                      padding: 0,
+                    }}
+                  >
+                    Cancel pin edit
+                  </button>
+                )}
+              </div>
+            )}
 
 {selectedWire && (
   <div
@@ -2077,6 +2436,33 @@ export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
               }}
             />
             Delete
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setPartDragEnabled(!partDragEnabled)}
+            style={{
+              gridColumn: "1 / -1",
+              padding: 10,
+              borderRadius: 8,
+              border: partDragEnabled
+                ? "1px solid rgba(52,211,153,.45)"
+                : "1px solid rgba(255,255,255,.1)",
+              background: partDragEnabled
+                ? "rgba(52,211,153,.12)"
+                : "rgba(255,255,255,.05)",
+              color: "white",
+              cursor: "pointer",
+              fontWeight: 600,
+              fontSize: 12,
+            }}
+            title={
+              partDragEnabled
+                ? "Disable drag — parts only select on click (original behavior)"
+                : "Enable long-press drag to move parts on the board"
+            }
+          >
+            {partDragEnabled ? "Drag parts: ON" : "Drag parts: OFF"}
           </button>
 
           <button
@@ -3126,7 +3512,7 @@ export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
               <div style={{ color: "#94a3b8", marginTop: 2 }}>
                 {pinOrder.length
                   ? `Pin order: ${pinOrder.join(" → ")}. Click a breadboard hole to place.`
-                  : "Choose a component from the palette, then click a hole on the breadboard to place it. You can also drag a component onto the board."}
+                  : "Drag a component from the palette — it floats under your cursor — then drop it on a breadboard hole. You can also click a tool, then click a hole."}
               </div>
             )}
 
@@ -3257,6 +3643,53 @@ export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
               {warning}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Floating component preview while dragging from the overlay palette */}
+      {dragGhost && (
+        <div
+          style={{
+            position: "fixed",
+            left: dragGhost.x,
+            top: dragGhost.y,
+            transform: "translate(-50%, -50%) scale(1.08) rotate(-2deg)",
+            zIndex: 9999,
+            pointerEvents: "none",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 6,
+            padding: "10px 14px",
+            borderRadius: 14,
+            background: "rgba(11, 18, 32, 0.95)",
+            border: "1px solid rgba(96, 165, 250, 0.5)",
+            boxShadow:
+              "0 12px 40px rgba(0,0,0,.55), 0 0 0 1px rgba(96,165,250,.25)",
+            color: "#e2e8f0",
+            backdropFilter: "blur(8px)",
+          }}
+        >
+          <div
+            style={{
+              fontSize: 13,
+              fontWeight: 700,
+              whiteSpace: "nowrap",
+            }}
+          >
+            {dragGhost.label}
+          </div>
+          <div
+            style={{
+              fontSize: 9,
+              fontWeight: 600,
+              letterSpacing: 1.2,
+              textTransform: "uppercase",
+              color: "#93c5fd",
+            }}
+          >
+            Drop on breadboard
+          </div>
         </div>
       )}
     </>
