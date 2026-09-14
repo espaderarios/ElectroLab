@@ -5,9 +5,13 @@ import App from './App'
 import './index.css'
 import './styles.css'
 
+const basename = window.location.hostname === 'espaderarios.github.io'
+  ? '/ElectroLab'
+  : undefined
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+    <BrowserRouter basename={basename} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <App />
     </BrowserRouter>
   </React.StrictMode>,
