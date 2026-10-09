@@ -211,10 +211,24 @@ interface LabState {
   togglePower: () => void;
   /** Power on + resimulate (toolbar “Run Simulation”). */
   runNow: () => void;
+  /** Advance MCU/peripheral virtual time without changing the circuit topology. */
+  tickSimulation: (deltaMs: number) => void;
   setVoltage: (voltage: number) => void;
   toggleSwitch: (id: string) => void;
   /** Momentary push-button: true while held, false on release. */
   setButtonPressed: (id: string, pressed: boolean) => void;
+  /** Hold the physical RESET tactile on an Arduino MCU (active-low). */
+  setMcuResetPressed: (id: string, pressed: boolean) => void;
+  /**
+   * Momentary onboard / header pin button for an MCU.
+   * pin is Arduino style ("7", "d7", "D7") — forces that GPIO LOW while held
+   * when the pin is an input (INPUT_PULLUP friendly).
+   */
+  setMcuPinButtonPressed: (
+    id: string,
+    pin: string,
+    pressed: boolean,
+  ) => void;
 
   deleteSelected: () => void;
   /** Rotate selected part 90° clockwise on the breadboard (pin grid + visual). */
@@ -298,6 +312,8 @@ function runSimulation(state: {
   psuNegative: HoleId | null;
   /** Prior sim result — used so SCR/TRIAC holding current can keep devices latched. */
   sim?: SimResult;
+  /** Virtual MCU time advanced for this simulation pass. */
+  mcuDeltaMs?: number;
 }) {
   const prevLatched: Record<string, boolean> = {};
   const prevMotorCurrents: Record<string, number> = {};
@@ -312,7 +328,7 @@ function runSimulation(state: {
       if (typeof m.current === "number") prevMotorCurrents[id] = m.current;
     }
   }
-  return simulate({ ...state, prevLatched, prevMotorCurrents });
+  return simulate({ ...state, prevLatched, prevMotorCurrents, mcuDeltaMs: state.mcuDeltaMs });
 }
 
 function getTwoPinKind(tool: ToolId): PartKind | "wire" | null {
@@ -1096,6 +1112,8 @@ export const useLab = create<LabState>((set, get) => ({
             : undefined,
         mcuModel: placement.kind === "mcu" ? "arduino-uno" : undefined,
         code: placement.kind === "mcu" ? DEFAULT_MCU_CODE : undefined,
+        lcdCols: placement.kind === "lcd" ? 16 : undefined,
+        lcdRows: placement.kind === "lcd" ? 2 : undefined,
         transistorModel:
           placement.kind === "transistor" ? state.transistorModel : undefined,
         thyristorModel:
@@ -1528,6 +1546,17 @@ export const useLab = create<LabState>((set, get) => ({
       };
     }),
 
+  /** Advance MCU/peripheral virtual time without changing the circuit topology. */
+  tickSimulation: (deltaMs) =>
+    set((state) => {
+      if (!state.powerOn || !state.parts.some((part) => part.kind === "mcu")) {
+        return state;
+      }
+      const clamped = Math.max(0, Math.min(100, deltaMs));
+      const next = { ...state, mcuDeltaMs: clamped };
+      return { sim: runSimulation(next) };
+    }),
+
   setVoltage: (psuVoltage) =>
     set((state) => {
       const next = {
@@ -1798,6 +1827,49 @@ setSelectedCapacitance: (capacitance) =>
         parts,
         sim: runSimulation(next),
         // No history for momentary press/release — avoids undo spam
+      };
+    }),
+
+  setMcuResetPressed: (id, pressed) =>
+    set((state) => {
+      const parts = state.parts.map((part) => {
+        if (part.id !== id || part.kind !== "mcu") return part;
+        if (Boolean(part.props.resetPressed) === pressed) return part;
+        return {
+          ...part,
+          props: { ...part.props, resetPressed: pressed },
+        };
+      });
+      const next = { ...state, parts };
+      return {
+        parts,
+        // While held, force a reset edge into the MCU runtime.
+        sim: runSimulation({ ...next, mcuReset: pressed }),
+      };
+    }),
+
+  setMcuPinButtonPressed: (id, pin, pressed) =>
+    set((state) => {
+      const pinKey = pin.trim().toLowerCase().replace(/^d/, "d");
+      const normalized =
+        /^\d+$/.test(pinKey) ? `d${pinKey}` : pinKey.startsWith("d") ? pinKey : `d${pinKey}`;
+      const parts = state.parts.map((part) => {
+        if (part.id !== id || part.kind !== "mcu") return part;
+        const map = {
+          ...(part.props.pinButtons as Record<string, boolean> | undefined),
+        };
+        if (Boolean(map[normalized]) === pressed) return part;
+        if (pressed) map[normalized] = true;
+        else delete map[normalized];
+        return {
+          ...part,
+          props: { ...part.props, pinButtons: map },
+        };
+      });
+      const next = { ...state, parts };
+      return {
+        parts,
+        sim: runSimulation(next),
       };
     }),
 

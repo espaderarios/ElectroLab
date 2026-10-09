@@ -16,6 +16,11 @@ import { MOTOR_MODELS, THYRISTOR_MODELS, TRIAC_MODELS } from "./types";
 import type { ThyristorModelId, TriacModelId } from "./types";
 import {
   executeMcuProgram,
+  getMcuRuntimeState,
+  getMcuRuntimeMillis,
+  getMcuRuntimeGlobals,
+  getPersistentMcuRuntime,
+  pruneMcuRuntimes,
   type McuRuntimeState,
 } from "./mcu-runtime";
 import {
@@ -345,6 +350,10 @@ export function simulate(input: {
   prevLatched?: Record<string, boolean>;
   /** Previous motor armature currents for inductive dynamics (A). */
   prevMotorCurrents?: Record<string, number>;
+  /** Virtual MCU time advanced for this simulation pass. */
+  mcuDeltaMs?: number;
+  /** Hardware RESET assertion for all MCUs on this simulation step. */
+  mcuReset?: boolean;
 }): SimResult {
   // ============================================================
   // EMPTY / SAFE RESULT
@@ -1785,82 +1794,15 @@ export function simulate(input: {
   // MCU RUNTIME
   // ============================================================
 
+  // Drop cached runtimes for MCUs that were removed from the board.
+  pruneMcuRuntimes(
+    input.parts.filter((p) => p.kind === "mcu").map((p) => p.id),
+  );
+
   const mcus: SimResult["mcus"] = {};
   let oledTextFromMcu = "";
   let oledActiveFromMcu = false;
   let lcdSoftFromMcu = "";
-
-  for (const mcu of input.parts) {
-    if (mcu.kind !== "mcu") continue;
-
-    const vcc =
-      voltageAt(mcu, "vcc");
-
-    const gnd =
-      voltageAt(mcu, "gnd");
-
-    const mcuVoltage = vcc - gnd;
-    const model = mcu.props.mcuModel ?? "arduino-uno";
-    const electricallyPowered =
-      model === "arduino-uno"
-        ? mcuVoltage >= ARDUINO_UNO_MIN_V && mcuVoltage <= 6.0
-        : mcuVoltage >= 2.7 && mcuVoltage <= 5.5;
-    const powered = input.powerOn && electricallyPowered && !hardShort;
-
-    const code =
-      mcu.props.code ??
-      "";
-
-    const runtime =
-      executeMcuProgram(
-        mcu,
-        code,
-        powered,
-      );
-
-    if (powered && runtime.state.oledActive) {
-      oledActiveFromMcu = true;
-      oledTextFromMcu = (runtime.state.oledLines ?? [])
-        .join("\n")
-        .replace(/[ \t]+$/gm, "");
-    }
-    if (powered && runtime.state.lcdSoftLines) {
-      const soft = runtime.state.lcdSoftLines
-        .map((l) => l.replace(/[ \t]+$/g, ""))
-        .join("\n")
-        .replace(/\n+$/g, "");
-      if (soft.trim()) lcdSoftFromMcu = soft;
-    }
-
-    mcus[mcu.id] = {
-      id: mcu.id,
-      model:
-        mcu.props.mcuModel ??
-        "arduino-uno",
-
-      powered,
-
-      running:
-        powered &&
-        runtime.state.running,
-
-      digital:
-        runtime.state.digital,
-
-      pinModes:
-        runtime.state.modes,
-
-      error:
-        runtime.state.error,
-      supplyVoltage: vcc - gnd,
-      electricalState:
-        hardShort ? "shorted" :
-        vcc - gnd < ARDUINO_UNO_MIN_V ? "off" :
-        vcc - gnd < ARDUINO_UNO_16MHZ_MIN_V ? "undervoltage" :
-        vcc - gnd <= ARDUINO_UNO_MAX_V ? "normal" : "overvoltage",
-      current: Math.abs(vcc - gnd) / ARDUINO_UNO_EQ_RESISTANCE,
-    };
-  }
 
   // ============================================================
   // LCD RUNTIME
@@ -1996,6 +1938,79 @@ export function simulate(input: {
       ReturnType<typeof executeMcuProgram>
     >();
 
+  /**
+   * Sample a real electrical input into the MCU's digital logic domain.
+   * INPUT_PULLUP is modeled as a weak internal pull-up: an open button reads
+   * HIGH, while a physically closed button wired to GND reads LOW. External
+   * voltages still win when a circuit actively drives the node.
+   */
+  function sampleMcuInputs(mcu: PlacedPart) {
+    const previous = getMcuRuntimeState(mcu.id);
+    const digital: Record<string, 0 | 1> = {};
+    const analog: Record<string, number> = {};
+
+    for (let i = 0; i < 14; i++) {
+      const pin = `d${i}`;
+      const hole = mcu.pins[pin];
+      if (!hole) continue;
+      const index = indexOf.get(hole);
+      const node = index === undefined ? undefined : uf.find(index);
+
+      let sampled: 0 | 1 = (voltages[hole] ?? 0) >= 2.5 ? 1 : 0;
+
+      if (node !== undefined) {
+        for (const button of input.parts) {
+          if (button.kind !== "button") continue;
+          const aIndex = button.pins.a ? indexOf.get(button.pins.a) : undefined;
+          const bIndex = button.pins.b ? indexOf.get(button.pins.b) : undefined;
+          if (aIndex === undefined || bIndex === undefined) continue;
+          const aNode = uf.find(aIndex);
+          const bNode = uf.find(bIndex);
+          if (node !== aNode && node !== bNode) continue;
+
+          // A pressed button is a physical short between its two terminals.
+          if (button.props.closed) {
+            const other = node === aNode ? bNode : aNode;
+            if (negativeNode !== null && other === negativeNode) sampled = 0;
+          } else if ((previous?.modes[pin] ?? "INPUT") === "INPUT_PULLUP") {
+            sampled = 1;
+          }
+        }
+      } else if ((previous?.modes[pin] ?? "INPUT") === "INPUT_PULLUP") {
+        sampled = 1;
+      }
+
+      digital[pin] = sampled;
+    }
+
+    for (let i = 0; i < 6; i++) {
+      const pin = `a${i}`;
+      const hole = mcu.pins[pin];
+      analog[pin] = hole ? Math.max(0, voltages[hole] ?? 0) : 0;
+    }
+
+    // Onboard / header pin buttons held on the MCU part itself (active-low).
+    const pinButtons = (mcu.props.pinButtons ?? {}) as Record<string, boolean>;
+    for (const [pin, held] of Object.entries(pinButtons)) {
+      if (!held) continue;
+      const key = pin.toLowerCase().startsWith("d")
+        ? pin.toLowerCase()
+        : /^\d+$/.test(pin)
+          ? `d${pin}`
+          : pin.toLowerCase();
+      digital[key] = 0;
+    }
+
+    const resetHole = mcu.pins.reset;
+    const resetVoltage = resetHole ? (voltages[resetHole] ?? 5) : 5;
+    const resetPressed = Boolean(mcu.props.resetPressed);
+    return {
+      digital,
+      analog,
+      reset: resetPressed || resetVoltage < 0.8,
+    };
+  }
+
   for (const mcu of input.parts) {
     if (mcu.kind !== "mcu") continue;
 
@@ -2009,11 +2024,17 @@ export function simulate(input: {
         : mcuVoltage2 >= 2.7 && mcuVoltage2 <= 5.5;
     const powered = input.powerOn && electricallyPowered && !hardShort;
 
+    const runtimeInputs = sampleMcuInputs(mcu);
     const runtime =
       executeMcuProgram(
         mcu,
         mcu.props.code ?? "",
         powered,
+        {
+          inputs: runtimeInputs,
+          deltaMs: input.mcuDeltaMs ?? 0,
+          reset: Boolean(input.mcuReset || runtimeInputs.reset),
+        },
       );
 
     mcuRuntimes.set(
@@ -2057,11 +2078,80 @@ export function simulate(input: {
         vcc2 - gnd2 < ARDUINO_UNO_16MHZ_MIN_V ? "undervoltage" :
         vcc2 - gnd2 <= ARDUINO_UNO_MAX_V ? "normal" : "overvoltage",
       current: Math.abs(vcc2 - gnd2) / ARDUINO_UNO_EQ_RESISTANCE,
+      inputDigital: runtimeInputs.digital,
+      analog: runtimeInputs.analog,
+      globals: getMcuRuntimeGlobals(mcu.id),
+      millis: getMcuRuntimeMillis(mcu.id),
+      gpioCurrent: getPersistentMcuRuntime(mcu.id)?.gpioCurrentMa,
+      stableDigital: getPersistentMcuRuntime(mcu.id)?.stableDigital,
     };
   }
 
   // ============================================================
-  // PROCESS EVERY LCD
+  // MCU GPIO OUTPUT DRIVE (incl. soft PWM average voltage)
+  // ============================================================
+  // Educational model: after the passive network solve, force OUTPUT pin
+  // nodes to the driven logic level (or PWM duty * Vcc). This makes LEDs
+  // and loads on digital pins respond to digitalWrite / analogWrite.
+  for (const mcu of input.parts) {
+    if (mcu.kind !== "mcu") continue;
+    const st = mcus[mcu.id];
+    if (!st?.powered) continue;
+    const runtime = mcuRuntimes.get(mcu.id);
+    if (!runtime) continue;
+    const persistent = getPersistentMcuRuntime(mcu.id);
+    const vcc = voltageAt(mcu, "vcc");
+    const gnd = voltageAt(mcu, "gnd");
+    const span = Math.max(0, vcc - gnd);
+
+    for (const [pin, mode] of Object.entries(runtime.state.modes)) {
+      if (mode !== "OUTPUT") continue;
+      const hole = mcu.pins[pin];
+      if (!hole) continue;
+      const idx = indexOf.get(hole);
+      if (idx === undefined) continue;
+      const node = uf.find(idx);
+
+      const duty = persistent?.pwmDuty?.[pin];
+      let level = runtime.state.digital[pin] ?? 0;
+      if (typeof duty === "number") {
+        level = Math.max(0, Math.min(1, duty / 255));
+      }
+      const driven = gnd + span * level;
+
+      for (const h of getAllHoles()) {
+        const hi = indexOf.get(h);
+        if (hi !== undefined && uf.find(hi) === node) {
+          voltages[h] = driven;
+        }
+      }
+    }
+  }
+
+  // ============================================================
+  
+  // Recompute LEDs after GPIO drive so digitalWrite/analogWrite affect brightness.
+  for (const part of input.parts) {
+    if (part.kind !== "led") continue;
+    const va = voltageAt(part, "a");
+    const vk = voltageAt(part, "k");
+    const voltage = va - vk;
+    const vf = LED_VF[part.props.ledColor ?? "red"] ?? LED_VF.red;
+    const iLed = voltage >= vf ? Math.max(0, (voltage - vf) / LED_RD) : 0;
+    const on = input.powerOn && iLed > 0.00001;
+    const brightness = on ? Math.min(1, Math.max(0.04, iLed / 0.015)) : 0;
+    const overcurrent = iLed > LED_MAX_MA / 1000;
+    currents[part.id] = iLed;
+    leds[part.id] = {
+      id: part.id,
+      on,
+      current: iLed,
+      brightness: overcurrent ? 1 : brightness,
+      overcurrent,
+    };
+  }
+
+// PROCESS EVERY LCD
   // ============================================================
 
   for (const lcd of input.parts) {

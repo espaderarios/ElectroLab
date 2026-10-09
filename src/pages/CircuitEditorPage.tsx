@@ -1472,24 +1472,6 @@ export function CircuitEditorPage() {
             </label>
           </button>
           <button
-            onClick={() => setPartDragEnabled(!partDragEnabled)}
-            className={`hidden lg:inline-flex p-2 rounded-lg border transition flex-col items-center ${
-              partDragEnabled
-                ? 'border-emerald-500/40 bg-emerald-600/15 text-emerald-400'
-                : 'border-transparent hover:border-[#1e293b] hover:bg-slate-800 text-slate-400'
-            }`}
-            title={
-              partDragEnabled
-                ? 'Drag parts ON — long-press a component to move it (click to turn off)'
-                : 'Drag parts OFF — click to select components and choose where the nodes go in the breadboard manually (click to enable)'
-            }
-            aria-pressed={partDragEnabled}
-          >
-            <Hand size={16} />
-            <span className="text-[10px] text-slate-400 mt-0.5">Drag</span>
-          </button>
-
-          <button
             onClick={() => {
               const lab = useLab.getState()
 
@@ -1744,6 +1726,33 @@ export function CircuitEditorPage() {
                   </button>
                 )
               })}
+            </div>
+            <div>
+                        <button
+            onClick={() => setPartDragEnabled(!partDragEnabled)}
+            className="mt-2 w-full flex-col items-center gap-3 rounded-lg border border-[var(--app-border)] bg-[var(--app-control)] px-3 py-2 text-xs font-medium text-[var(--app-text)] hover:bg-[var(--app-hover)] transition-colors"
+            title={
+              partDragEnabled
+                ? 'Drag parts ON — long-press a component to move it (click to turn off)'
+                : 'Drag parts OFF — click to select components and choose where the nodes go in the breadboard manually (click to enable)'
+            }
+            aria-pressed={partDragEnabled}
+          >
+              <div>
+              <span
+                className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
+                  partDragEnabled ? "bg-blue-900" : "bg-[var(--app-border)]"
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                    partDragEnabled ? "translate-x-4" : "translate-x-0.5"
+                  }`}
+                />
+              </span>
+              </div>
+          <label>Drag</label>
+          </button>
             </div>
           </div>
             {filteredPalette.length === 0 ? (

@@ -8,7 +8,11 @@ import {
   GraduationCap,
   LayoutTemplate,
   FileBarChart,
+  Book,
+  Gamepad2,
   Settings,
+  Atom,
+  Map,
 } from "lucide-react";
 import { useProjects } from "../store/projects";
 import favicon from "../../favicon.png";
@@ -21,6 +25,9 @@ const nav = [
   { to: "/components", label: "Components", icon: Cpu },
   { to: "/my-components", label: "My Components", icon: Cpu },
   { to: "/learn", label: "Learn", icon: GraduationCap },
+  { to: "/concepts", label: "Concepts", icon: Atom },
+  { to: "/builtin-flashcards", label: "Flashcards", icon: Book },
+  { to: "/games", label: "Games", icon: Gamepad2 },
   { to: "/templates", label: "Templates", icon: LayoutTemplate },
   { to: "/reports", label: "Reports", icon: FileBarChart },
   { to: "/settings", label: "Settings", icon: Settings },

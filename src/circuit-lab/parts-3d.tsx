@@ -5800,7 +5800,7 @@ export function McuMesh({
         </group>
 
         {/* ======================================================
-            RESET SWITCH
+            RESET SWITCH (interactive — active-low MCU reset)
         ====================================================== */}
 
         <group
@@ -5809,6 +5809,22 @@ export function McuMesh({
             T / 2 + 0.035,
             -0.61,
           ]}
+          onPointerDown={(e) => {
+            e.stopPropagation();
+            useLab.getState().setMcuResetPressed(part.id, true);
+          }}
+          onPointerUp={(e) => {
+            e.stopPropagation();
+            useLab.getState().setMcuResetPressed(part.id, false);
+          }}
+          onPointerLeave={() => {
+            if (part.props.resetPressed) {
+              useLab.getState().setMcuResetPressed(part.id, false);
+            }
+          }}
+          onPointerCancel={() => {
+            useLab.getState().setMcuResetPressed(part.id, false);
+          }}
         >
           <mesh castShadow>
             <boxGeometry
@@ -5827,7 +5843,7 @@ export function McuMesh({
           <mesh
             position={[
               0,
-              0.05,
+              part.props.resetPressed ? 0.03 : 0.05,
               0,
             ]}
           >
@@ -5840,12 +5856,93 @@ export function McuMesh({
               ]}
             />
             <meshStandardMaterial
-              color="#d1d5db"
+              color={part.props.resetPressed ? "#94a3b8" : "#d1d5db"}
               metalness={0.35}
               roughness={0.3}
             />
           </mesh>
+          <Html
+            position={[0, 0.12, 0]}
+            center
+            distanceFactor={7}
+            style={{
+              pointerEvents: "none",
+              color: "#cbd5e1",
+              fontFamily: "IBM Plex Mono, monospace",
+              fontSize: "6px",
+              userSelect: "none",
+              whiteSpace: "nowrap",
+            }}
+          >
+            RESET
+          </Html>
         </group>
+
+        {/* ======================================================
+            USER TACTILE BUTTONS (active-low → D7 / D8 by default)
+            Hold to pull the mapped pin LOW for digitalRead / fallingEdge.
+        ====================================================== */}
+
+        {(
+          [
+            { key: "d7", label: "D7", x: 0.55 },
+            { key: "d8", label: "D8", x: 0.78 },
+          ] as const
+        ).map(({ key, label, x }) => {
+          const held = Boolean(
+            (part.props.pinButtons as Record<string, boolean> | undefined)?.[key],
+          );
+          return (
+            <group
+              key={key}
+              position={[x, T / 2 + 0.035, -0.61]}
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                useLab.getState().setMcuPinButtonPressed(part.id, key, true);
+              }}
+              onPointerUp={(e) => {
+                e.stopPropagation();
+                useLab.getState().setMcuPinButtonPressed(part.id, key, false);
+              }}
+              onPointerLeave={() => {
+                if (held) {
+                  useLab.getState().setMcuPinButtonPressed(part.id, key, false);
+                }
+              }}
+              onPointerCancel={() => {
+                useLab.getState().setMcuPinButtonPressed(part.id, key, false);
+              }}
+            >
+              <mesh castShadow>
+                <boxGeometry args={[0.16, 0.05, 0.16]} />
+                <meshStandardMaterial color="#1e293b" roughness={0.4} />
+              </mesh>
+              <mesh position={[0, held ? 0.028 : 0.045, 0]}>
+                <cylinderGeometry args={[0.045, 0.045, 0.045, 14]} />
+                <meshStandardMaterial
+                  color={held ? "#f59e0b" : "#e2e8f0"}
+                  metalness={0.25}
+                  roughness={0.35}
+                />
+              </mesh>
+              <Html
+                position={[0, 0.11, 0]}
+                center
+                distanceFactor={7}
+                style={{
+                  pointerEvents: "none",
+                  color: "#94a3b8",
+                  fontFamily: "IBM Plex Mono, monospace",
+                  fontSize: "6px",
+                  userSelect: "none",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {label}
+              </Html>
+            </group>
+          );
+        })}
 
         {/* ======================================================
             ATMEGA328P SMD

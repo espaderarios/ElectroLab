@@ -7,6 +7,7 @@ import {
   Gauge,
   Lightbulb,
   MousePointer2,
+  Hand,
   RotateCcw,
   Trash2,
   Undo2,
@@ -20,7 +21,6 @@ import {
   CircuitBoard,
   Monitor,
   X,
-  Hand,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -911,6 +911,13 @@ export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
         }, 50);
         return;
       }
+      // Drag OFF = pin-by-pin clicks only; ignore one-shot palette drop.
+      if (!useLab.getState().partDragEnabled) {
+        window.setTimeout(() => {
+          useLab.getState().setPaletteDragging(false);
+        }, 50);
+        return;
+      }
       placePartAt(toolId, hole);
       // Prevent the hole under the cursor from also calling placePartAt.
       window.setTimeout(() => {
@@ -1242,7 +1249,7 @@ export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
               item.id !== "probe" &&
               item.id !== "delete";
 
-            return (
+            const toolButton = (
               <button
                 key={item.id}
                 type="button"
@@ -1254,6 +1261,7 @@ export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
                 onPointerDown={(e) => {
                   if (!placeable || e.button !== 0) return;
                   e.stopPropagation();
+                  // Drag OFF: only select tool — no floating ghost mesh/card.
                   if (!useLab.getState().partDragEnabled) {
                     setTool(item.id);
                     return;
@@ -1324,6 +1332,49 @@ export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
                 </span>
               </button>
             );
+
+            // Put Drag toggle right after Select on the tools grid.
+            if (item.id === "select") {
+              return (
+                <span key={item.id} style={{ display: "contents" }}>
+                  {toolButton}
+                  <button
+                    type="button"
+                    title={
+                      partDragEnabled
+                        ? "Drag parts ON — long-press to move (click to disable)"
+                        : "Drag parts OFF — original select-only (click to enable)"
+                    }
+                    onClick={() => setPartDragEnabled(!partDragEnabled)}
+                    style={{
+                      minHeight: 55,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: 9,
+                      borderRadius: 11,
+                      border: partDragEnabled
+                        ? "1px solid #34d399"
+                        : "1px solid rgba(255,255,255,.08)",
+                      background: partDragEnabled
+                        ? "rgba(52,211,153,.16)"
+                        : "rgba(255,255,255,.05)",
+                      color: "white",
+                      cursor: "pointer",
+                      textAlign: "left",
+                      userSelect: "none",
+                    }}
+                  >
+                    <Hand size={17} />
+                    <span style={{ fontSize: 11, fontWeight: 600 }}>
+                      {partDragEnabled ? "Drag ON" : "Drag OFF"}
+                    </span>
+                  </button>
+                </span>
+              );
+            }
+
+            return toolButton;
           })}
         </div>
 
@@ -2376,6 +2427,65 @@ export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
               </label>
             )}
 
+            {selected?.kind === "lcd" && (
+              <label style={{ display: "block", marginTop: 12 }}>
+                <div
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 700,
+                    letterSpacing: 1.2,
+                    textTransform: "uppercase",
+                    color: "#64748b",
+                    marginBottom: 6,
+                  }}
+                >
+                  LCD screen size
+                </div>
+                <select
+                  value={`${selected.props.lcdCols ?? 16}x${selected.props.lcdRows ?? 2}`}
+                  onChange={(e) => {
+                    const [c, r] = e.target.value.split("x").map(Number);
+                    setSelectedProp("lcdCols", c);
+                    setSelectedProp("lcdRows", r);
+                    setSelectedProp("label", `LCD ${c}×${r}`);
+                  }}
+                  style={{
+                    width: "100%",
+                    padding: "9px 10px",
+                    borderRadius: 9,
+                    border: "1px solid rgba(255,255,255,.12)",
+                    background: "#111827",
+                    color: "white",
+                    fontSize: 12,
+                    outline: "none",
+                  }}
+                >
+                  <option value="8x1">8 × 1</option>
+                  <option value="8x2">8 × 2</option>
+                  <option value="16x1">16 × 1</option>
+                  <option value="16x2">16 × 2 (standard)</option>
+                  <option value="16x4">16 × 4</option>
+                  <option value="20x2">20 × 2</option>
+                  <option value="20x4">20 × 4</option>
+                  <option value="24x2">24 × 2</option>
+                  <option value="40x2">40 × 2</option>
+                  <option value="40x4">40 × 4</option>
+                </select>
+                <div
+                  style={{
+                    marginTop: 6,
+                    fontSize: 10,
+                    color: "#64748b",
+                    lineHeight: 1.4,
+                  }}
+                >
+                  Text uses the full width. Match{" "}
+                  <code style={{ color: "#94a3b8" }}>lcd.begin(cols, rows)</code>{" "}
+                  in the Arduino sketch.
+                </div>
+              </label>
+            )}
+
         {/* BOARD CONTROLS */}
 
         <div
@@ -3219,11 +3329,34 @@ export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
               }}
             >
               {(() => {
+                const lcdPart = parts.find((p) => p.kind === "lcd");
+                const cols = Math.min(
+                  40,
+                  Math.max(8, Math.floor(Number(lcdPart?.props.lcdCols) || 16)),
+                );
+                const rows = Math.min(
+                  4,
+                  Math.max(1, Math.floor(Number(lcdPart?.props.lcdRows) || 2)),
+                );
                 const raw = (sim.lcdText || "").replace(/\r/g, "");
-                const lines = raw.split("\n");
-                const l1 = (lines[0] ?? "").padEnd(16, " ").slice(0, 16);
-                const l2 = (lines[1] ?? "").padEnd(16, " ").slice(0, 16);
-                return `${l1}\n${l2}`;
+                const out: string[] = Array.from({ length: rows }, () =>
+                  "".padEnd(cols, " "),
+                );
+                let row = 0;
+                for (const para of raw.split("\n")) {
+                  if (row >= rows) break;
+                  let rest = para;
+                  if (!rest) {
+                    row++;
+                    continue;
+                  }
+                  while (rest.length > 0 && row < rows) {
+                    out[row] = rest.slice(0, cols).padEnd(cols, " ");
+                    rest = rest.slice(cols);
+                    row++;
+                  }
+                }
+                return out.join("\n");
               })()}
             </pre>
           </div>
@@ -3413,6 +3546,21 @@ export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
             (pinOrder.length > 0 || help),
         );
 
+        // Classic (Drag OFF): show pin-by-pin steps instead of one-shot help.
+        const classicSteps =
+          !partDragEnabled &&
+          tool &&
+          tool !== "none" &&
+          tool !== "select" &&
+          tool !== "wire" &&
+          pinOrder.length > 0
+            ? [
+                `Click a hole for each pin in order: ${pinOrder.join(" → ")}.`,
+                `This part needs ${pinOrder.length} hole${pinOrder.length === 1 ? "" : "s"} — one click per node.`,
+                "Re-click a chosen hole to cancel and start over.",
+              ]
+            : null;
+
         const title = pending.length
           ? `Pins ${pending.length}/${pinOrder.length || "?"}: ${pending.join(", ")}`
           : help?.title
@@ -3426,8 +3574,10 @@ export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
                   : "Ready to place";
 
         const body = pending.length
-          ? `Next pin: ${pinOrder[pending.length] ?? "complete the placement"}. Click the next hole on the breadboard.`
+          ? `Next pin: ${pinOrder[pending.length] ?? "done"}. Click the next hole on the breadboard.`
           : null;
+
+        const displaySteps = classicSteps ?? help?.steps;
 
         return (
           <div
@@ -3475,7 +3625,7 @@ export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
 
             {body ? (
               <div style={{ color: "#94a3b8", marginTop: 2 }}>{body}</div>
-            ) : help ? (
+            ) : displaySteps ? (
               <>
                 <ol
                   style={{
@@ -3484,13 +3634,13 @@ export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
                     color: "#cbd5e1",
                   }}
                 >
-                  {help.steps.map((step, i) => (
+                  {displaySteps.map((step, i) => (
                     <li key={i} style={{ marginBottom: 4 }}>
                       {step}
                     </li>
                   ))}
                 </ol>
-                {help.tip && (
+                {!classicSteps && help?.tip && (
                   <div
                     style={{
                       marginTop: 8,
@@ -3507,12 +3657,31 @@ export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
                     {help.tip}
                   </div>
                 )}
+                {classicSteps && (
+                  <div
+                    style={{
+                      marginTop: 8,
+                      padding: "8px 10px",
+                      borderRadius: 10,
+                      background: "rgba(52,211,153,.1)",
+                      border: "1px solid rgba(52,211,153,.25)",
+                      color: "#6ee7b7",
+                      fontSize: 10,
+                      lineHeight: 1.45,
+                    }}
+                  >
+                    <strong style={{ color: "#a7f3d0" }}>Drag OFF: </strong>
+                    Choose each node on the breadboard yourself.
+                  </div>
+                )}
               </>
             ) : (
               <div style={{ color: "#94a3b8", marginTop: 2 }}>
                 {pinOrder.length
                   ? `Pin order: ${pinOrder.join(" → ")}. Click a breadboard hole to place.`
-                  : "Drag a component from the palette — it floats under your cursor — then drop it on a breadboard hole. You can also click a tool, then click a hole."}
+                  : partDragEnabled
+                    ? "Drag a component from the palette onto a hole, or click a tool then a hole."
+                    : "Click a tool, then click one hole for each of its pins."}
               </div>
             )}
 

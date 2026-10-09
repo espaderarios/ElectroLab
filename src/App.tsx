@@ -14,13 +14,17 @@ import { ReportsPage } from "./pages/ReportsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { useProjects } from "./store/projects";
 import { LibraryPage } from "./pages/LibraryPage";
+import { BuiltInFlashcardsPage } from "./pages/BuiltIn-Flashcards";
+import { GamesPage } from "./pages/GamesPage";
+import { ConceptsPage } from "./pages/ConceptsPage";
 
 export default function App() {
   const location = useLocation();
   const darkMode = useProjects((s) => s.darkMode);
   const isFullScreen =
     location.pathname.startsWith("/editor") ||
-    location.pathname.startsWith("/results");
+    location.pathname.startsWith("/results") ||
+    location.pathname.startsWith("/map");
 
   // Keep the document theme synchronized with the persisted ElectroLab
   // preference. The simulator/editor itself stays visually isolated and dark.
@@ -49,6 +53,9 @@ export default function App() {
           <Route path="/library" element={<LibraryPage />} />
           <Route path="/components" element={<ComponentLibrary />} />
           <Route path="/learn" element={<LearnPage />} />
+          <Route path="/concepts" element={<ConceptsPage />} />
+          <Route path="/builtin-flashcards" element={<BuiltInFlashcardsPage />} />
+          <Route path="/games" element={<GamesPage />} />
           <Route path="/templates" element={<TemplatesPage />} />
           <Route path="/reports" element={<ReportsPage />} />
           <Route path="/settings" element={<SettingsPage />} />

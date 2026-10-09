@@ -262,8 +262,21 @@ export interface PlacedPart {
 
     code?: string;
 
+    /** Arduino Uno onboard RESET tactile held (active-low). */
+    resetPressed?: boolean;
+    /**
+     * Onboard / header pin buttons held on the MCU.
+     * Keys are pin names like "d7"; value true means forced LOW for digitalRead.
+     */
+    pinButtons?: Record<string, boolean>;
+
     /** Visual / placement rotation in degrees (0, 90, 180, 270). */
     rotation?: number;
+
+    /** HD44780 character columns (8–40). Default 16. */
+    lcdCols?: number;
+    /** HD44780 character rows (1–4). Default 2. */
+    lcdRows?: number;
   };
 }
 
@@ -399,6 +412,18 @@ export interface McuSimState {
   supplyVoltage?: number;
   electricalState?: "off" | "undervoltage" | "normal" | "overvoltage" | "shorted";
   current?: number;
+  /** Sampled external digital input level at each MCU GPIO. */
+  inputDigital?: Record<string, 0 | 1>;
+  /** Sampled analog voltage at A0-A5 in volts. */
+  analog?: Record<string, number>;
+  /** Approximate Arduino GPIO source/sink current (mA) per pin. */
+  gpioCurrent?: Record<string, number>;
+  /** Debounced digital inputs presented to digitalRead(). */
+  stableDigital?: Record<string, 0 | 1>;
+  /** Persistent sketch variables (int/bool/… surviving across ticks). */
+  globals?: Record<string, number | boolean | string>;
+  /** Virtual Arduino millis() clock for this MCU. */
+  millis?: number;
 }
 
 export interface LcdSimState {

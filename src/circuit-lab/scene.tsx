@@ -506,6 +506,18 @@ export function LabScene() {
   const sim = useLab((s) => s.sim);
   const select = useLab((s) => s.select);
   const movingSelected = useLab((s) => s.movingSelected);
+  const tickAccumulator = useRef(0);
+
+  // Run the MCU at a stable virtual 20 Hz instead of tying sketch execution
+  // to the renderer's 60–144 FPS rate. This is the foundation for millis(),
+  // button debounce, PWM and timer-like peripherals.
+  useFrame((_, delta) => {
+    tickAccumulator.current += delta * 1000;
+    if (tickAccumulator.current < 50) return;
+    const elapsed = tickAccumulator.current;
+    tickAccumulator.current = 0;
+    useLab.getState().tickSimulation(Math.min(elapsed, 100));
+  });
 
   return (
     <>
