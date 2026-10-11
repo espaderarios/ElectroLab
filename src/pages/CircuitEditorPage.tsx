@@ -535,6 +535,14 @@ const McuSymbol = () => (
   </svg>
 );
 
+const GateSymbol = ({ label }: { label: string }) => (
+  <svg viewBox="0 0 48 36" width="34" height="27">
+    <rect x="9" y="5" width="30" height="26" rx="3" fill="none" stroke="currentColor" strokeWidth="2" />
+    <path d="M3 13H9M3 23H9M39 18H45M24 5V2M24 31V34" stroke="currentColor" strokeWidth="1.5" />
+    <text x="24" y="21" textAnchor="middle" fontSize="7" fontWeight="700" fill="currentColor">{label}</text>
+  </svg>
+)
+
 const SCH_STROKE = '#1d4ed8'
 const SCH_LABEL = '#1e3a8a'
 
@@ -809,6 +817,27 @@ function SchematicFallback() {
         return { a: { x: x - 20, y: y - 8 }, b: { x: x - 20, y: y + 8 } }
       case 'motor':
         return { a: { x: x - 28, y }, b: { x: x + 28, y } }
+      case 'not':
+        return {
+          a: { x: x - 28, y: y - 10 },
+          y: { x: x + 28, y },
+          vcc: { x, y: y - 28 },
+          gnd: { x, y: y + 28 },
+          b: { x: x - 28, y: y + 10 },
+        }
+      case 'and':
+      case 'or':
+      case 'nand':
+      case 'nor':
+      case 'xor':
+      case 'xnor':
+        return {
+          a: { x: x - 28, y: y - 10 },
+          b: { x: x - 28, y: y + 10 },
+          y: { x: x + 28, y },
+          vcc: { x, y: y - 28 },
+          gnd: { x, y: y + 28 },
+        }
       case 'transistor':
         return {
           b: { x: x - 28, y },
@@ -957,6 +986,8 @@ function SchematicFallback() {
           else if (part.kind === 'motor') body = <SchMotor x={x} y={y} on={motorOn} />
           else if (part.kind === 'thyristor' || part.kind === 'triac' || part.kind === 'diac')
             body = <SchScr x={x} y={y} on={scrOn} />
+          else if (['not', 'and', 'or', 'nand', 'nor', 'xor', 'xnor'].includes(part.kind))
+            body = <GateSymbol label={part.kind.toUpperCase()} />
           else if (part.kind === 'resistor' || part.kind === 'inductor')
             body = <SchResistor x={x} y={y} />
 
@@ -1068,6 +1099,18 @@ const PALETTE: Array<{
       { id: 'lcd', label: 'LCD 16×2', symbol: <LcdSymbol />, tool: 'lcd' },
       { id: 'oled', label: 'OLED', symbol: <OledSymbol />, tool: 'oled' },
       { id: 'mcu', label: 'Arduino / MCU', symbol: <McuSymbol />, tool: 'mcu' },
+    ],
+  },
+  {
+    title: 'Logic ICs',
+    items: [
+      { id: 'not', label: 'NOT IC', symbol: <GateSymbol label="NOT" />, tool: 'not' },
+      { id: 'and', label: 'AND IC', symbol: <GateSymbol label="AND" />, tool: 'and' },
+      { id: 'or', label: 'OR IC', symbol: <GateSymbol label="OR" />, tool: 'or' },
+      { id: 'nand', label: 'NAND IC', symbol: <GateSymbol label="NAND" />, tool: 'nand' },
+      { id: 'nor', label: 'NOR IC', symbol: <GateSymbol label="NOR" />, tool: 'nor' },
+      { id: 'xor', label: 'XOR IC', symbol: <GateSymbol label="XOR" />, tool: 'xor' },
+      { id: 'xnor', label: 'XNOR IC', symbol: <GateSymbol label="XNOR" />, tool: 'xnor' },
     ],
   },
   {
@@ -1869,6 +1912,7 @@ export function CircuitEditorPage() {
             </Suspense>
           )}
         </main>
+
       </div>
 
       <HelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />

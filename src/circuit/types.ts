@@ -36,6 +36,19 @@ export type RailKind =
 
 export type HoleId = string;
 
+export type TactileSwitchStyle =
+  | "tactile-black"
+  | "tactile-white"
+  | "tactile-blue"
+  | "tactile-red"
+  | "tactile-low-profile";
+
+/** Electrical contact arrangement supported by a switch part. */
+export type SwitchType = "spst" | "spdt" | "dpst" | "dpdt";
+
+/** Active contact for an SPDT switch; SPST uses `closed` instead. */
+export type SwitchPosition = "open" | "no" | "nc";
+
 export type ToolId =
   | "select"
   | "none"
@@ -48,6 +61,10 @@ export type ToolId =
   | "led"
   | "diode"
   | "switch"
+  | "switch-spst"
+  | "switch-spdt"
+  | "switch-dpst"
+  | "switch-dpdt"
   | "button"
   | "capacitor"
   | "inductor"
@@ -62,7 +79,14 @@ export type ToolId =
   | "triac"
   | "diac"
   | "motor"
-  | "speaker";
+  | "speaker"
+  | "not"
+  | "and"
+  | "or"
+  | "nand"
+  | "nor"
+  | "xor"
+  | "xnor";
 
 export type TransistorModelId =
   | "2n3904"   // TO-92 NPN
@@ -93,9 +117,17 @@ export type PartKind =
   | "triac"
   | "diac"
   | "motor"
-  | "speaker";
+  | "speaker"
+  | "not"
+  | "and"
+  | "or"
+  | "nand"
+  | "nor"
+  | "xor"
+  | "xnor";
 
 export type MotorModelId = "3v" | "5v" | "6v" | "9v" | "12v";
+export type LogicGateFamily = "not" | "and" | "or" | "nand" | "nor" | "xor" | "xnor";
 
 /**
  * DC hobby motor models (educational).
@@ -249,6 +281,12 @@ export interface PlacedPart {
       | "blue";
 
     closed?: boolean;
+    /** Electrical switch type. Defaults to SPST for backwards compatibility. */
+    switchType?: SwitchType;
+    /** Selected contact for an SPDT switch. Defaults to open, or NO when closed is true. */
+    switchPosition?: SwitchPosition;
+    /** Physical appearance of a two-terminal tactile push button. */
+    switchStyle?: TactileSwitchStyle;
 
     label?: string;
 
@@ -277,6 +315,9 @@ export interface PlacedPart {
     lcdCols?: number;
     /** HD44780 character rows (1–4). Default 2. */
     lcdRows?: number;
+
+    /** Logic IC gate type uses A/B inputs, Y output, VCC and GND. */
+    gateFamily?: LogicGateFamily;
   };
 }
 
@@ -459,7 +500,11 @@ export interface SimResult {
   buzzers: Record<string, BuzzerState>;
   relays: Record<string, RelayState>;
 
-  switches?: Record<string, { closed: boolean }>;
+  switches?: Record<string, {
+    closed: boolean;
+    type?: SwitchType;
+    position?: SwitchPosition;
+  }>;
   buttons?: Record<string, { closed: boolean }>;
   capacitors?: Record<string, CapacitorState>;
   inductors?: Record<string, unknown>;
@@ -478,6 +523,7 @@ export interface SimResult {
   triacs?: Record<string, TriacState>;
   diacs?: Record<string, DiacState>;
   motors?: Record<string, MotorState>;
+  logicGates?: Record<string, { output: 0 | 1; powered: boolean }>;
   speakers?: Record<string, SpeakerState>;
   oledPowered?: boolean;
   oledText?: string;
@@ -552,4 +598,3 @@ export const CAPACITOR_VALUES = [
 
   { label: "1000 µF", value: 1000e-6 },
 ];
-

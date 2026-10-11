@@ -97,10 +97,10 @@ export const BOARD = {
 
 /** Standard 4-rail Z positions (match visual rail strips in parts-3d). */
 const STANDARD_RAIL_Z: Record<"tp" | "tn" | "bp" | "bn", number> = {
-  tp: -2.5,
-  tn: -2.2,
-  bp: 2.2,
-  bn: 2.5,
+  tp: -2.2,
+  tn: -1.9,
+  bp: 1.9,
+  bn: 2.2,
 };
 
 /**
@@ -122,16 +122,16 @@ const FULL_RAIL_Z_MAP: Record<
 };
 
 const ROW_Z: Record<RowLetter, number> = {
-  A: -1.78,
-  B: -1.58,
-  C: -1.38,
-  D: -1.18,
-  E: -1.0,
-  F: 1.0,
-  G: 1.18,
-  H: 1.38,
-  I: 1.58,
-  J: 1.78,
+  A: -1.1,
+  B: -0.9,
+  C: -0.7,
+  D: -0.5,
+  E: -0.3,
+  F: 0.3,
+  G: 0.5,
+  H: 0.7,
+  I: 0.9,
+  J: 1.1,
 };
 
 const FULL_ROW_Z: Record<string, number> = {

@@ -485,6 +485,50 @@ const McuSymbol = () => (
   </svg>
 );
 
+const GateSymbol = ({ label }: { label: string }) => (
+  <svg viewBox="0 0 48 36" width="34" height="27">
+    <rect x="9" y="5" width="30" height="26" rx="3" fill="none" stroke="currentColor" strokeWidth="2" />
+    <path d="M3 13H9M3 23H9M39 18H45M24 5V2M24 31V34" stroke="currentColor" strokeWidth="1.5" />
+    <text x="24" y="21" textAnchor="middle" fontSize="7" fontWeight="700" fill="currentColor">{label}</text>
+  </svg>
+);
+
+export function ComponentLibrarySymbol({
+  kind,
+}: {
+  kind: string;
+}) {
+  const symbols: Record<string, ReactNode> = {
+    resistor: <ResistorSymbol />,
+    capacitor: <CapacitorSymbol />,
+    inductor: <InductorSymbol />,
+    diode: <DiodeSymbol />,
+    led: <LedSymbol />,
+    transistor: <TransistorSymbol />,
+    thyristor: <ThyristorSymbol />,
+    triac: <TriacSymbol />,
+    diac: <DiacSymbol />,
+    switch: <SwitchSymbol />,
+    button: <PushButtonSymbol />,
+    relay: <RelaySymbol />,
+    pot: <PotentiometerSymbol />,
+    motor: <MotorSymbol />,
+    buzzer: <BuzzerSymbol />,
+    speaker: <SpeakerSymbol />,
+    lcd: <LcdSymbol />,
+    oled: <OledSymbol />,
+    mcu: <McuSymbol />,
+    not: <GateSymbol label="NOT" />,
+    and: <GateSymbol label="AND" />,
+    or: <GateSymbol label="OR" />,
+    nand: <GateSymbol label="NAND" />,
+    nor: <GateSymbol label="NOR" />,
+    xor: <GateSymbol label="XOR" />,
+    xnor: <GateSymbol label="XNOR" />,
+  };
+  return symbols[kind] ?? <span />;
+}
+
 const COMPS: LibPart[] = [
   { name: "Resistor", desc: "Various values ±1%, ±5%", type: "Passive", tool: "resistor", symbol: <ResistorSymbol /> },
   { name: "Capacitor", desc: "Ceramic, electrolytic, film", type: "Passive", tool: "capacitor", symbol: <CapacitorSymbol /> },
@@ -505,6 +549,13 @@ const COMPS: LibPart[] = [
   { name: "MCU", desc: "Arduino Uno / ESP32", type: "Integrated Circuits", tool: "mcu", symbol: <McuSymbol /> },
   { name: "LCD 16×2", desc: "HD44780-style display", type: "Integrated Circuits", tool: "lcd", symbol: <LcdSymbol /> },
   { name: "OLED", desc: "SSD1306-style I²C", type: "Integrated Circuits", tool: "oled", symbol: <OledSymbol /> },
+  { name: "NOT IC", desc: "Inverter — Y = NOT A", type: "Integrated Circuits", tool: "not", symbol: <GateSymbol label="NOT" /> },
+  { name: "AND IC", desc: "Y = A AND B", type: "Integrated Circuits", tool: "and", symbol: <GateSymbol label="AND" /> },
+  { name: "OR IC", desc: "Y = A OR B", type: "Integrated Circuits", tool: "or", symbol: <GateSymbol label="OR" /> },
+  { name: "NAND IC", desc: "Y = NOT (A AND B)", type: "Integrated Circuits", tool: "nand", symbol: <GateSymbol label="NAND" /> },
+  { name: "NOR IC", desc: "Y = NOT (A OR B)", type: "Integrated Circuits", tool: "nor", symbol: <GateSymbol label="NOR" /> },
+  { name: "XOR IC", desc: "Y = A XOR B", type: "Integrated Circuits", tool: "xor", symbol: <GateSymbol label="XOR" /> },
+  { name: "XNOR IC", desc: "Y = A XNOR B", type: "Integrated Circuits", tool: "xnor", symbol: <GateSymbol label="XNOR" /> },
 ];
 
 const CATEGORIES = [

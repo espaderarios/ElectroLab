@@ -30,6 +30,22 @@ import {
 } from "@/circuit/types";
 
 import { useLab } from "@/store/lab";
+import * as simulationModule from "@/circuit/simulate";
+
+function runSimulation(
+  state: ReturnType<typeof useLab.getState>,
+): SimResult {
+  const exports = simulationModule as unknown as Record<string, unknown>;
+  const simulator =
+    exports.runSimulation ??
+    exports.simulateCircuit ??
+    exports.simulate ??
+    exports.default;
+
+  return typeof simulator === "function"
+    ? (simulator as (value: typeof state) => SimResult)(state)
+    : state.sim;
+}
 
 declare global {
   interface Window {
@@ -421,6 +437,7 @@ export function JumperWire({
   wire: Wire;
   selected: boolean;
 }) {
+  const tool = useLab((s) => s.tool);
   const a = useMemo(
     () => vec(wire.a),
     [wire.a],
@@ -453,6 +470,9 @@ export function JumperWire({
   return (
     <group
       onClick={(e) => {
+        // Placement tools must be able to click a breadboard hole beneath an
+        // existing wire. Only selection/deletion should consume wire clicks.
+        if (tool !== "select" && tool !== "delete") return;
         e.stopPropagation();
 
         useLab
@@ -485,22 +505,55 @@ export function JumperWire({
   );
 }
 
-function Lead({ from, to }: { from: THREE.Vector3; to: THREE.Vector3 }) {
-  const { pos, quat, len } = useMemo(() => {
-    const dir = to.clone().sub(from);
-    const len = dir.length();
-    const pos = from.clone().lerp(to, 0.5);
-    const quat = new THREE.Quaternion().setFromUnitVectors(
-      new THREE.Vector3(0, 1, 0),
-      dir.clone().normalize(),
-    );
-    return { pos, quat, len };
-  }, [from.x, from.y, from.z, to.x, to.y, to.z]);
+/**
+ * Universal component lead: vertical out of the breadboard hole, then bends into the body.
+ * Used by every part that still calls <Lead /> — same visual language as resistors.
+ */
+function Lead({
+  from,
+  to,
+  color = "#c4c8ce",
+  radius = 0.012,
+}: {
+  from: THREE.Vector3;
+  to: THREE.Vector3;
+  color?: string;
+  radius?: number;
+}) {
+  const boardY = BOARD.height;
+  const pinTop = new THREE.Vector3(from.x, boardY + 0.01, from.z);
+  const bend = new THREE.Vector3(from.x, boardY + 0.045, from.z);
+  const verticalTop = new THREE.Vector3(
+    from.x,
+    Math.max(to.y - 0.015, boardY + 0.12),
+    from.z,
+  );
+  const toward = new THREE.Vector3(to.x - from.x, 0, to.z - from.z);
+  const horizLen = toward.length();
+  const entry =
+    horizLen > 0.001
+      ? new THREE.Vector3(
+          from.x + (toward.x / horizLen) * Math.min(horizLen * 0.9, horizLen),
+          to.y,
+          from.z + (toward.z / horizLen) * Math.min(horizLen * 0.9, horizLen),
+        )
+      : verticalTop.clone().setY(to.y);
+
+  const curve = new THREE.CatmullRomCurve3([pinTop, bend, verticalTop, entry]);
+  curve.curveType = "centripetal";
+  curve.tension = 0.18;
+
   return (
-    <mesh position={pos} quaternion={quat}>
-      <cylinderGeometry args={[0.012, 0.012, len, 8]} />
-      <meshStandardMaterial color="#c4c8ce" metalness={0.7} roughness={0.25} />
-    </mesh>
+    <group>
+      <mesh castShadow receiveShadow>
+        <tubeGeometry args={[curve, 20, radius, 8, false]} />
+        <meshStandardMaterial color={color} metalness={0.88} roughness={0.2} />
+      </mesh>
+      <mesh position={[from.x, boardY + 0.035, from.z]}>
+        <cylinderGeometry args={[radius * 1.08, radius * 1.2, 0.06, 10]} />
+        <meshStandardMaterial color={color} metalness={0.9} roughness={0.16} />
+      </mesh>
+    </group>
   );
 }
 
@@ -1826,6 +1879,101 @@ function SwitchLever({
   );
 }
 
+function MultiSwitchMesh({
+  part,
+  selected,
+}: {
+  part: PlacedPart;
+  selected: boolean;
+}) {
+  const type = part.props.switchType ?? (
+    part.pins.com1 ? "dpdt" :
+    part.pins.a1 ? "dpst" :
+    part.pins.com ? "spdt" : "spst"
+  );
+  const position = part.props.switchPosition ?? (part.props.closed ? "no" : "open");
+  const pinEntries = Object.entries(part.pins);
+  const pinPoints = pinEntries.map(([, pin]) => vec(pin));
+  const body = pinPoints.reduce((sum, point) => sum.add(point), new THREE.Vector3())
+    .multiplyScalar(1 / Math.max(pinPoints.length, 1));
+  body.y = BOARD.height + 0.2;
+  const pairCount = type === "dpst" || type === "dpdt" ? 2 : 1;
+  const isThrow = type === "spdt" || type === "dpdt";
+  const width = pairCount === 2 ? 0.46 : 0.30;
+  const height = isThrow ? 0.18 : 0.14;
+
+  const toggle = () => {
+    const lab = useLab.getState();
+    if (lab.tool === "delete") {
+      lab.select(part.id);
+      lab.deleteSelected();
+      return;
+    }
+    if (lab.tool === "select" && lab.selectedId !== part.id) {
+      lab.select(part.id);
+      return;
+    }
+    lab.toggleSwitch(part.id);
+    lab.select(part.id);
+  };
+
+  return (
+    <group onClick={(e) => { e.stopPropagation(); toggle(); }}>
+      {pinEntries.map(([name, pin]) => {
+        const point = vec(pin);
+        return (
+          <group key={name}>
+            <BentBoardLead pin={point} body={body} color="#c0c5cc" />
+            <BoardPinMarker
+              position={point}
+              label={name.toUpperCase()}
+              color="#94a3b8"
+              labelColor="#e2e8f0"
+            />
+          </group>
+        );
+      })}
+      <group position={[body.x, body.y, body.z]}>
+        <mesh castShadow receiveShadow>
+          <boxGeometry args={[width, height, 0.28]} />
+          <meshStandardMaterial
+            color={selected ? "#334155" : "#1f2937"}
+            roughness={0.32}
+            metalness={0.15}
+          />
+        </mesh>
+        <mesh position={[0, height / 2 + 0.045, 0]} castShadow>
+          <boxGeometry args={[width * 0.82, 0.06, 0.19]} />
+          <meshStandardMaterial color={selected ? "#93c5fd" : "#64748b"} roughness={0.28} />
+        </mesh>
+        {Array.from({ length: pairCount }, (_, index) => {
+          const x = pairCount === 1 ? 0 : (index === 0 ? -0.12 : 0.12);
+          const active = position !== "open" && (position === "no" || type === "dpst");
+          return (
+            <group key={index} position={[x, height / 2 + 0.10, 0]}>
+              <mesh rotation={[0, 0, active ? -0.18 : 0.24]} position={[0, 0.02, 0]} castShadow>
+                <boxGeometry args={[0.16, 0.025, 0.025]} />
+                <meshStandardMaterial color={active ? "#2563eb" : "#94a3b8"} metalness={0.5} />
+              </mesh>
+              <mesh position={[0, 0.055, 0]} castShadow>
+                <cylinderGeometry args={[0.045, 0.05, 0.06, 12]} />
+                <meshStandardMaterial color={active ? "#3b82f6" : "#cbd5e1"} roughness={0.25} />
+              </mesh>
+            </group>
+          );
+        })}
+      </group>
+      {part.props.label && (
+        <Html position={[body.x, body.y + 0.34, body.z]} center distanceFactor={5}>
+          <div style={{ color: "#fff", fontSize: 10, fontWeight: 800, textShadow: "0 2px 5px #000", pointerEvents: "none", whiteSpace: "nowrap" }}>
+            {part.props.label}
+          </div>
+        </Html>
+      )}
+    </group>
+  );
+}
+
 
 export function SwitchMesh({
   part,
@@ -1834,6 +1982,14 @@ export function SwitchMesh({
   part: PlacedPart;
   selected: boolean;
 }) {
+  const switchType = part.props.switchType ?? (
+    part.pins.com1 ? "dpdt" :
+    part.pins.a1 ? "dpst" :
+    part.pins.com ? "spdt" : "spst"
+  );
+  if (switchType !== "spst") {
+    return <MultiSwitchMesh part={part} selected={selected} />;
+  }
   const a = vec(part.pins.a);
   const b = vec(part.pins.b);
 
@@ -1842,9 +1998,7 @@ export function SwitchMesh({
   // =========================================================
 
   const body = a.clone().lerp(b, 0.5);
-
-  body.y = BOARD.height + 0.10;
-
+  body.y = BOARD.height + 0.2;
 
   // =========================================================
   // ORIENTATION
@@ -1886,17 +2040,14 @@ export function SwitchMesh({
 
   const pinX = 0.105;
   const pinZ = 0.075;
-
+  // Short decorative legs under the housing — do not dig into the board
   const pinPositions = [
-    // FRONT / TOP ROW
-    [-pinX, -0.12, -pinZ],
-    [0,     -0.12, -pinZ],
-    [pinX,  -0.12, -pinZ],
-
-    // BACK / BOTTOM ROW
-    [-pinX, -0.12, pinZ],
-    [0,     -0.12, pinZ],
-    [pinX,  -0.12, pinZ],
+    [-pinX, -0.055, -pinZ],
+    [0,     -0.055, -pinZ],
+    [pinX,  -0.055, -pinZ],
+    [-pinX, -0.055, pinZ],
+    [0,     -0.055, pinZ],
+    [pinX,  -0.055, pinZ],
   ];
 
 
@@ -1919,6 +2070,11 @@ export function SwitchMesh({
         lab.select(part.id);
       }}
     >
+      {/* Real electrical pins — vertical into breadboard holes */}
+      <BentBoardLead pin={a} body={body} color="#c0c5cc" />
+      <BentBoardLead pin={b} body={body} color="#c0c5cc" />
+      <BoardPinMarker position={a} label="A" color="#94a3b8" labelColor="#e2e8f0" />
+      <BoardPinMarker position={b} label="B" color="#94a3b8" labelColor="#e2e8f0" />
 
       {/* =====================================================
           SWITCH BODY
@@ -1942,9 +2098,9 @@ export function SwitchMesh({
             >
               <cylinderGeometry
                 args={[
+                  0.011,
                   0.012,
-                  0.012,
-                  0.14,
+                  0.07,
                   10,
                 ]}
               />
@@ -2815,6 +2971,7 @@ function createCapacitorLead(
   );
 }
 
+
 class ToroidCurve extends THREE.Curve<THREE.Vector3> {
   constructor(
     private readonly turns: number,
@@ -2829,16 +2986,12 @@ class ToroidCurve extends THREE.Curve<THREE.Vector3> {
     t: number,
     target = new THREE.Vector3(),
   ) {
-    const theta =
-      t * this.turns * Math.PI * 2;
+    const phi = t * Math.PI * 2;
+    const theta = t * this.turns * Math.PI * 2;
 
-    const phi =
-      t * Math.PI * 2;
-
+    // Keep the copper winding just outside the ferrite core.
     const windingRadius =
-      this.coreRadius +
-      this.wireRadius +
-      0.006;
+      this.coreRadius + this.wireRadius * 1.05;
 
     const radial =
       this.majorRadius +
@@ -2853,6 +3006,7 @@ class ToroidCurve extends THREE.Curve<THREE.Vector3> {
     return target;
   }
 }
+
 
 function createToroidWindingCurve(
   turns: number,
@@ -2874,11 +3028,13 @@ function ToroidWinding({
   majorRadius,
   coreRadius,
   wireRadius,
+  materialRef,
 }: {
   turns: number;
   majorRadius: number;
   coreRadius: number;
   wireRadius: number;
+  materialRef?: React.RefObject<THREE.MeshStandardMaterial | null>;
 }) {
   const curve = useMemo(
     () =>
@@ -2915,7 +3071,10 @@ function ToroidWinding({
   return (
     <mesh geometry={geometry}>
       <meshStandardMaterial
+        ref={materialRef as React.Ref<THREE.MeshStandardMaterial>}
         color="#a85f45"
+        emissive="#c2410c"
+        emissiveIntensity={0}
         metalness={0.88}
         roughness={0.20}
       />
@@ -2927,12 +3086,33 @@ function ToroidWinding({
 export function InductorMesh({
   part,
   selected,
+  sim,
 }: {
   part: PlacedPart;
   selected: boolean;
+  sim?: SimResult;
 }) {
   const a = vec(part.pins.a);
   const b = vec(part.pins.b);
+  const current = Math.abs(
+    (sim?.inductors?.[part.id] as { current?: number } | undefined)
+      ?.current ?? 0,
+  );
+  const active = current > 0.0005;
+  const windingMat = useRef<THREE.MeshStandardMaterial>(null);
+  const coreMat = useRef<THREE.MeshStandardMaterial>(null);
+  useFrame(({ clock }) => {
+    const t = clock.getElapsedTime();
+    const pulse = active ? 0.55 + Math.sin(t * (6 + Math.min(current * 40, 12))) * 0.45 : 0;
+    const energy = pulse * Math.min(1, current * 8 + 0.25);
+    if (windingMat.current) {
+      windingMat.current.emissiveIntensity = active ? 0.35 + energy * 1.1 : 0;
+      windingMat.current.color.set(active ? "#d97757" : "#a85f45");
+    }
+    if (coreMat.current) {
+      coreMat.current.emissiveIntensity = active ? 0.15 + energy * 0.35 : 0;
+    }
+  });
 
 
   /*
@@ -2942,8 +3122,7 @@ export function InductorMesh({
    */
 
   const body = a.clone().lerp(b, 0.5);
-
-  body.y += 0.19;
+  body.y = BOARD.height + 0.50;
 
 
   /*
@@ -2992,7 +3171,7 @@ export function InductorMesh({
   /*
    * Dense winding like the reference.
    */
-  const turns = 18;
+  const turns = 30;
 
 
   /*
@@ -3142,11 +3321,14 @@ export function InductorMesh({
           />
 
           <meshStandardMaterial
+            ref={coreMat}
             color={
               selected
                 ? "#7a7f84"
                 : "#a99b7c"
             }
+            emissive="#f59e0b"
+            emissiveIntensity={0}
             roughness={0.62}
             metalness={0.08}
           />
@@ -3162,6 +3344,7 @@ export function InductorMesh({
           majorRadius={majorRadius}
           coreRadius={coreRadius}
           wireRadius={wireRadius}
+          materialRef={windingMat}
         />
 
 
@@ -3341,7 +3524,7 @@ export function ButtonMesh({ part, selected }: { part: PlacedPart; selected: boo
   const a = vec(part.pins.a);
   const b = vec(part.pins.b);
   const body = a.clone().lerp(b, 0.5);
-  body.y += 0.1;
+  body.y = BOARD.height + 0.18;
   const cap = useRef<THREE.Mesh>(null);
   const closed = Boolean(part.props.closed);
 
@@ -3399,8 +3582,10 @@ export function ButtonMesh({ part, selected }: { part: PlacedPart; selected: boo
         if (lab.tool === "select") lab.select(part.id);
       }}
     >
-      <Lead from={a} to={body} />
-      <Lead from={b} to={body} />
+      <BentBoardLead pin={a} body={body} color="#c0c5cc" />
+      <BentBoardLead pin={b} body={body} color="#c0c5cc" />
+      <BoardPinMarker position={a} label="1" color="#94a3b8" labelColor="#e2e8f0" />
+      <BoardPinMarker position={b} label="2" color="#94a3b8" labelColor="#e2e8f0" />
       <group position={body}>
         <mesh castShadow>
           <boxGeometry args={[0.24, 0.1, 0.24]} />
@@ -3526,8 +3711,8 @@ export function BuzzerMesh({
         useLab.getState().select(part.id);
       }}
     >
-      <Lead from={a} to={body} />
-      <Lead from={b} to={body} />
+      <BentBoardLead pin={a} body={body} />
+      <BentBoardLead pin={b} body={body} />
       <group position={body}>
         <mesh castShadow>
           <cylinderGeometry args={[0.12, 0.1, 0.12, 22]} />
@@ -3982,7 +4167,7 @@ export function PotMesh({
   const w = vec(part.pins.w);
 
   const center = a.clone().lerp(b, 0.5);
-  center.y += 0.10;
+  center.y = BOARD.height + 0.30;
 
 
   const [isDragging, setIsDragging] = useState(false);
@@ -4033,11 +4218,11 @@ export function PotMesh({
 
   useFrame((_, delta) => {
     if (!shaft.current) return;
-
+    // Shaft runs along +Z; spin around Z so the knob turns visibly
     shaft.current.rotation.z = THREE.MathUtils.damp(
       shaft.current.rotation.z,
       targetAngle,
-      12,
+      isDragging ? 28 : 14,
       delta,
     );
   });
@@ -4080,21 +4265,23 @@ export function PotMesh({
       const rounded =
         Math.round(newResistance / 10) * 10;
 
-      /*
-      * Update the selected component itself.
-      */
+      // Live update without undo history spam (history commits on pointer up)
       const state = useLab.getState();
-
-      if (state.setSelectedResistance) {
-        state.setSelectedResistance(rounded);
+      if (!state.selectedId) {
+        state.select(part.id);
       }
-
-      /*
-      * Keep the default potentiometer value synchronized.
-      */
-      if (state.setResistorValue) {
-        state.setResistorValue(rounded);
-      }
+      const parts = state.parts.map((p) =>
+        p.id === part.id || p.id === state.selectedId
+          ? p.kind === "pot" || p.kind === "resistor"
+            ? { ...p, props: { ...p.props, resistance: rounded } }
+            : p
+          : p,
+      );
+      const next = { ...state, parts };
+      useLab.setState({
+        parts,
+        sim: runSimulation(next),
+      });
     };
 
     const handlePointerUp = () => {
@@ -4108,6 +4295,14 @@ export function PotMesh({
 
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
+
+      // Single undo step for the finished drag
+      const state = useLab.getState();
+      const p = state.parts.find((x) => x.id === part.id);
+      if (p && p.kind === "pot") {
+        const r = Number(p.props.resistance ?? 1000);
+        state.setSelectedResistance(r);
+      }
     };
 
     const handlePointerCancel = () => {
@@ -4276,7 +4471,7 @@ export function PotMesh({
         <mesh>
           <boxGeometry
             args={[
-              0.31,
+              0.45,
               0.25,
               0.035,
             ]}
@@ -4727,58 +4922,59 @@ export function PotMesh({
           THREE TERMINALS
          ====================================================== */}
 
-        {[a, w, b].map(
-          (pin, index) => (
-            <group
-              key={`pot-terminal-${index}`}
-              position={[
-                pin.x,
-                center.y - 0.16,
-                pin.z,
-              ]}
-            >
+{[a, w, b].map((pin, index) => {
+  const isLeft = index === 0;
+  const isRight = index === 2;
+  const isOutside = isLeft || isRight;
 
-            <mesh>
-              <boxGeometry
-                args={[
-                  0.018,
-                  0.075,
-                  0.018,
-                ]}
-              />
+  return (
+    <group
+      key={`pot-terminal-${index}`}
+      position={[
+        pin.x,
+        center.y - 0.16,
+        pin.z,
+      ]}
+    >
+      {/* Metal terminal */}
+      <mesh
+        rotation={[
+          0,
+          0,
+          isOutside
+            ? isLeft
+              ? Math.PI / 2
+              : -Math.PI / 2
+            : 0,
+        ]}
+      >
+        <boxGeometry args={[0.018, 0.075, 0.018]} />
+        <meshStandardMaterial
+          color="#8c9296"
+          metalness={0.9}
+          roughness={0.3}
+        />
+      </mesh>
 
-              <meshStandardMaterial
-                color="#8c9296"
-                roughness={0.3}
-                metalness={0.9}
-              />
-            </mesh>
+      {/* Terminal end */}
+      <mesh
+        position={[
+          isLeft ? 0.035 : isRight ? -0.035 : 0,
+          -0.045,
+          0,
+        ]}
+      >
+        <cylinderGeometry args={[0.025, 0.025, 0.018, 20]} />
+        <meshStandardMaterial
+          color="#b6bcc0"
+          metalness={0.92}
+          roughness={0.25}
+        />
+      </mesh>
+    </group>
+  );
+})}
 
-            <mesh
-              position={[
-                0,
-                -0.045,
-                0,
-              ]}
-            >
-              <cylinderGeometry
-                args={[
-                  0.025,
-                  0.025,
-                  0.018,
-                  20,
-                ]}
-              />
-
-              <meshStandardMaterial
-                color="#b6bcc0"
-                roughness={0.25}
-                metalness={0.92}
-              />
-            </mesh>
-          </group>
-        ),
-      )}
 
       {/* ======================================================
           SELECTION RING
@@ -7068,6 +7264,63 @@ const TRANSISTOR_META: Record<
 /* Helpers                                                                    */
 /* -------------------------------------------------------------------------- */
 
+
+/**
+ * Resistor-style lead into a breadboard hole (alias of Lead).
+ * pin = hole position, body = package attachment point.
+ */
+function BentBoardLead({
+  pin,
+  body,
+  color = "#b9c0c8",
+  radius = 0.012,
+}: {
+  pin: THREE.Vector3;
+  body: THREE.Vector3;
+  color?: string;
+  radius?: number;
+}) {
+  return <Lead from={pin} to={body} color={color} radius={radius} />;
+}
+
+function BoardPinMarker({
+  position,
+  label,
+  color = "#e2e8f0",
+  labelColor,
+}: {
+  position: THREE.Vector3;
+  label?: string;
+  color?: string;
+  labelColor?: string;
+}) {
+  if (!label) return null;
+  return (
+    <Html
+      position={[position.x, BOARD.height + 0.15, position.z]}
+      center
+      distanceFactor={5.2}
+      style={{
+        pointerEvents: "none",
+        userSelect: "none",
+        whiteSpace: "nowrap",
+        fontFamily: "IBM Plex Mono, monospace",
+        fontSize: "9px",
+        fontWeight: 700,
+        letterSpacing: "0.03em",
+        color: labelColor ?? color,
+        textShadow: "0 1px 4px rgba(0,0,0,.95)",
+        background: "rgba(15,23,42,.85)",
+        border: `1px solid ${color}`,
+        borderRadius: "4px",
+        padding: "1px 5px",
+      }}
+    >
+      {label}
+    </Html>
+  );
+}
+
 function TransistorPinLabel({
   position,
   label,
@@ -7103,12 +7356,7 @@ function TransistorPinLabel({
   );
 }
 
-/**
- * Thin metallic transistor lead.
- *
- * The final section is deliberately slightly thicker near the package,
- * matching the way real component leads enter the molded/metal body.
- */
+/** @deprecated Use Lead / BentBoardLead — kept as alias for older call sites. */
 function TransistorLead({
   from,
   to,
@@ -7118,32 +7366,7 @@ function TransistorLead({
   to: THREE.Vector3;
   color?: string;
 }) {
-  const direction = to.clone().sub(from);
-  const length = direction.length();
-
-  const midpoint = from.clone().add(to).multiplyScalar(0.5);
-
-  const quaternion = new THREE.Quaternion();
-
-  quaternion.setFromUnitVectors(
-    new THREE.Vector3(0, 1, 0),
-    direction.normalize(),
-  );
-
-  return (
-    <mesh
-      castShadow
-      position={midpoint}
-      quaternion={quaternion}
-    >
-      <cylinderGeometry args={[0.012, 0.014, length, 8]} />
-      <meshStandardMaterial
-        color={color}
-        metalness={0.82}
-        roughness={0.24}
-      />
-    </mesh>
-  );
+  return <Lead from={from} to={to} color={color} />;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -7579,7 +7802,7 @@ export function TransistorMesh({
     .add(c)
     .multiplyScalar(1 / 3);
 
-  body.y = BOARD.height + 0.16;
+  body.y = BOARD.height + 0.2;
 
   const model =
     part.props.transistorModel ?? "2n3904";
@@ -7616,51 +7839,9 @@ export function TransistorMesh({
       {/* Physical leads                                                     */}
       {/* ------------------------------------------------------------------ */}
 
-      <TransistorLead
-        from={e}
-        to={body}
-        color={leadColor}
-      />
-
-      <TransistorLead
-        from={b}
-        to={body}
-        color={leadColor}
-      />
-
-      <TransistorLead
-        from={c}
-        to={body}
-        color={leadColor}
-      />
-
-      {/* Slightly thicker lead collars where the pins enter the package */}
-      <mesh position={e.clone().lerp(body, 0.86)}>
-        <cylinderGeometry args={[0.016, 0.018, 0.035, 8]} />
-        <meshStandardMaterial
-          color={leadColor}
-          metalness={0.82}
-          roughness={0.25}
-        />
-      </mesh>
-
-      <mesh position={b.clone().lerp(body, 0.86)}>
-        <cylinderGeometry args={[0.016, 0.018, 0.035, 8]} />
-        <meshStandardMaterial
-          color={leadColor}
-          metalness={0.82}
-          roughness={0.25}
-        />
-      </mesh>
-
-      <mesh position={c.clone().lerp(body, 0.86)}>
-        <cylinderGeometry args={[0.016, 0.018, 0.035, 8]} />
-        <meshStandardMaterial
-          color={leadColor}
-          metalness={0.82}
-          roughness={0.25}
-        />
-      </mesh>
+      <BentBoardLead pin={e} body={body} color={leadColor} />
+      <BentBoardLead pin={b} body={body} color={leadColor} />
+      <BentBoardLead pin={c} body={body} color={leadColor} />
 
       {/* ------------------------------------------------------------------ */}
       {/* Actual package                                                     */}
@@ -7825,12 +8006,17 @@ export function ThyristorMesh({
     .add(g)
     .add(k)
     .multiplyScalar(1 / 3);
-  body.y = BOARD.height + 0.16;
+  body.y = BOARD.height + 0.2;
 
   const model = part.props.thyristorModel ?? "2n5060";
   const meta = THYRISTOR_META[model] ?? THYRISTOR_META["2n5060"];
   const on = Boolean(sim.thyristors?.[part.id]?.conducting);
   const leadColor = "#b9c0c8";
+
+  // Pin colors: Anode (A), Gate (G), Cathode (K)
+  const colA = "#f87171";
+  const colG = "#fbbf24";
+  const colK = "#60a5fa";
 
   return (
     <group
@@ -7839,22 +8025,13 @@ export function ThyristorMesh({
         useLab.getState().select(part.id);
       }}
     >
-      <TransistorLead from={a} to={body} color={leadColor} />
-      <TransistorLead from={g} to={body} color={leadColor} />
-      <TransistorLead from={k} to={body} color={leadColor} />
+      <BoardPinMarker position={a} label="A" color={colA} labelColor="#fecaca" />
+      <BoardPinMarker position={g} label="G" color={colG} labelColor="#fde68a" />
+      <BoardPinMarker position={k} label="K" color={colK} labelColor="#bfdbfe" />
 
-      <mesh position={a.clone().lerp(body, 0.86)}>
-        <cylinderGeometry args={[0.016, 0.018, 0.035, 8]} />
-        <meshStandardMaterial color={leadColor} metalness={0.82} roughness={0.25} />
-      </mesh>
-      <mesh position={g.clone().lerp(body, 0.86)}>
-        <cylinderGeometry args={[0.016, 0.018, 0.035, 8]} />
-        <meshStandardMaterial color={leadColor} metalness={0.82} roughness={0.25} />
-      </mesh>
-      <mesh position={k.clone().lerp(body, 0.86)}>
-        <cylinderGeometry args={[0.016, 0.018, 0.035, 8]} />
-        <meshStandardMaterial color={leadColor} metalness={0.82} roughness={0.25} />
-      </mesh>
+      <BentBoardLead pin={a} body={body} color={colA} />
+      <BentBoardLead pin={g} body={body} color={colG} />
+      <BentBoardLead pin={k} body={body} color={colK} />
 
       <group position={body}>
         {meta.package === "to92" ? (
@@ -7918,11 +8095,15 @@ export function TriacMesh({
   const g = vec(part.pins.g);
   const mt2 = vec(part.pins.mt2);
   const body = mt1.clone().add(g).add(mt2).multiplyScalar(1 / 3);
-  body.y = BOARD.height + 0.16;
+  body.y = BOARD.height + 0.2;
   const model = part.props.triacModel ?? "bt136";
   const meta = TRIAC_META[model] ?? TRIAC_META.bt136;
   const on = Boolean(sim.triacs?.[part.id]?.conducting);
   const leadColor = "#b9c0c8";
+
+  const colMt1 = "#60a5fa";
+  const colG = "#fbbf24";
+  const colMt2 = "#f87171";
 
   return (
     <group
@@ -7931,15 +8112,13 @@ export function TriacMesh({
         useLab.getState().select(part.id);
       }}
     >
-      <TransistorLead from={mt1} to={body} color={leadColor} />
-      <TransistorLead from={g} to={body} color={leadColor} />
-      <TransistorLead from={mt2} to={body} color={leadColor} />
-      {[mt1, g, mt2].map((p, i) => (
-        <mesh key={i} position={p.clone().lerp(body, 0.86)}>
-          <cylinderGeometry args={[0.016, 0.018, 0.035, 8]} />
-          <meshStandardMaterial color={leadColor} metalness={0.82} roughness={0.25} />
-        </mesh>
-      ))}
+      <BoardPinMarker position={mt1} label="MT1" color={colMt1} labelColor="#bfdbfe" />
+      <BoardPinMarker position={g} label="G" color={colG} labelColor="#fde68a" />
+      <BoardPinMarker position={mt2} label="MT2" color={colMt2} labelColor="#fecaca" />
+
+      <BentBoardLead pin={mt1} body={body} color={colMt1} />
+      <BentBoardLead pin={g} body={body} color={colG} />
+      <BentBoardLead pin={mt2} body={body} color={colMt2} />
       <group position={body}>
         {meta.package === "to92" ? (
           <TO92Body selected={selected} title={meta.title} />
@@ -7998,7 +8177,7 @@ export function DiacMesh({
   const a = vec(part.pins.a);
   const b = vec(part.pins.b);
   const body = a.clone().lerp(b, 0.5);
-  body.y = BOARD.height + 0.12;
+  body.y = BOARD.height + 0.18;
   const model = part.props.diacModel ?? "db3";
   const meta = DIAC_META[model] ?? DIAC_META.db3;
   const on = Boolean(sim.diacs?.[part.id]?.conducting);
@@ -8010,8 +8189,8 @@ export function DiacMesh({
         useLab.getState().select(part.id);
       }}
     >
-      <Lead from={a} to={body} />
-      <Lead from={b} to={body} />
+      <BentBoardLead pin={a} body={body} />
+      <BentBoardLead pin={b} body={body} />
       <mesh position={body}>
         <cylinderGeometry args={[0.05, 0.05, 0.14, 12]} />
         <meshStandardMaterial
@@ -8071,7 +8250,7 @@ export function MotorMesh({
   const a = vec(part.pins.a);
   const b = vec(part.pins.b);
   const body = a.clone().lerp(b, 0.5);
-  body.y = BOARD.height + 0.18;
+  body.y = BOARD.height + 0.22;
   const state = sim.motors?.[part.id];
   const on = Boolean(state?.on);
   const speed = state?.speed ?? 0;
@@ -8084,6 +8263,10 @@ export function MotorMesh({
     shaftRef.current.rotation.x += spin;
   });
 
+  // Terminal colors: A = +, B = − (conventional hobby motor marking)
+  const colPos = "#f87171";
+  const colNeg = "#94a3b8";
+
   return (
     <group
       onClick={(ev) => {
@@ -8092,17 +8275,18 @@ export function MotorMesh({
       }}
       onPointerOver={(ev) => {
         ev.stopPropagation();
-        
         document.body.style.cursor = "pointer";
       }}
       onPointerOut={(ev) => {
         ev.stopPropagation();
-       
         document.body.style.cursor = "default";
       }}
     >
-      <Lead from={a} to={body} />
-      <Lead from={b} to={body} />
+      <BoardPinMarker position={a} label="+" color={colPos} labelColor="#fecaca" />
+      <BoardPinMarker position={b} label="−" color={colNeg} labelColor="#e2e8f0" />
+
+      <BentBoardLead pin={a} body={body} color={colPos} />
+      <BentBoardLead pin={b} body={body} color={colNeg} />
 
       {/* Motor can */}
       <mesh position={body} rotation={[0, 0, Math.PI / 2]}>
@@ -8284,8 +8468,8 @@ export function SpeakerMesh({
         useLab.getState().select(part.id);
       }}
     >
-      <Lead from={a} to={body} />
-      <Lead from={b} to={body} />
+      <BentBoardLead pin={a} body={body} />
+      <BentBoardLead pin={b} body={body} />
       <group position={body}>
         {/* Frame */}
         <mesh castShadow>
@@ -8333,6 +8517,90 @@ export function SpeakerMesh({
   );
 }
 
+function LogicGateMesh({
+  part,
+  selected,
+  sim,
+}: {
+  part: PlacedPart;
+  selected: boolean;
+  sim: SimResult;
+}) {
+  const packagePins = Array.from({ length: 14 }, (_, index) => part.pins[`p${index + 1}`])
+    .filter(Boolean)
+    .map(vec);
+  if (packagePins.length !== 14) return null;
+  // Pins 1-7 run down one side of the package and pins 8-14 return
+  // on the other side. The body is centered along the pin-number axis
+  // and halfway between the two pin rows, as on a real DIP package.
+  const center = packagePins[0].clone().add(packagePins[6]).multiplyScalar(0.5);
+  center.z = (packagePins[0].z + packagePins[13].z) / 2;
+  center.y = BOARD.height + 0.15;
+  const family = part.props.gateFamily ?? part.kind.toUpperCase();
+  const state = sim.logicGates?.[part.id];
+  const color = state?.powered ? (state.output ? "#22c55e" : "#334155") : "#1e293b";
+  const pinMaterial = <meshStandardMaterial color="#cbd5e1" metalness={0.8} roughness={0.25} />;
+  const bodyEdge = 0.24;
+  return (
+    <group>
+      {packagePins.map((pin, index) => (
+        <group key={`pin-${index}`}>
+          <mesh position={[pin.x, BOARD.height + 0.01, pin.z]}>
+            <cylinderGeometry args={[0.014, 0.014, 0.32, 6]} />
+            {pinMaterial}
+          </mesh>
+          <mesh
+            position={[
+              pin.x,
+              BOARD.height + 0.09,
+              (pin.z + center.z + (pin.z < center.z ? -bodyEdge : bodyEdge)) / 2,
+            ]}
+            rotation={[Math.PI / 2, 0, 0]}
+          >
+            <cylinderGeometry args={[0.014, 0.014, Math.max(0.04, Math.abs(pin.z - center.z) - bodyEdge + 0.08), 6]} />
+            {pinMaterial}
+          </mesh>
+        </group>
+      ))}
+      <mesh position={[center.x, center.y, center.z]}>
+        <boxGeometry args={[1.42, 0.3, 0.48]} />
+        <meshStandardMaterial
+          color={color}
+          emissive={state?.output ? "#14532d" : "#000000"}
+          emissiveIntensity={state?.output ? 0.7 : 0}
+        />
+      </mesh>
+      <lineSegments position={[center.x, center.y, center.z]}>
+        <edgesGeometry args={[new THREE.BoxGeometry(1.42, 0.3, 0.48)]} />
+        <lineBasicMaterial color={selected ? "#60a5fa" : "#64748b"} />
+      </lineSegments>
+      <mesh position={[center.x - 0.48, center.y + 0.155, center.z]}>
+        <torusGeometry args={[0.08, 0.025, 8, 16, Math.PI]} />
+        <meshStandardMaterial color="#0f172a" />
+      </mesh>
+      <Html
+        position={[center.x, center.y + 0.13, center.z]}
+        center
+        distanceFactor={7}
+        style={{
+          pointerEvents: "none",
+          color: "#e2e8f0",
+          fontFamily: "IBM Plex Mono, monospace",
+          fontSize: "8px",
+          fontWeight: 700,
+          whiteSpace: "nowrap",
+        }}
+      >
+        <div style={{ textAlign: "center", lineHeight: 1.35 }}>
+          <div>{family}</div>
+          <div style={{ fontSize: "6px", color: "#fecaca" }}>14 VCC</div>
+          <div style={{ fontSize: "6px", color: "#bfdbfe" }}>7 GND</div>
+        </div>
+      </Html>
+    </group>
+  );
+}
+
 export function PartSwitch({
   part,
   selected,
@@ -8356,7 +8624,7 @@ export function PartSwitch({
     case "capacitor":
       return <CapacitorMesh part={part} selected={selected} />;
     case "inductor":
-      return <InductorMesh part={part} selected={selected} />;
+      return <InductorMesh part={part} selected={selected} sim={sim} />;
     case "transistor":
       return (
         <TransistorMesh part={part} selected={selected} sim={sim} />
@@ -8417,6 +8685,14 @@ export function PartSwitch({
           text={sim.oledText ?? ""}
         />
       );
+    case "not":
+    case "and":
+    case "or":
+    case "nand":
+    case "nor":
+    case "xor":
+    case "xnor":
+      return <LogicGateMesh part={part} selected={selected} sim={sim} />;
     case "pot":
       return <PotMesh part={part} selected={selected} />;
     default:
@@ -8542,7 +8818,8 @@ export function PowerSupply() {
 }
 
 export function BreadboardBody() {
-  const meshRef = useRef<THREE.InstancedMesh>(null);
+  const wellRef = useRef<THREE.InstancedMesh>(null);
+  const rimRef = useRef<THREE.InstancedMesh>(null);
   const dummy = useMemo(() => new THREE.Object3D(), []);
   const clickHole = useLab((s) => s.clickHole);
   const setHover = useLab((s) => s.setHover);
@@ -8550,25 +8827,50 @@ export function BreadboardBody() {
   const boardId = useLab((s) => s.boardId);
   const holes = useMemo(() => getAllHoles(), [boardId]);
   useLayoutEffect(() => {
-    if (!meshRef.current) return;
+    if (!wellRef.current || !rimRef.current) return;
+
+    // Terminal strip top ≈ BOARD.height + 0.07 — wells recess into it
+    const stripTop = BOARD.height + 0.07;
+    const wellDepth = 0.055;
 
     holes.forEach((id, i) => {
-      const [x, y, z] = holePosition(id);
+      const [x, , z] = holePosition(id);
 
-      dummy.position.set(x, y - 0.01, z);
-      dummy.rotation.x = Math.PI / 2;
+      // Dark cylindrical cavity (mostly below the strip surface)
+      dummy.position.set(x, stripTop - wellDepth / 2 + 0.002, z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
       dummy.updateMatrix();
+      wellRef.current!.setMatrixAt(i, dummy.matrix);
 
-      meshRef.current!.setMatrixAt(i, dummy.matrix);
+      // Thin metal rim flush with the strip top
+      dummy.position.set(x, stripTop + 0.0015, z);
+      dummy.rotation.set(-Math.PI / 2, 0, 0);
+      dummy.updateMatrix();
+      rimRef.current!.setMatrixAt(i, dummy.matrix);
     });
 
-    meshRef.current.instanceMatrix.needsUpdate = true;
-    meshRef.current.count = holes.length;
+    wellRef.current.instanceMatrix.needsUpdate = true;
+    wellRef.current.count = holes.length;
+    rimRef.current.instanceMatrix.needsUpdate = true;
+    rimRef.current.count = holes.length;
   }, [dummy, holes]);
 
   const w = BOARD.width;
   const d = BOARD.depth;
   const railLen = Math.max(0.4, w - 0.3);
+  // Width of each raised terminal block along the row direction. The
+  // A standard board has five terminal rows on each side. E/F are three
+  // 2.54 mm pitches apart, matching a DIP package's 7.62 mm row spacing.
+  const terminalDepth = BOARD.presetId === "full-1660" ? 3.15 : 1.4;
+  const terminalCenters =
+    BOARD.presetId === "full-1660"
+      ? [-4.23, -1.43, 1.43, 4.23]
+      : [-0.8, 0.8];
+  const railCenters =
+    BOARD.presetId === "full-1660"
+      ? [-5.35, -5.05, -2.35, -2.05, 2.05, 2.35, 5.05, 5.35]
+      : [-2.2, -1.9, 1.9, 2.2];
 
   return (
     <group key={boardId}>
@@ -8576,39 +8878,79 @@ export function BreadboardBody() {
         <boxGeometry args={[w, BOARD.height, d]} />
         <meshStandardMaterial color="#f4f1ea" roughness={0.7} />
       </mesh>
+      {/* Raised terminal strips and recessed channels, matching a real solderless board. */}
+      {terminalCenters.map((z) => (
+        <mesh key={`terminal-strip-${z}`} position={[0, BOARD.height + 0.035, z]} receiveShadow>
+          <boxGeometry args={[Math.max(0.4, w - 0.22), 0.07, terminalDepth]} />
+          <meshStandardMaterial color="#eeeae2" roughness={0.82} />
+        </mesh>
+      ))}
+      {BOARD.hasRails &&
+        railCenters.map((z, index) => (
+          <mesh key={`rail-channel-${z}`} position={[0, BOARD.height + 0.025, z]} receiveShadow>
+            <boxGeometry args={[railLen, 0.05, 0.19]} />
+            <meshStandardMaterial color="#e9e5dc" roughness={0.82} />
+          </mesh>
+        ))}
       {BOARD.hasRails &&
         (BOARD.presetId === "full-1660" ? (
           <group>
             {FULL_RAIL_Z.map((z, i) => (
-              <mesh
-                key={`full-rail-${i}`}
-                position={[0, BOARD.height + 0.005, z]}
-              >
-                <boxGeometry args={[railLen, 0.012, 0.06]} />
-                <meshStandardMaterial
-                  color={i % 2 === 0 ? "#c2413b" : "#1d4ed8"}
-                />
-              </mesh>
+              <group key={`full-rail-${i}`}>
+                <mesh position={[0, BOARD.height + 0.005, z]}>
+                  <boxGeometry args={[railLen, 0.012, 0.06]} />
+                  <meshStandardMaterial
+                    color={i % 2 === 0 ? "#c2413b" : "#1d4ed8"}
+                  />
+                </mesh>
+                <Html
+                  position={[-w / 2 + 0.35, BOARD.height + 0.13, z]}
+                  center
+                  distanceFactor={8}
+                  style={{
+                    pointerEvents: "none",
+                    color: i % 2 === 0 ? "#fecaca" : "#bfdbfe",
+                    fontFamily: "IBM Plex Mono, monospace",
+                    fontSize: "7px",
+                    fontWeight: 800,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {i % 2 === 0 ? "+VCC" : "GND"}
+                </Html>
+              </group>
             ))}
           </group>
         ) : (
           <>
-            <mesh position={[0, BOARD.height + 0.005, -2.5]}>
-              <boxGeometry args={[railLen, 0.012, 0.06]} />
-              <meshStandardMaterial color="#c2413b" />
-            </mesh>
-            <mesh position={[0, BOARD.height + 0.005, -2.2]}>
-              <boxGeometry args={[railLen, 0.012, 0.06]} />
-              <meshStandardMaterial color="#1d4ed8" />
-            </mesh>
-            <mesh position={[0, BOARD.height + 0.005, 2.2]}>
-              <boxGeometry args={[railLen, 0.012, 0.06]} />
-              <meshStandardMaterial color="#1d4ed8" />
-            </mesh>
-            <mesh position={[0, BOARD.height + 0.005, 2.5]}>
-              <boxGeometry args={[railLen, 0.012, 0.06]} />
-              <meshStandardMaterial color="#c2413b" />
-            </mesh>
+            {[
+              { z: -2.2, label: "+VCC", railColor: "#c2413b", textColor: "#fecaca" },
+              { z: -1.9, label: "GND", railColor: "#1d4ed8", textColor: "#bfdbfe" },
+              { z: 1.9, label: "GND", railColor: "#1d4ed8", textColor: "#bfdbfe" },
+              { z: 2.2, label: "+VCC", railColor: "#c2413b", textColor: "#fecaca" },
+            ].map(({ z, label, railColor, textColor }) => (
+              <group key={`standard-rail-${z}`}>
+                <mesh position={[0, BOARD.height + 0.07, Number(z)]}>
+                  <boxGeometry args={[railLen, 0.012, 0.06]} />
+                  <meshStandardMaterial color={railColor} />
+                </mesh>
+                <Html
+                  position={[-w / 2 + 0.35, BOARD.height + 0.15, Number(z)]}
+                  center
+                  distanceFactor={8}
+                  style={{
+                    pointerEvents: "none",
+                    color: textColor,
+                    fontFamily: "IBM Plex Mono, monospace",
+                    fontSize: "7px",
+                    fontWeight: 800,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {label}
+                </Html>
+              </group>
+            ))}
           </>
         ))}
       {/* Center trench(es) between terminal strips */}
@@ -8624,27 +8966,25 @@ export function BreadboardBody() {
           </mesh>
         </>
       ) : (
-        <mesh position={[0, 0.22, 0]}>
-          <boxGeometry args={[Math.max(0.5, w - 0.15), 0.08, 0.42]} />
-          <meshStandardMaterial color="#e7e2d8" />
+        <mesh position={[0, BOARD.height + 0.01, 0]}>
+          <boxGeometry args={[Math.max(0.5, w - 0.15), 0.05, 0.28]} />
+          <meshStandardMaterial color="#d9d4ca" roughness={0.9} />
         </mesh>
       )}
+      {/* Recessed contact wells — actual holes, not raised black pegs */}
       <instancedMesh
-        key={`${boardId}-${holes.length}`}
-        ref={meshRef}
+        key={`wells-${boardId}-${holes.length}`}
+        ref={wellRef}
         args={[undefined, undefined, holes.length]}
         onPointerDown={(e) => {
           e.stopPropagation();
           if (e.button !== 0 || e.instanceId == null) return;
-          // Ignore hole clicks while a palette drag is finishing — that was
-          // placing a second copy of the same component.
           const lab = useLab.getState();
           if (lab.paletteDragging) return;
           clickHole(holes[e.instanceId]);
         }}
         onPointerMove={(e) => {
           if (e.instanceId == null) return;
-          // Don't steal hover from an active palette drag raycast.
           if (useLab.getState().paletteDragging) return;
           setHover(holes[e.instanceId]);
         }}
@@ -8653,9 +8993,29 @@ export function BreadboardBody() {
           setHover(null);
         }}
       >
-        <cylinderGeometry args={[0.036, 0.036, 0.1, 10]} />
-        <meshStandardMaterial color="#1c2430" roughness={0.55} />
+        {/* Tapered cavity: slightly wider at the top opening */}
+        <cylinderGeometry args={[0.03, 0.024, 0.055, 12]} />
+        <meshStandardMaterial color="#0c0f14" roughness={0.9} metalness={0.05} />
       </instancedMesh>
+      {/* Contact rim around each hole opening */}
+      <instancedMesh
+        key={`rims-${boardId}-${holes.length}`}
+        ref={rimRef}
+        args={[undefined, undefined, holes.length]}
+        raycast={() => {}}
+      >
+        <ringGeometry args={[0.028, 0.038, 16]} />
+        <meshStandardMaterial color="#3f4654" roughness={0.45} metalness={0.55} />
+      </instancedMesh>
+      {/* Small end caps make the long board read as a manufactured assembly. */}
+      <mesh position={[-w / 2 + 0.08, BOARD.y + 0.015, 0]} receiveShadow>
+        <boxGeometry args={[0.14, BOARD.height + 0.03, d - 0.18]} />
+        <meshStandardMaterial color="#e7e2d8" roughness={0.85} />
+      </mesh>
+      <mesh position={[w / 2 - 0.08, BOARD.y + 0.015, 0]} receiveShadow>
+        <boxGeometry args={[0.14, BOARD.height + 0.03, d - 0.18]} />
+        <meshStandardMaterial color="#e7e2d8" roughness={0.85} />
+      </mesh>
     </group>
   );
 }

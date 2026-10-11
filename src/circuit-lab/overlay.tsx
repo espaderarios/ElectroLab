@@ -96,8 +96,26 @@ const TOOLS: {
 
   {
     id: "switch",
-    label: "Switch",
-    hint: "Place switch",
+    label: "SPST",
+    hint: "Single-pole single-throw",
+    icon: ToggleLeft,
+  },
+  {
+    id: "switch-spdt",
+    label: "SPDT",
+    hint: "Single-pole double-throw",
+    icon: ToggleLeft,
+  },
+  {
+    id: "switch-dpst",
+    label: "DPST",
+    hint: "Double-pole single-throw",
+    icon: ToggleLeft,
+  },
+  {
+    id: "switch-dpdt",
+    label: "DPDT",
+    hint: "Double-pole double-throw",
     icon: ToggleLeft,
   },
 
@@ -206,6 +224,21 @@ const TOOLS: {
     icon: Cpu,
   },
 
+  ...([
+    ["not", "NOT IC", "Inverter: Y = NOT A"],
+    ["and", "AND IC", "Y = A AND B"],
+    ["or", "OR IC", "Y = A OR B"],
+    ["nand", "NAND IC", "Y = NOT (A AND B)"],
+    ["nor", "NOR IC", "Y = NOT (A OR B)"],
+    ["xor", "XOR IC", "Y = A XOR B"],
+    ["xnor", "XNOR IC", "Y = A XNOR B"],
+  ] as const).map(([id, label, hint]) => ({
+    id,
+    label,
+    hint,
+    icon: Cpu,
+  })),
+
   {
     id: "probe",
     label: "Voltmeter",
@@ -245,6 +278,47 @@ const PIN_ORDER: Partial<Record<ToolId, string[]>> = {
   lcd: ["VDD +", "VSS −"],
   oled: ["VCC", "GND", "SDA", "SCL"],
   mcu: ["VCC +", "GND −"],
+  not: Array.from({ length: 14 }, (_, index) => `pin ${index + 1}`),
+  and: Array.from({ length: 14 }, (_, index) => `pin ${index + 1}`),
+  or: Array.from({ length: 14 }, (_, index) => `pin ${index + 1}`),
+  nand: Array.from({ length: 14 }, (_, index) => `pin ${index + 1}`),
+  nor: Array.from({ length: 14 }, (_, index) => `pin ${index + 1}`),
+  xor: Array.from({ length: 14 }, (_, index) => `pin ${index + 1}`),
+  xnor: Array.from({ length: 14 }, (_, index) => `pin ${index + 1}`),
+};
+
+const QUAD_GATE_PIN_LABELS: Record<number, string> = {
+  1: "A1 input",
+  2: "B1 input",
+  3: "Y1 output",
+  4: "A2 input",
+  5: "B2 input",
+  6: "Y2 output",
+  7: "GND",
+  8: "Y3 output",
+  9: "A3 input",
+  10: "B3 input",
+  11: "Y4 output",
+  12: "A4 input",
+  13: "B4 input",
+  14: "VCC",
+};
+
+const INVERTER_GATE_PIN_LABELS: Record<number, string> = {
+  1: "A1 input",
+  2: "Y1 output",
+  3: "A2 input",
+  4: "Y2 output",
+  5: "A3 input",
+  6: "Y3 output",
+  7: "GND",
+  8: "Y4 output",
+  9: "A4 input",
+  10: "Y5 output",
+  11: "A5 input",
+  12: "Y6 output",
+  13: "A6 input",
+  14: "VCC",
 };
 
 /** Short placement guidance shown while a tool is active. */
@@ -788,6 +862,10 @@ export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
         (part) => part.id === selectedId
       ) ?? null
     : null;
+
+  const selectedGate = selected?.pins.vcc
+    ? sim.logicGates?.[selected.id]
+    : undefined;
 
   const selectedWire = selectedId
   ? wires.find((wire) => wire.id === selectedId) ?? null
@@ -3197,8 +3275,36 @@ export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
 
           <div style={{ marginTop: 15, paddingTop: 13, borderTop: "1px solid rgba(255,255,255,.08)" }}>
             <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.3, textTransform: "uppercase", color: "#94a3b8" }}>Connections</div>
+            {selectedGate && (
+              <div style={{ marginTop: 8, padding: "9px 10px", borderRadius: 8, background: selectedGate.powered ? "rgba(34,197,94,.1)" : "rgba(245,158,11,.1)", border: `1px solid ${selectedGate.powered ? "rgba(34,197,94,.28)" : "rgba(245,158,11,.28)"}`, color: selectedGate.powered ? "#86efac" : "#fbbf24", fontSize: 10, lineHeight: 1.45 }}>
+                <strong>{selectedGate.powered ? "Powered" : "Unpowered"}</strong>
+                {selectedGate.powered
+                  ? ` · Y = ${selectedGate.output ? "HIGH" : "LOW"}`
+                  : " · connect pin 14 (VCC) to a red +VCC rail and pin 7 (GND) to a blue GND rail"}
+              </div>
+            )}
             <div style={{ marginTop: 8, display: "grid", gap: 5 }}>
-              {Object.entries(selected!.pins).map(([pin, hole]) => <div key={pin} style={{ display: "flex", justifyContent: "space-between", gap: 8, padding: "6px 8px", borderRadius: 7, background: "rgba(255,255,255,.035)", fontSize: 10 }}><span style={{ color: "#cbd5e1", fontWeight: 650 }}>{pin}</span><span style={{ color: "#64748b", fontFamily: "ui-monospace,monospace" }}>{hole}</span></div>)}
+              {selectedGate ? (
+                Object.entries(selected!.pins)
+                  .filter(([pin]) => /^p(?:[1-9]|1[0-4])$/.test(pin))
+                  .sort(([a], [b]) => Number(a.slice(1)) - Number(b.slice(1)))
+                  .map(([pin, hole]) => (
+                    <div key={pin} style={{ display: "flex", justifyContent: "space-between", gap: 8, padding: "6px 8px", borderRadius: 7, background: "rgba(255,255,255,.035)", fontSize: 10 }}>
+                      <span style={{ color: "#cbd5e1", fontWeight: 650 }}>
+                        {selected!.kind === "not"
+                          ? INVERTER_GATE_PIN_LABELS[Number(pin.slice(1))]
+                          : QUAD_GATE_PIN_LABELS[Number(pin.slice(1))]}
+                        {` (pin ${pin.slice(1)})`}
+                      </span>
+                      <span style={{ color: "#64748b", fontFamily: "ui-monospace,monospace" }}>{hole}</span>
+                    </div>
+                  ))
+              ) : Object.entries(selected!.pins).map(([pin, hole]) => (
+                <div key={pin} style={{ display: "flex", justifyContent: "space-between", gap: 8, padding: "6px 8px", borderRadius: 7, background: "rgba(255,255,255,.035)", fontSize: 10 }}>
+                  <span style={{ color: "#cbd5e1", fontWeight: 650 }}>{pin}</span>
+                  <span style={{ color: "#64748b", fontFamily: "ui-monospace,monospace" }}>{hole}</span>
+                </div>
+              ))}
             </div>
           </div>
           </>

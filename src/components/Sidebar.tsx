@@ -21,6 +21,7 @@ const nav = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
   { to: "/projects", label: "Projects", icon: FolderKanban },
   { to: "/simulations", label: "Simulations", icon: Zap },
+  { to: "/schematic", label: "2D Schematic", icon: Map },
   { to: "/library", label: "Library", icon: Library },
   { to: "/components", label: "Components", icon: Cpu },
   { to: "/my-components", label: "My Components", icon: Cpu },

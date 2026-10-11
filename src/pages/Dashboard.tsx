@@ -41,11 +41,11 @@ function StatCard({
     <button
       type="button"
       onClick={onClick}
-      className="bg-[#111827] border border-[#1e293b] rounded-xl p-4 text-left hover:border-slate-600 transition w-full"
+      className="dashboard-stat-card"
     >
       <div className="flex items-start justify-between">
         <div>
-          <div className="text-xs text-slate-500 font-medium uppercase tracking-wide">
+          <div className="text-xs text-[var(--app-muted)] font-medium uppercase tracking-wide">
             {label}
           </div>
           <div className="mt-1 text-2xl font-bold">{value}</div>
@@ -124,7 +124,7 @@ export function Dashboard() {
   };
 
   return (
-    <div className="flex-1 overflow-y-auto scrollbar-thin p-6">
+    <div className="flex-1 overflow-y-auto scrollbar-thin bg-[var(--app-bg)]">
       <input
         ref={fileRef}
         type="file"
@@ -137,24 +137,31 @@ export function Dashboard() {
         }}
       />
 
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-xl font-semibold">Welcome back, Engineer</h1>
-          <p className="text-sm text-slate-500 mt-0.5">Design. Simulate. Innovate.</p>
+      <div className="dashboard-shell">
+        <div className="dashboard-hero">
+          <div className="relative z-10">
+            <div className="dashboard-eyebrow">
+              <span className="dashboard-eyebrow-dot" />
+              Engineering workspace
+            </div>
+            <h1 className="dashboard-title">Welcome back, Engineer</h1>
+            <p className="dashboard-subtitle">Design. Simulate. Innovate.</p>
+          </div>
+          <div className="dashboard-hero-orb dashboard-hero-orb-one" />
+          <div className="dashboard-hero-orb dashboard-hero-orb-two" />
+          <button
+            type="button"
+            onClick={() => {
+              const p = createProject();
+              navigate(`/editor/${p.id}`);
+            }}
+            className="dashboard-primary-action relative z-10"
+          >
+            <Plus size={17} /> New Project
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={() => {
-            const p = createProject();
-            navigate(`/editor/${p.id}`);
-          }}
-          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium px-4 py-2 rounded-lg transition"
-        >
-          <Plus size={16} /> New Project
-        </button>
-      </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-7">
         <StatCard
           label="Projects"
           value={String(projects.length)}
@@ -189,12 +196,15 @@ export function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="bg-[#111827] border border-[#1e293b] rounded-xl p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold">Recent Projects</h2>
+        <div className="dashboard-panel">
+          <div className="dashboard-panel-heading">
+            <div>
+              <p className="dashboard-panel-kicker">Workspace</p>
+              <h2 className="dashboard-panel-title">Recent Projects</h2>
+            </div>
             <button
               type="button"
-              className="text-xs text-blue-400 hover:underline"
+              className="dashboard-link"
               onClick={() => navigate("/projects")}
             >
               View all
@@ -205,11 +215,11 @@ export function Dashboard() {
               <div
                 key={p.id}
                 onClick={() => navigate(`/editor/${p.id}`)}
-                className="flex items-center justify-between p-2.5 rounded-lg hover:bg-slate-800/50 cursor-pointer transition"
+                className="dashboard-list-row"
               >
                 <div>
-                  <div className="text-sm font-medium text-slate-200">{p.name}</div>
-                  <div className="text-xs text-slate-500">
+                  <div className="text-sm font-medium text-[var(--app-text)]">{p.name}</div>
+                  <div className="text-xs text-[var(--app-muted)]">
                     Edited {formatRelativeTime(p.updatedAt)}
                   </div>
                 </div>
@@ -223,10 +233,14 @@ export function Dashboard() {
           </div>
         </div>
 
-        <div className="bg-[#111827] border border-[#1e293b] rounded-xl p-4">
-          <h2 className="text-sm font-semibold mb-3">
-            Simulation Summary (This Week)
-          </h2>
+        <div className="dashboard-panel">
+          <div className="dashboard-panel-heading">
+            <div>
+              <p className="dashboard-panel-kicker">Performance</p>
+              <h2 className="dashboard-panel-title">Simulation Summary</h2>
+            </div>
+            <span className="dashboard-period">This week</span>
+          </div>
           <div className="flex items-center justify-center py-3">
             <div className="relative w-36 h-36">
               <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90">
@@ -235,7 +249,7 @@ export function Dashboard() {
                   cy="18"
                   r="15.5"
                   fill="none"
-                  stroke="#1e293b"
+                  stroke="var(--app-border)"
                   strokeWidth="3"
                 />
                 <circle
@@ -275,7 +289,7 @@ export function Dashboard() {
                 <span className="text-2xl font-bold">
                   {weekRuns.total}
                 </span>
-                <span className="text-xs text-slate-500">Total Runs</span>
+                <span className="text-xs text-[var(--app-muted)]">Total Runs</span>
               </div>
             </div>
           </div>
@@ -295,19 +309,22 @@ export function Dashboard() {
           </div>
           <button
             type="button"
-            className="mt-3 text-xs text-blue-400 hover:underline"
+            className="dashboard-link mt-3"
             onClick={() => navigate("/simulations")}
           >
             Open simulations
           </button>
         </div>
 
-        <div className="bg-[#111827] border border-[#1e293b] rounded-xl p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold">Activity Feed</h2>
+        <div className="dashboard-panel">
+          <div className="dashboard-panel-heading">
+            <div>
+              <p className="dashboard-panel-kicker">Live updates</p>
+              <h2 className="dashboard-panel-title">Activity Feed</h2>
+            </div>
             <button
               type="button"
-              className="text-xs text-blue-400 hover:underline"
+              className="dashboard-link"
               onClick={() => navigate("/simulations")}
             >
               View all activity
@@ -331,8 +348,8 @@ export function Dashboard() {
                   {a.ok ? <CheckCircle2 size={12} /> : <span className="text-xs">!</span>}
                 </div>
                 <div>
-                  <div className="text-sm font-medium text-slate-200">{a.title}</div>
-                  <div className="text-xs text-slate-500">
+                  <div className="text-sm font-medium text-[var(--app-text)]">{a.title}</div>
+                  <div className="text-xs text-[var(--app-muted)]">
                     {a.desc} · {formatRelativeTime(a.time)}
                   </div>
                 </div>
@@ -342,8 +359,13 @@ export function Dashboard() {
         </div>
       </div>
 
-      <div className="mt-4 bg-[#111827] border border-[#1e293b] rounded-xl p-4">
-        <h2 className="text-sm font-semibold mb-3">Quick Actions</h2>
+      <div className="dashboard-panel mt-4">
+        <div className="dashboard-panel-heading">
+          <div>
+            <p className="dashboard-panel-kicker">Shortcuts</p>
+            <h2 className="dashboard-panel-title">Quick Actions</h2>
+          </div>
+        </div>
         <div className="flex flex-wrap gap-3">
           {[
             {
@@ -381,14 +403,15 @@ export function Dashboard() {
               key={a.label}
               type="button"
               onClick={a.action}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-slate-800/60 hover:bg-slate-700/60 border border-[#1e293b] text-sm transition"
+              className="dashboard-action"
             >
-              <a.icon size={16} className="text-slate-400" />
+              <a.icon size={16} className="text-[var(--app-muted)]" />
               {a.label}
             </button>
           ))}
         </div>
       </div>
+    </div>
     </div>
   );
 }

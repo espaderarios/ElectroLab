@@ -38,6 +38,216 @@ body,
   font-family: "Inter", system-ui, sans-serif;
 }
 
+.dashboard-shell {
+  max-width: 1480px;
+  margin: 0 auto;
+  padding: 28px 32px 40px;
+}
+
+.dashboard-hero {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 178px;
+  overflow: hidden;
+  padding: 32px 36px;
+  margin-bottom: 24px;
+  border: 1px solid color-mix(in srgb, #2563eb 35%, var(--app-border));
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at 82% 35%, rgba(45, 212, 191, 0.18), transparent 25%),
+    linear-gradient(115deg, #172554 0%, #1e3a8a 55%, #155e75 100%);
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.18);
+}
+
+.dashboard-eyebrow,
+.dashboard-panel-kicker {
+  color: #93c5fd;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.dashboard-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.dashboard-eyebrow-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: #5eead4;
+  box-shadow: 0 0 0 4px rgba(94, 234, 212, 0.14);
+}
+
+.dashboard-title {
+  color: #fff;
+  font-size: clamp(1.6rem, 3vw, 2.25rem);
+  font-weight: 700;
+  letter-spacing: -0.04em;
+}
+
+.dashboard-subtitle {
+  margin-top: 6px;
+  color: rgba(219, 234, 254, 0.76);
+  font-size: 0.95rem;
+}
+
+.dashboard-hero-orb {
+  position: absolute;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+}
+
+.dashboard-hero-orb-one {
+  right: 12%;
+  width: 220px;
+  height: 220px;
+}
+
+.dashboard-hero-orb-two {
+  right: 3%;
+  width: 310px;
+  height: 310px;
+  opacity: 0.45;
+}
+
+.dashboard-primary-action {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 10px;
+  padding: 10px 16px;
+  background: #fff;
+  color: #1d4ed8;
+  font-size: 0.875rem;
+  font-weight: 700;
+  box-shadow: 0 8px 18px rgba(7, 26, 74, 0.2);
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+
+.dashboard-primary-action:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 22px rgba(7, 26, 74, 0.28);
+}
+
+.dashboard-stat-card,
+.dashboard-panel {
+  border: 1px solid var(--app-border);
+  border-radius: 15px;
+  background: var(--app-surface);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+}
+
+.dashboard-stat-card {
+  width: 100%;
+  padding: 18px;
+  text-align: left;
+  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.dashboard-stat-card:hover {
+  border-color: #60a5fa;
+  box-shadow: 0 12px 26px rgba(37, 99, 235, 0.12);
+  transform: translateY(-2px);
+}
+
+.dashboard-panel {
+  padding: 18px;
+}
+
+.dashboard-panel-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.dashboard-panel-kicker {
+  color: #3b82f6;
+  font-size: 0.62rem;
+}
+
+.dashboard-panel-title {
+  margin-top: 4px;
+  color: var(--app-heading);
+  font-size: 0.96rem;
+  font-weight: 700;
+}
+
+.dashboard-period {
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: var(--app-surface-2);
+  color: var(--app-muted);
+  font-size: 0.68rem;
+  white-space: nowrap;
+}
+
+.dashboard-link {
+  color: #3b82f6;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.dashboard-link:hover {
+  color: #60a5fa;
+}
+
+.dashboard-list-row,
+.dashboard-action {
+  transition: background-color 160ms ease, border-color 160ms ease;
+}
+
+.dashboard-list-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.dashboard-list-row:hover {
+  background: var(--app-hover);
+}
+
+.dashboard-action {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  background: var(--app-control);
+  color: var(--app-text);
+  font-size: 0.875rem;
+}
+
+.dashboard-action:hover {
+  border-color: #60a5fa;
+  background: var(--app-hover);
+}
+
+@media (max-width: 640px) {
+  .dashboard-shell {
+    padding: 20px 16px 32px;
+  }
+
+  .dashboard-hero {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 22px;
+    padding: 24px;
+  }
+}
+
 html {
   background: var(--app-bg);
   transition: background-color 180ms ease;

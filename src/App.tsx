@@ -17,6 +17,7 @@ import { LibraryPage } from "./pages/LibraryPage";
 import { BuiltInFlashcardsPage } from "./pages/BuiltIn-Flashcards";
 import { GamesPage } from "./pages/GamesPage";
 import { ConceptsPage } from "./pages/ConceptsPage";
+import { SchematicPage } from "./pages/SchematicPage";
 
 export default function App() {
   const location = useLocation();
@@ -50,6 +51,7 @@ export default function App() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/projects" element={<ProjectsPage />} />
           <Route path="/simulations" element={<SimulationsPage />} />
+          <Route path="/schematic" element={<SchematicPage />} />
           <Route path="/library" element={<LibraryPage />} />
           <Route path="/components" element={<ComponentLibrary />} />
           <Route path="/learn" element={<LearnPage />} />

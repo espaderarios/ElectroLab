@@ -3,6 +3,7 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import {
+  BOARD,
   getAllHoles,
   holePosition,
   nearestHole,
@@ -106,6 +107,10 @@ const PLACEABLE_TOOLS = new Set<ToolId>([
   "triac",
   "diac",
   "switch",
+  "switch-spst",
+  "switch-spdt",
+  "switch-dpst",
+  "switch-dpdt",
   "button",
   "relay",
   "pot",
@@ -115,33 +120,71 @@ const PLACEABLE_TOOLS = new Set<ToolId>([
   "lcd",
   "oled",
   "mcu",
+  "not",
+  "and",
+  "or",
+  "nand",
+  "nor",
+  "xor",
+  "xnor",
 ]);
 
 function PulseMarker({
   position,
   color,
   phase = 0,
-  radius = 0.07,
+  radius = 0.085,
+  selected = false,
 }: {
   position: [number, number, number];
   color: string;
   phase?: number;
   radius?: number;
+  selected?: boolean;
 }) {
   const ring = useRef<THREE.Mesh>(null);
+  const disc = useRef<THREE.Mesh>(null);
   const material = useRef<THREE.MeshBasicMaterial>(null);
+  const discMat = useRef<THREE.MeshBasicMaterial>(null);
 
   useFrame(({ clock }) => {
-    const pulse = (Math.sin(clock.getElapsedTime() * 5 + phase) + 1) / 2;
-    if (ring.current) ring.current.scale.setScalar(0.9 + pulse * 0.22);
-    if (material.current) material.current.opacity = 0.58 + pulse * 0.36;
+    const pulse = (Math.sin(clock.getElapsedTime() * 4.2 + phase) + 1) / 2;
+    if (ring.current) ring.current.scale.setScalar(0.92 + pulse * 0.2);
+    if (material.current) material.current.opacity = 0.65 + pulse * 0.3;
+    if (discMat.current) discMat.current.opacity = selected ? 0.28 + pulse * 0.12 : 0.12 + pulse * 0.08;
   });
 
   return (
-    <mesh ref={ring} position={position} rotation={[-Math.PI / 2, 0, 0]}>
-      <ringGeometry args={[radius * 0.64, radius, 20]} />
-      <meshBasicMaterial ref={material} color={color} transparent depthWrite={false} />
-    </mesh>
+    <group position={position}>
+      {/* Soft filled disc so the hole is obviously marked */}
+      <mesh ref={disc} rotation={[-Math.PI / 2, 0, 0]}>
+        <circleGeometry args={[radius * 0.72, 28]} />
+        <meshBasicMaterial
+          ref={discMat}
+          color={color}
+          transparent
+          opacity={selected ? 0.32 : 0.14}
+          depthWrite={false}
+        />
+      </mesh>
+      {/* Outer ring */}
+      <mesh ref={ring} rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[radius * 0.55, radius, 28]} />
+        <meshBasicMaterial
+          ref={material}
+          color={color}
+          transparent
+          opacity={0.75}
+          depthWrite={false}
+        />
+      </mesh>
+      {selected && (
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.001, 0]}>
+          <ringGeometry args={[radius * 0.95, radius * 1.18, 28]} />
+          <meshBasicMaterial color={color} transparent opacity={0.45} depthWrite={false} />
+        </mesh>
+      )}
+    </group>
   );
 }
 
@@ -149,18 +192,42 @@ function HoverMarker() {
   const hover = useLab((s) => s.hoverHole);
   const pending = useLab((s) => s.pendingHoles);
   const probe = useLab((s) => s.probeHole);
-  const items = [hover, ...pending, probe].filter(Boolean) as string[];
+  // Unique holes; selected/probe takes priority for styling
+  const seen = new Set<string>();
+  const items: { id: string; kind: "hover" | "pending" | "selected" }[] = [];
+  for (const id of pending) {
+    if (id && !seen.has(id)) {
+      seen.add(id);
+      items.push({ id, kind: "pending" });
+    }
+  }
+  if (probe && !seen.has(probe)) {
+    seen.add(probe);
+    items.push({ id: probe, kind: "selected" });
+  }
+  if (hover && !seen.has(hover)) {
+    items.push({ id: hover, kind: "hover" });
+  }
   return (
     <>
-      {items.map((id, i) => {
-        const [x, y, z] = holePosition(id);
-        const color = pending.includes(id) ? "#0f766e" : id === probe ? "#eab308" : "#38bdf8";
+      {items.map((item, i) => {
+        const [x, , z] = holePosition(item.id);
+        // Sit just above the recessed hole rim
+        const y = BOARD.height + 0.085;
+        const color =
+          item.kind === "pending"
+            ? "#14b8a6"
+            : item.kind === "selected"
+              ? "#fbbf24"
+              : "#38bdf8";
         return (
           <PulseMarker
-            key={id + i}
-            position={[x, y + 0.03, z]}
+            key={`${item.id}-${item.kind}`}
+            position={[x, y, z]}
             color={color}
             phase={i * 1.8}
+            radius={item.kind === "selected" ? 0.1 : 0.085}
+            selected={item.kind === "selected"}
           />
         );
       })}
@@ -339,10 +406,14 @@ function PlacementGhost() {
         <PartSwitch part={preview} selected sim={sim} />
       </group>
       {/* Pin markers for every node of the ghost footprint */}
-      {Object.values(preview.pins).map((holeId) => {
+      {Object.entries(preview.pins).map(([pinName, holeId]) => {
         const [x, y, z] = holePosition(holeId);
         return (
-          <mesh key={holeId} position={[x, y + 0.06, z]} rotation={[-Math.PI / 2, 0, 0]}>
+          <mesh
+            key={`preview-pin-${pinName}-${holeId}`}
+            position={[x, y + 0.06, z]}
+            rotation={[-Math.PI / 2, 0, 0]}
+          >
             <ringGeometry args={[0.05, 0.085, 18]} />
             <meshBasicMaterial color="#38bdf8" transparent opacity={0.85} depthWrite={false} />
           </mesh>
@@ -596,5 +667,3 @@ export function LabScene() {
     </>
   );
 }
-
-

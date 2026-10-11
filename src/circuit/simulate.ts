@@ -498,8 +498,33 @@ export function simulate(input: {
   // ============================================================
 
   for (const part of input.parts) {
-    if (part.kind === "switch" && part.props.closed) {
-      union(part.pins.a, part.pins.b);
+    if (part.kind === "switch") {
+      const type = part.props.switchType ?? (
+        part.pins.com1 ? "dpdt" :
+        part.pins.a1 ? "dpst" :
+        part.pins.com ? "spdt" : "spst"
+      );
+      const position = part.props.switchPosition ?? (part.props.closed ? "no" : "open");
+      if (type === "spdt") {
+        if (position === "no") union(part.pins.com, part.pins.no);
+        if (position === "nc") union(part.pins.com, part.pins.nc);
+      } else if (type === "dpdt") {
+        if (position === "no") {
+          union(part.pins.com1, part.pins.no1);
+          union(part.pins.com2, part.pins.no2);
+        }
+        if (position === "nc") {
+          union(part.pins.com1, part.pins.nc1);
+          union(part.pins.com2, part.pins.nc2);
+        }
+      } else if (type === "dpst") {
+        if (part.props.closed) {
+          union(part.pins.a1, part.pins.b1);
+          union(part.pins.a2, part.pins.b2);
+        }
+      } else if (part.props.closed) {
+        union(part.pins.a, part.pins.b);
+      }
     }
 
     if (part.kind === "button" && part.props.closed) {
@@ -947,6 +972,97 @@ export function simulate(input: {
   }
 
   // ============================================================
+  // LOGIC IC OUTPUTS (ideal educational gate driver)
+  // ============================================================
+  // Resolve input levels from the first pass, then add a low-resistance
+  // driver from the gate output to the appropriate supply rail.
+  const logicGates: SimResult["logicGates"] = {};
+  const gateKinds = new Set(["not", "and", "or", "nand", "nor", "xor", "xnor"]);
+  if (positiveNode !== null && negativeNode !== null && input.powerOn) {
+    for (const part of input.parts) {
+      if (!gateKinds.has(part.kind)) continue;
+      const vccPin = part.pins.p14 ?? part.pins.vcc;
+      const gndPin = part.pins.p7 ?? part.pins.gnd;
+      const ivcc = vccPin ? indexOf.get(vccPin) : undefined;
+      const ignd = gndPin ? indexOf.get(gndPin) : undefined;
+      if (ivcc === undefined || ignd === undefined) continue;
+
+      const powered =
+        (solved[uf.find(ivcc)] ?? 0) -
+        (solved[uf.find(ignd)] ?? 0) >= 2;
+      if (!powered) {
+        logicGates[part.id] = { output: 0, powered: false };
+        continue;
+      }
+
+      // DIP-14 pinouts. Quad gates use four 2-input gates; the 7404-style
+      // inverter uses six 1-input gates. Every physical output is driven.
+      const gates =
+        part.kind === "not"
+          ? [
+              { inputs: [1], output: 2 },
+              { inputs: [3], output: 4 },
+              { inputs: [5], output: 6 },
+              { inputs: [9], output: 8 },
+              { inputs: [11], output: 10 },
+              { inputs: [13], output: 12 },
+            ]
+          : [
+              { inputs: [1, 2], output: 3 },
+              { inputs: [4, 5], output: 6 },
+              { inputs: [9, 10], output: 8 },
+              { inputs: [12, 13], output: 11 },
+            ];
+
+      let firstOutput = 0 as 0 | 1;
+      gates.forEach((gate, gateIndex) => {
+        const inputPins = gate.inputs
+          .map((pin) => part.pins[`p${pin}`])
+          .filter((pin): pin is string => Boolean(pin));
+        const outputPin = part.pins[`p${gate.output}`];
+        if (!outputPin || inputPins.length !== gate.inputs.length) return;
+
+        const inputLevels = inputPins.map((pin) => {
+          const index = indexOf.get(pin);
+          return index !== undefined && (solved[uf.find(index)] ?? 0) >= 2.5;
+        });
+        const output =
+          part.kind === "not" ? !inputLevels[0] :
+          part.kind === "and" ? inputLevels.every(Boolean) :
+          part.kind === "or" ? inputLevels.some(Boolean) :
+          part.kind === "nand" ? !inputLevels.every(Boolean) :
+          part.kind === "nor" ? !inputLevels.some(Boolean) :
+          part.kind === "xor" ? inputLevels[0] !== inputLevels[1] :
+          inputLevels[0] === inputLevels[1];
+
+        if (gateIndex === 0) firstOutput = output ? 1 : 0;
+        const outputIndex = indexOf.get(outputPin);
+        if (outputIndex === undefined) return;
+        elements.push({
+          a: uf.find(outputIndex),
+          b: output ? positiveNode : negativeNode,
+          resistance: 10,
+          id: `${part.id}:logic-driver-${gate.output}`,
+        });
+      });
+      logicGates[part.id] = { output: firstOutput, powered: true };
+    }
+    if (Object.keys(logicGates).some((id) => logicGates[id]?.powered)) {
+      try {
+        solved = solve({
+          nodes: nodeList,
+          elements,
+          positiveNode,
+          negativeNode,
+          voltage: input.psuVoltage,
+        });
+      } catch {
+        // Preserve the first-pass solution if a gate is wired into an invalid network.
+      }
+    }
+  }
+
+  // ============================================================
   // RELAY CONTACTS + THYRISTOR TRIGGER (second pass)
   // ============================================================
   // After the first solve we know coil / gate voltages. Energized relays
@@ -1221,12 +1337,7 @@ export function simulate(input: {
 
   const diodes: SimResult["diodes"] = {};
 
-  const switches: Record<
-    string,
-    {
-      closed: boolean;
-    }
-  > = {};
+  const switches: NonNullable<SimResult["switches"]> = {};
 
   const buttons: Record<string, { closed: boolean }> = {};
 
@@ -1376,8 +1487,20 @@ export function simulate(input: {
     // ----------------------------------------------------------
 
     if (part.kind === "switch") {
+      const type = part.props.switchType ?? (
+        part.pins.com1 ? "dpdt" :
+        part.pins.a1 ? "dpst" :
+        part.pins.com ? "spdt" : "spst"
+      );
+      const position = type === "spst" || type === "dpst"
+        ? undefined
+        : (part.props.switchPosition ?? (part.props.closed ? "no" : "open"));
       switches[part.id] = {
-        closed: Boolean(part.props.closed),
+        closed: type === "spdt" || type === "dpdt"
+          ? position !== "open"
+          : Boolean(part.props.closed),
+        type,
+        ...(position ? { position } : {}),
       };
     }
 
@@ -2113,7 +2236,7 @@ export function simulate(input: {
       const node = uf.find(idx);
 
       const duty = persistent?.pwmDuty?.[pin];
-      let level = runtime.state.digital[pin] ?? 0;
+      let level: number = runtime.state.digital[pin] ?? 0;
       if (typeof duty === "number") {
         level = Math.max(0, Math.min(1, duty / 255));
       }
@@ -2671,6 +2794,7 @@ export function simulate(input: {
     diacs,
     motors,
     speakers,
+    logicGates,
 
     mcus,
     lcds,

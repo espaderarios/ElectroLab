@@ -15,6 +15,7 @@ import type {
   PartKind,
   PlacedPart,
   SimResult,
+  SwitchPosition,
   ToolId,
   Wire,
   WireColor,
@@ -100,6 +101,7 @@ interface LabState {
   capacitorValue: number;
 
   ledColor: NonNullable<PlacedPart["props"]["ledColor"]>;
+  switchStyle: NonNullable<PlacedPart["props"]["switchStyle"]>;
 
   pendingHole: HoleId | null;
   pendingHoles: HoleId[];
@@ -179,6 +181,9 @@ interface LabState {
 
   setLedColor: (
     color: NonNullable<PlacedPart["props"]["ledColor"]>
+  ) => void;
+  setSwitchStyle: (
+    style: NonNullable<PlacedPart["props"]["switchStyle"]>,
   ) => void;
 
   setSelectedResistance: (value: number) => void;
@@ -314,6 +319,8 @@ function runSimulation(state: {
   sim?: SimResult;
   /** Virtual MCU time advanced for this simulation pass. */
   mcuDeltaMs?: number;
+  /** Hardware RESET assertion for all MCUs on this simulation step. */
+  mcuReset?: boolean;
 }) {
   const prevLatched: Record<string, boolean> = {};
   const prevMotorCurrents: Record<string, number> = {};
@@ -346,6 +353,10 @@ function getTwoPinKind(tool: ToolId): PartKind | "wire" | null {
       return "diode";
 
     case "switch":
+    case "switch-spst":
+    case "switch-spdt":
+    case "switch-dpst":
+    case "switch-dpdt":
       return "switch";
 
     case "button":
@@ -387,6 +398,21 @@ function getTwoPinKind(tool: ToolId): PartKind | "wire" | null {
     case "speaker":
       return "speaker";
 
+    case "not":
+      return "not";
+    case "and":
+      return "and";
+    case "or":
+      return "or";
+    case "nand":
+      return "nand";
+    case "nor":
+      return "nor";
+    case "xor":
+      return "xor";
+    case "xnor":
+      return "xnor";
+
     default:
       return null;
   }
@@ -413,6 +439,17 @@ export function computePinLayout(
     holes.push(anchor);
     const next = offsetHole(anchor, 1) ?? anchor;
     holes.push(next);
+  } else if (["not", "and", "or", "nand", "nor", "xor", "xnor"].includes(placement.kind)) {
+    // A DIP-14 straddles the centre channel. With the package notch at the
+    // left, the lower/near row is pins 1-7 and the upper/far row returns
+    // pins 8-14 from right to left, matching the physical DIP numbering.
+    const startCol = Math.min(Math.max(1, parsed!.col), BOARD.cols - 6);
+    for (let i = 0; i < 7; i++) {
+      holes.push(`F${startCol + i}` as HoleId);
+    }
+    for (let i = 0; i < 7; i++) {
+      holes.push(`E${startCol + 6 - i}` as HoleId);
+    }
   } else if (placement.pins.length === 2) {
     holes.push(anchor);
     // LED / diode: adjacent columns on the same row (typical breadboard span).
@@ -439,6 +476,20 @@ export function computePinLayout(
     placement.pins.map((name, index) => [name, holes[index] ?? anchor]),
   ) as Record<string, HoleId>;
 
+  if (["not", "and", "or", "nand", "nor", "xor", "xnor"].includes(placement.kind)) {
+    // The package always has 14 physical pins, but the educational model
+    // exposes only the signal pins required by the selected gate.
+    // NOT has one input and one output; the other gates have A, B, and Y.
+    pins.vcc = pins.p14;
+    pins.gnd = pins.p7;
+    pins.a = pins.p1;
+    pins.y = pins.p2;
+    if (placement.kind !== "not") {
+      pins.b = pins.p2;
+      pins.y = pins.p3;
+    }
+  }
+
   return { holes, pins, kind: placement.kind };
 }
 
@@ -457,6 +508,8 @@ export function buildPreviewPart(
     triacModel?: import("@/circuit/types").TriacModelId;
     diacModel?: import("@/circuit/types").DiacModelId;
     motorModel?: import("@/circuit/types").MotorModelId;
+    switchStyle?: NonNullable<PlacedPart["props"]["switchStyle"]>;
+    switchType?: import("@/circuit/types").SwitchType;
   },
 ): PlacedPart | null {
   const layout = computePinLayout(tool, anchor);
@@ -479,6 +532,15 @@ export function buildPreviewPart(
       ledColor: kind === "led" ? defaults?.ledColor ?? "red" : undefined,
       closed:
         kind === "switch" || kind === "button" ? false : undefined,
+      switchType:
+        kind === "switch"
+          ? defaults?.switchType ?? (
+              tool === "switch-spdt" ? "spdt" :
+              tool === "switch-dpst" ? "dpst" :
+              tool === "switch-dpdt" ? "dpdt" : "spst"
+            )
+          : undefined,
+      switchStyle: kind === "button" ? defaults?.switchStyle ?? "tactile-black" : undefined,
       mcuModel: kind === "mcu" ? "arduino-uno" : undefined,
       transistorModel:
         kind === "transistor" ? defaults?.transistorModel : undefined,
@@ -487,6 +549,10 @@ export function buildPreviewPart(
       triacModel: kind === "triac" ? defaults?.triacModel : undefined,
       diacModel: kind === "diac" ? defaults?.diacModel : undefined,
       motorModel: kind === "motor" ? defaults?.motorModel : undefined,
+      gateFamily:
+        ["not", "and", "or", "nand", "nor", "xor", "xnor"].includes(kind)
+          ? kind as PlacedPart["props"]["gateFamily"]
+          : undefined,
       capacitorType: kind === "capacitor" ? "ceramic" : undefined,
       diodeType: kind === "diode" ? "silicon" : undefined,
     },
@@ -504,6 +570,10 @@ export function reanchorPartPins(
 ): Record<string, HoleId> | null {
   const parsed = parseTerminalHole(anchor);
   if (!parsed) return null;
+
+  if (["not", "and", "or", "nand", "nor", "xor", "xnor"].includes(part.kind)) {
+    return computePinLayout(part.kind, anchor)?.pins ?? null;
+  }
 
   const entries = Object.entries(part.pins).filter(
     ([, hole]) => hole && /^[A-T]\d+$/.test(hole),
@@ -642,7 +712,25 @@ function getPlacement(tool: ToolId) {
         ],
       };
     }
-    // All other two-terminal parts (resistor, switch, button, capacitor, …)
+    if (["not", "and", "or", "nand", "nor", "xor", "xnor"].includes(kind)) {
+      return {
+        kind,
+        pins: Array.from({ length: 14 }, (_, index) => `p${index + 1}`),
+      };
+    }
+    if (kind === "switch") {
+      switch (tool) {
+        case "switch-spdt":
+          return { kind, pins: ["com", "no", "nc"] };
+        case "switch-dpst":
+          return { kind, pins: ["a1", "b1", "a2", "b2"] };
+        case "switch-dpdt":
+          return { kind, pins: ["com1", "no1", "nc1", "com2", "no2", "nc2"] };
+        default:
+          return { kind, pins: ["a", "b"] };
+      }
+    }
+    // All other two-terminal parts (resistor, button, capacitor, …)
     return { kind, pins: ["a", "b"] };
   }
 
@@ -894,6 +982,7 @@ export const useLab = create<LabState>((set, get) => ({
   capacitorValue: 10e-6,
 
   ledColor: "red",
+  switchStyle: "tactile-black",
 
   pendingHole: null,
 
@@ -1110,6 +1199,14 @@ export const useLab = create<LabState>((set, get) => ({
           placement.kind === "switch" || placement.kind === "button"
             ? false
             : undefined,
+        switchType:
+          placement.kind === "switch"
+            ? tool === "switch-spdt" ? "spdt" :
+              tool === "switch-dpst" ? "dpst" :
+              tool === "switch-dpdt" ? "dpdt" : "spst"
+            : undefined,
+        switchStyle:
+          placement.kind === "button" ? state.switchStyle : undefined,
         mcuModel: placement.kind === "mcu" ? "arduino-uno" : undefined,
         code: placement.kind === "mcu" ? DEFAULT_MCU_CODE : undefined,
         lcdCols: placement.kind === "lcd" ? 16 : undefined,
@@ -1122,6 +1219,10 @@ export const useLab = create<LabState>((set, get) => ({
           placement.kind === "triac" ? state.triacModel : undefined,
         diacModel:
           placement.kind === "diac" ? state.diacModel : undefined,
+        gateFamily:
+          ["not", "and", "or", "nand", "nor", "xor", "xnor"].includes(placement.kind)
+            ? placement.kind as PlacedPart["props"]["gateFamily"]
+            : undefined,
         motorModel:
           placement.kind === "motor" ? state.motorModel : undefined,
         label:
@@ -1437,6 +1538,11 @@ export const useLab = create<LabState>((set, get) => ({
   setLedColor: (ledColor) =>
     set({
       ledColor,
+    }),
+
+  setSwitchStyle: (switchStyle) =>
+    set({
+      switchStyle,
     }),
 
   setHover: (hoverHole) =>
@@ -1783,11 +1889,27 @@ setSelectedCapacitance: (capacitance) =>
           return part;
         }
 
+        const type = part.props.switchType ?? (
+          part.pins.com1 ? "dpdt" :
+          part.pins.a1 ? "dpst" :
+          part.pins.com ? "spdt" : "spst"
+        );
+        const nextPosition: SwitchPosition | undefined =
+          type === "spdt" || type === "dpdt"
+            ? (
+                (part.props.switchPosition ?? (part.props.closed ? "no" : "open")) === "open"
+                  ? "no"
+                  : (part.props.switchPosition ?? "no") === "no"
+                    ? "nc"
+                    : "open"
+              )
+            : undefined;
         return {
           ...part,
           props: {
             ...part.props,
-            closed: !part.props.closed,
+            closed: nextPosition ? nextPosition !== "open" : !part.props.closed,
+            switchPosition: nextPosition,
           },
         };
       });
@@ -2332,11 +2454,6 @@ setSelectedCapacitance: (capacitance) =>
       }
 
       const [a, b] = holes;
-      if (holeStrip(a) === holeStrip(b)) {
-        set({ pendingHole: null, pendingHoles: [] });
-        return;
-      }
-
       const wire: Wire = { id: uid("wire"), a, b, color: state.wireColor };
       const wires = [...state.wires, wire];
       const next = { ...state, wires };
