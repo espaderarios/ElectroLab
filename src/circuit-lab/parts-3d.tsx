@@ -9111,6 +9111,111 @@ export function SevenSegmentMesh({
   );
 }
 
+/**
+ * Generic DIP-8 package straddling the breadboard centre channel. Pins are
+ * given in package order (1…8): pins 1-4 on the near row, 5-8 returning on
+ * the far row, exactly like the DIP-14 logic ICs.
+ */
+function Dip8Package({
+  part,
+  pinOrder,
+  selected,
+  label,
+  sublabel,
+  led,
+}: {
+  part: PlacedPart;
+  pinOrder: string[];
+  selected: boolean;
+  label: string;
+  sublabel?: string;
+  led?: { on: boolean; color: string };
+}) {
+  const pins = pinOrder.map((p) => (part.pins[p] ? vec(part.pins[p]!) : null));
+  if (pins.some((p) => !p)) return null;
+  const pkg = pins as THREE.Vector3[];
+  const center = pkg[0].clone().add(pkg[3]).multiplyScalar(0.5);
+  center.z = (pkg[0].z + pkg[7].z) / 2;
+  center.y = BOARD.height + 0.15;
+  const along = pkg[3].clone().sub(pkg[0]);
+  const length = Math.max(0.5, along.length() + 0.3);
+  const angle = Math.atan2(-along.z, along.x);
+  const across = Math.max(0.3, Math.abs(pkg[0].z - pkg[7].z) - 0.12);
+  const bodyEdge = across / 2;
+  const pinMaterial = <meshStandardMaterial color="#cbd5e1" metalness={0.8} roughness={0.25} />;
+  return (
+    <group
+      onClick={(ev) => {
+        ev.stopPropagation();
+        useLab.getState().select(part.id);
+      }}
+    >
+      {pkg.map((pin, index) => (
+        <group key={`pin-${index}`}>
+          <mesh position={[pin.x, BOARD.height + 0.01, pin.z]}>
+            <cylinderGeometry args={[0.014, 0.014, 0.32, 6]} />
+            {pinMaterial}
+          </mesh>
+          <mesh
+            position={[
+              pin.x,
+              BOARD.height + 0.09,
+              (pin.z + center.z + (pin.z < center.z ? -bodyEdge : bodyEdge)) / 2,
+            ]}
+            rotation={[Math.PI / 2, 0, 0]}
+          >
+            <cylinderGeometry args={[0.014, 0.014, Math.max(0.04, Math.abs(pin.z - center.z) - bodyEdge + 0.08), 6]} />
+            {pinMaterial}
+          </mesh>
+        </group>
+      ))}
+      <group position={center} rotation={[0, angle, 0]}>
+        <mesh>
+          <boxGeometry args={[length, 0.3, across]} />
+          <meshStandardMaterial color={selected ? "#1d4ed8" : "#0c1220"} roughness={0.4} />
+        </mesh>
+        <lineSegments>
+          <edgesGeometry args={[new THREE.BoxGeometry(length, 0.3, across)]} />
+          <lineBasicMaterial color={selected ? "#60a5fa" : "#64748b"} />
+        </lineSegments>
+        {/* Pin-1 notch */}
+        <mesh position={[-length / 2 + 0.08, 0.155, 0]}>
+          <torusGeometry args={[0.06, 0.02, 8, 16, Math.PI]} />
+          <meshStandardMaterial color="#020617" />
+        </mesh>
+        {led && (
+          <mesh position={[length / 2 - 0.1, 0.16, across / 2 - 0.08]}>
+            <sphereGeometry args={[0.03, 10, 10]} />
+            <meshStandardMaterial
+              color={led.on ? led.color : "#334155"}
+              emissive={led.on ? led.color : "#000"}
+              emissiveIntensity={led.on ? 1.4 : 0}
+            />
+          </mesh>
+        )}
+      </group>
+      <Html
+        position={[center.x, center.y + 0.16, center.z]}
+        center
+        distanceFactor={7}
+        style={{
+          pointerEvents: "none",
+          color: "#e2e8f0",
+          fontFamily: "IBM Plex Mono, monospace",
+          fontSize: "8px",
+          fontWeight: 700,
+          whiteSpace: "nowrap",
+          textAlign: "center",
+          lineHeight: 1.35,
+        }}
+      >
+        <div>{label}</div>
+        {sublabel && <div style={{ fontSize: "6px", color: "#94a3b8" }}>{sublabel}</div>}
+      </Html>
+    </group>
+  );
+}
+
 export function Timer555Mesh({
   part,
   selected,
@@ -9120,47 +9225,20 @@ export function Timer555Mesh({
   selected: boolean;
   sim: SimResult;
 }) {
-  // NE555 DIP-8: dual-inline package with pin-1 notch on one end
-  const pins = ["gnd", "trig", "out", "reset", "cont", "thres", "disch", "vcc"]
-    .map((p) => (part.pins[p] ? vec(part.pins[p]!) : null))
-    .filter(Boolean) as THREE.Vector3[];
-  if (pins.length < 2) return null;
-  const body = pins.reduce((acc, v) => acc.add(v.clone()), new THREE.Vector3()).multiplyScalar(1 / pins.length);
-  body.y = BOARD.height + 0.16;
-  const powered = Boolean(sim.timer555s?.[part.id]?.powered);
+  // NE555 DIP-8: 1 GND, 2 TRIG, 3 OUT, 4 RESET, 5 CONT, 6 THRES, 7 DISCH, 8 VCC
+  const st = sim.timer555s?.[part.id];
+  const sub = st?.powered
+    ? `OUT ${st.output ? "HIGH" : "LOW"}${st.mode === "astable" && st.frequencyHz ? ` · ${st.frequencyHz < 10 ? st.frequencyHz.toFixed(2) : st.frequencyHz.toFixed(0)} Hz` : ""}`
+    : "8 VCC · 1 GND";
   return (
-    <group
-      onClick={(ev) => {
-        ev.stopPropagation();
-        useLab.getState().select(part.id);
-      }}
-    >
-      {pins.map((p, i) => (
-        <BentBoardLead key={i} pin={p} body={body} color="#b9c0c8" radius={0.01} />
-      ))}
-      <group position={body}>
-        <mesh>
-          <boxGeometry args={[0.5, 0.1, 0.3]} />
-          <meshStandardMaterial color={selected ? "#2563eb" : "#0c1220"} roughness={0.4} />
-        </mesh>
-        {/* Pin-1 notch */}
-        <mesh position={[-0.22, 0.06, 0]} rotation={[Math.PI / 2, 0, 0]}>
-          <cylinderGeometry args={[0.035, 0.035, 0.12, 12]} />
-          <meshStandardMaterial color="#020617" />
-        </mesh>
-        <mesh position={[-0.18, 0.08, 0.12]}>
-          <sphereGeometry args={[0.014, 8, 8]} />
-          <meshStandardMaterial
-            color={powered ? "#22c55e" : "#334155"}
-            emissive={powered ? "#16a34a" : "#000"}
-            emissiveIntensity={powered ? 1.2 : 0}
-          />
-        </mesh>
-        <Html position={[0, 0.14, 0]} center distanceFactor={5.5} style={{ pointerEvents: "none", fontSize: 11, color: "#e2e8f0", fontWeight: 800, fontFamily: "monospace" }}>
-          NE555
-        </Html>
-      </group>
-    </group>
+    <Dip8Package
+      part={part}
+      pinOrder={["gnd", "trig", "out", "reset", "cont", "thres", "disch", "vcc"]}
+      selected={selected}
+      label="NE555"
+      sublabel={sub}
+      led={{ on: Boolean(st?.powered && st.output), color: "#22c55e" }}
+    />
   );
 }
 
@@ -9173,42 +9251,18 @@ export function OpampMesh({
   selected: boolean;
   sim: SimResult;
 }) {
-  const pins = ["inp", "inn", "vcc", "vee", "out"]
-    .map((p) => (part.pins[p] ? vec(part.pins[p]!) : null))
-    .filter(Boolean) as THREE.Vector3[];
-  if (pins.length < 2) return null;
-  const body = pins.reduce((acc, v) => acc.add(v.clone()), new THREE.Vector3()).multiplyScalar(1 / pins.length);
-  body.y = BOARD.height + 0.18;
-  const powered = Boolean(sim.opamps?.[part.id]?.powered);
+  // 741-style single op-amp DIP-8: 2 IN−, 3 IN+, 4 V−, 6 OUT, 7 V+
+  const st = sim.opamps?.[part.id];
+  const sub = st?.powered ? `OUT ${st.output.toFixed(2)} V` : "7 V+ · 4 V−";
   return (
-    <group
-      onClick={(ev) => {
-        ev.stopPropagation();
-        useLab.getState().select(part.id);
-      }}
-    >
-      {pins.map((p, i) => (
-        <BentBoardLead key={i} pin={p} body={body} color="#94a3b8" radius={0.01} />
-      ))}
-      <group position={body}>
-        <mesh rotation={[0, 0, 0]}>
-          {/* triangular-ish IC block */}
-          <boxGeometry args={[0.36, 0.09, 0.28]} />
-          <meshStandardMaterial color={selected ? "#2563eb" : "#0f172a"} roughness={0.4} />
-        </mesh>
-        <mesh position={[0.12, 0.06, 0]} rotation={[0, 0, Math.PI / 2]}>
-          <coneGeometry args={[0.08, 0.14, 3]} />
-          <meshStandardMaterial color="#1e293b" />
-        </mesh>
-        <mesh position={[-0.12, 0.08, -0.06]}>
-          <sphereGeometry args={[0.012, 8, 8]} />
-          <meshStandardMaterial color={powered ? "#22c55e" : "#334155"} emissive={powered ? "#16a34a" : "#000"} emissiveIntensity={powered ? 1 : 0} />
-        </mesh>
-        <Html position={[0, 0.14, 0]} center distanceFactor={5.5} style={{ pointerEvents: "none", fontSize: 9, color: "#94a3b8", fontWeight: 700 }}>
-          OPAMP
-        </Html>
-      </group>
-    </group>
+    <Dip8Package
+      part={part}
+      pinOrder={["nc1", "inn", "inp", "vee", "nc5", "out", "vcc", "nc8"]}
+      selected={selected}
+      label="OP-AMP"
+      sublabel={sub}
+      led={{ on: Boolean(st?.powered), color: "#22c55e" }}
+    />
   );
 }
 

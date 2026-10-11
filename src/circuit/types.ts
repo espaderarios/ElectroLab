@@ -405,11 +405,17 @@ export interface PlacedPart {
     servoAngle?: number;
     /** 7-segment common type. */
     sevenSegCommon?: "cathode" | "anode";
+    /** RGB LED common pin type. */
+    rgbCommon?: "cathode" | "anode";
     /** Digit currently shown on 7-segment (0–9) when driven as a unit. */
     sevenSegDigit?: number;
     /** 555 timer mode. */
     timer555Mode?: "astable" | "monostable" | "bistable";
-    /** Op-amp mode for educational model. */
+    /**
+     * Op-amp configuration. "comparator" = open loop (wire your own feedback
+     * for amplifiers), "buffer" = internal OUT→IN− unity-gain follower,
+     * "inverting" = open loop, expects external Rin/Rf feedback.
+     */
     opampMode?: "comparator" | "buffer" | "inverting";
     /** Regulator output voltage (e.g. 5 for 7805). */
     regulatorVout?: number;
@@ -625,6 +631,20 @@ export interface Timer555State {
   powered: boolean;
   output: 0 | 1;
   mode: "astable" | "monostable" | "bistable";
+  /** Time spent in the current output state (ms). */
+  phaseMs?: number;
+  /** Astable frequency derived from the timing network (Hz). */
+  frequencyHz?: number;
+  /** Astable duty cycle (0–1). */
+  dutyCycle?: number;
+  /** Monostable pulse width / astable high time (ms). */
+  highMs?: number;
+  /** Astable low time (ms). */
+  lowMs?: number;
+  /** True when timing R/C were found on the board (else defaults are used). */
+  timingFromBoard?: boolean;
+  /** Previous TRIG level (for monostable edge detection). */
+  trigLow?: boolean;
 }
 
 export interface OpampState {
@@ -632,6 +652,7 @@ export interface OpampState {
   powered: boolean;
   output: number;
   mode: string;
+  saturated?: "high" | "low" | null;
 }
 
 export interface ServoState {

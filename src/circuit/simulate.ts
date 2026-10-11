@@ -12,8 +12,20 @@ import type {
   SimResult,
   Wire,
 } from "./types";
-import { MOTOR_MODELS, THYRISTOR_MODELS, TRIAC_MODELS } from "./types";
-import type { ThyristorModelId, TriacModelId } from "./types";
+import {
+  MOSFET_MODELS,
+  MOTOR_MODELS,
+  THYRISTOR_MODELS,
+  TRIAC_MODELS,
+  ZENER_MODELS,
+} from "./types";
+import type {
+  MosfetModelId,
+  ThyristorModelId,
+  Timer555State,
+  TriacModelId,
+  ZenerModelId,
+} from "./types";
 import {
   executeMcuProgram,
   getMcuRuntimeState,
@@ -135,6 +147,33 @@ function solveLinear(A: number[][], b: number[]): number[] | null {
   return x;
 }
 
+interface ControlledSource {
+  out: number;
+  p: number;
+  n: number;
+  refA: number;
+  refB: number;
+  gain: number;
+  rout: number;
+}
+
+/** Op-amp open-loop gain used by the DC model (high enough for ~0.01% error). */
+const OPAMP_GAIN = 2e4;
+const OPAMP_ROUT = 75;
+
+function mosfetModel(id?: string) {
+  return MOSFET_MODELS[(id ?? "2n7000") as MosfetModelId] ?? MOSFET_MODELS["2n7000"];
+}
+
+function zenerModel(id?: string) {
+  return ZENER_MODELS[(id ?? "5v1") as ZenerModelId] ?? ZENER_MODELS["5v1"];
+}
+
+const SEVEN_SEG_DIGITS: Record<string, number> = {
+  "1111110": 0, "0110000": 1, "1101101": 2, "1111001": 3, "0110011": 4,
+  "1011011": 5, "1011111": 6, "1110000": 7, "1111111": 8, "1111011": 9,
+};
+
 /**
  * DC nodal analysis for a network of two-terminal resistive elements
  * driven by a single ideal voltage source between positiveNode and
@@ -152,8 +191,14 @@ function solve(opts: {
   positiveNode: number;
   negativeNode: number;
   voltage: number;
+  /**
+   * Voltage-controlled voltage sources with output resistance (op-amps):
+   *   V(out) = (V(refA) + V(refB)) / 2 + gain * (V(p) - V(n))   via rout.
+   */
+  controlled?: ControlledSource[];
 }): Record<number, number> {
   const { nodes, elements, positiveNode, negativeNode, voltage } = opts;
+  const controlled = opts.controlled ?? [];
 
   // Piecewise-linear junction state for LEDs/diodes.
   // We first use a low-resistance probe to determine whether a forward
@@ -227,6 +272,21 @@ function solve(opts: {
         if (ia !== undefined) I[ia] += source;
         if (ib !== undefined) I[ib] -= source;
       }
+    }
+
+    for (const src of controlled) {
+      const io = index.get(src.out);
+      if (io === undefined) continue;
+      const g = 1 / Math.max(src.rout, 1e-3);
+      const stamp = (node: number, k: number) => {
+        const i = index.get(node);
+        if (i !== undefined) G[io][i] += k * g;
+      };
+      stamp(src.out, 1);
+      stamp(src.p, -src.gain);
+      stamp(src.n, src.gain);
+      stamp(src.refA, -0.5);
+      stamp(src.refB, -0.5);
     }
 
     // Approximate an ideal voltage source with a very large conductance.
@@ -350,6 +410,10 @@ export function simulate(input: {
   prevLatched?: Record<string, boolean>;
   /** Previous motor armature currents for inductive dynamics (A). */
   prevMotorCurrents?: Record<string, number>;
+  /** Fuses that blew in an earlier frame (stay open until replaced). */
+  prevBlownFuses?: Record<string, boolean>;
+  /** 555 timer state from the previous frame (output level + phase). */
+  prevTimer555?: Record<string, Timer555State>;
   /** Virtual MCU time advanced for this simulation pass. */
   mcuDeltaMs?: number;
   /** Hardware RESET assertion for all MCUs on this simulation step. */
@@ -398,7 +462,13 @@ export function simulate(input: {
   };
 
   if (!input.powerOn) {
-    return empty;
+    const fuses: NonNullable<SimResult["fuses"]> = {};
+    for (const part of input.parts) {
+      if (part.kind !== "fuse") continue;
+      const blown = Boolean(part.props.fuseBlown || input.prevBlownFuses?.[part.id]);
+      fuses[part.id] = { id: part.id, conducting: false, blown, current: 0 };
+    }
+    return { ...empty, fuses };
   }
 
   // ============================================================
@@ -593,6 +663,12 @@ export function simulate(input: {
     id: string;
     forwardVoltage?: number;
   }> = [];
+
+  const pinNode = (hole?: string | null) => {
+    if (!hole) return undefined;
+    const index = indexOf.get(hole);
+    return index === undefined ? undefined : uf.find(index);
+  };
 
   for (const part of input.parts) {
     // ----------------------------------------------------------
@@ -917,52 +993,43 @@ export function simulate(input: {
     }
 
     // ----------------------------------------------------------
-    // MOSFET (simple threshold switch model)
+    // MOSFET — insulated gate; the channel is switched in the
+    // active-device pass from Vgs vs. the selected model's Vth.
     // ----------------------------------------------------------
     if (part.kind === "mosfet") {
-      const g = part.pins.g;
-      const d = part.pins.d;
-      const s = part.pins.s;
-      if (g && d && s) {
-        const ig = indexOf.get(g);
-        const id_ = indexOf.get(d);
-        const is_ = indexOf.get(s);
-        if (ig !== undefined && id_ !== undefined && is_ !== undefined) {
-          // High impedance gate (leak)
-          elements.push({
-            a: uf.find(ig),
-            b: uf.find(is_),
-            resistance: 1e8,
-            id: `${part.id}:gate`,
-          });
-          // Default off-channel until post-solve refinement
-          elements.push({
-            a: uf.find(id_),
-            b: uf.find(is_),
-            resistance: 1e6,
-            id: `${part.id}:ch`,
-          });
-        }
+      const g = pinNode(part.pins.g);
+      const d = pinNode(part.pins.d);
+      const s = pinNode(part.pins.s);
+      if (g !== undefined && s !== undefined) {
+        elements.push({ a: g, b: s, resistance: 1e9, id: `${part.id}:gate` });
+      }
+      if (d !== undefined && s !== undefined) {
+        elements.push({ a: d, b: s, resistance: 1e9, id: `${part.id}:off` });
       }
     }
 
     // ----------------------------------------------------------
-    // ZENER DIODE
+    // ZENER — forward junction A→K plus reverse breakdown K→A at Vz.
     // ----------------------------------------------------------
     if (part.kind === "zener") {
-      const a = part.pins.a;
-      const k = part.pins.k;
-      if (a && k) {
-        const ia = indexOf.get(a);
-        const ik = indexOf.get(k);
-        if (ia !== undefined && ik !== undefined) {
-          elements.push({
-            a: uf.find(ia),
-            b: uf.find(ik),
-            resistance: 1000,
-            id: part.id,
-          });
-        }
+      const a = pinNode(part.pins.a);
+      const k = pinNode(part.pins.k);
+      if (a !== undefined && k !== undefined) {
+        const model = zenerModel(part.props.zenerModel);
+        elements.push({
+          a,
+          b: k,
+          resistance: DIODE_RD,
+          forwardVoltage: DIODE_VF,
+          id: `${part.id}:fwd`,
+        });
+        elements.push({
+          a: k,
+          b: a,
+          resistance: model.rz,
+          forwardVoltage: model.vz,
+          id: `${part.id}:rev`,
+        });
       }
     }
 
@@ -970,68 +1037,54 @@ export function simulate(input: {
     // LDR / THERMISTOR / FUSE (resistive two-terminal)
     // ----------------------------------------------------------
     if (part.kind === "ldr") {
-      const a = part.pins.a;
-      const b = part.pins.b;
-      if (a && b) {
-        const ia = indexOf.get(a);
-        const ib = indexOf.get(b);
-        if (ia !== undefined && ib !== undefined) {
-          const light = Math.max(0, Math.min(1, part.props.lightLevel ?? 0.5));
-          // ~1 MΩ dark → ~1 kΩ bright
-          const r = 1_000_000 * Math.pow(0.001, light) + 500;
-          elements.push({ a: uf.find(ia), b: uf.find(ib), resistance: r, id: part.id });
-        }
+      const a = pinNode(part.pins.a);
+      const b = pinNode(part.pins.b);
+      if (a !== undefined && b !== undefined) {
+        const light = Math.max(0, Math.min(1, part.props.lightLevel ?? 0.5));
+        // ~1 MΩ dark → ~1 kΩ bright
+        const r = 1_000_000 * Math.pow(0.001, light) + 500;
+        elements.push({ a, b, resistance: r, id: part.id });
       }
     }
     if (part.kind === "thermistor") {
-      const a = part.pins.a;
-      const b = part.pins.b;
-      if (a && b) {
-        const ia = indexOf.get(a);
-        const ib = indexOf.get(b);
-        if (ia !== undefined && ib !== undefined) {
-          const r25 = part.props.r25 ?? 10000;
-          const t = part.props.temperatureC ?? 25;
-          // Simplified B-parameter approx (B≈3950)
-          const B = 3950;
-          const r = r25 * Math.exp(B * (1 / (t + 273.15) - 1 / 298.15));
-          elements.push({ a: uf.find(ia), b: uf.find(ib), resistance: Math.max(10, r), id: part.id });
-        }
+      const a = pinNode(part.pins.a);
+      const b = pinNode(part.pins.b);
+      if (a !== undefined && b !== undefined) {
+        const r25 = part.props.r25 ?? 10000;
+        const t = part.props.temperatureC ?? 25;
+        // Simplified B-parameter NTC model (B≈3950)
+        const B = 3950;
+        const r = r25 * Math.exp(B * (1 / (t + 273.15) - 1 / 298.15));
+        elements.push({ a, b, resistance: Math.max(10, r), id: part.id });
       }
     }
     if (part.kind === "fuse") {
-      const a = part.pins.a;
-      const b = part.pins.b;
-      if (a && b) {
-        const ia = indexOf.get(a);
-        const ib = indexOf.get(b);
-        if (ia !== undefined && ib !== undefined) {
-          const blown = Boolean(part.props.fuseBlown);
-          elements.push({
-            a: uf.find(ia),
-            b: uf.find(ib),
-            resistance: blown ? 1e9 : (part.props.resistance ?? 0.05),
-            id: part.id,
-          });
-        }
+      const a = pinNode(part.pins.a);
+      const b = pinNode(part.pins.b);
+      if (a !== undefined && b !== undefined) {
+        const blown = Boolean(part.props.fuseBlown || input.prevBlownFuses?.[part.id]);
+        elements.push({
+          a,
+          b,
+          resistance: blown ? 1e9 : Math.max(0.01, part.props.resistance ?? 0.05),
+          id: part.id,
+        });
       }
     }
 
     // ----------------------------------------------------------
-    // RGB LED (common cathode) — three LED branches
+    // RGB LED — three LED junctions sharing a common cathode or anode
     // ----------------------------------------------------------
     if (part.kind === "rgb-led") {
-      const k = part.pins.k;
+      const com = pinNode(part.pins.k);
+      const commonAnode = part.props.rgbCommon === "anode";
       for (const ch of ["r", "g", "b"] as const) {
-        const p = part.pins[ch];
-        if (!p || !k) continue;
-        const ia = indexOf.get(p);
-        const ik = indexOf.get(k);
-        if (ia === undefined || ik === undefined) continue;
+        const p = pinNode(part.pins[ch]);
+        if (p === undefined || com === undefined) continue;
         const vf = ch === "r" ? 1.9 : ch === "g" ? 2.2 : 3.0;
         elements.push({
-          a: uf.find(ia),
-          b: uf.find(ik),
+          a: commonAnode ? com : p,
+          b: commonAnode ? p : com,
           resistance: 30,
           forwardVoltage: vf,
           id: `${part.id}:${ch}`,
@@ -1043,17 +1096,14 @@ export function simulate(input: {
     // 7-SEGMENT — each segment as LED to common
     // ----------------------------------------------------------
     if (part.kind === "seven-segment") {
-      const com = part.pins.com;
+      const com = pinNode(part.pins.com);
       const commonAnode = part.props.sevenSegCommon === "anode";
       for (const seg of ["a", "b", "c", "d", "e", "f", "g", "dp"] as const) {
-        const p = part.pins[seg];
-        if (!p || !com) continue;
-        const ia = indexOf.get(p);
-        const ic = indexOf.get(com);
-        if (ia === undefined || ic === undefined) continue;
+        const p = pinNode(part.pins[seg]);
+        if (p === undefined || com === undefined) continue;
         elements.push({
-          a: uf.find(commonAnode ? ic : ia),
-          b: uf.find(commonAnode ? ia : ic),
+          a: commonAnode ? com : p,
+          b: commonAnode ? p : com,
           resistance: 40,
           forwardVoltage: 1.9,
           id: `${part.id}:${seg}`,
@@ -1062,42 +1112,25 @@ export function simulate(input: {
     }
 
     // ----------------------------------------------------------
-    // 555 TIMER — supply load; output modeled after solve
+    // 555 TIMER — quiescent supply current; OUT/DISCH are driven in
+    // the active-device pass.
     // ----------------------------------------------------------
     if (part.kind === "timer555") {
-      const vcc = part.pins.vcc;
-      const gnd = part.pins.gnd;
-      if (vcc && gnd) {
-        const iv = indexOf.get(vcc);
-        const ig = indexOf.get(gnd);
-        if (iv !== undefined && ig !== undefined) {
-          elements.push({
-            a: uf.find(iv),
-            b: uf.find(ig),
-            resistance: 5000,
-            id: `${part.id}:supply`,
-          });
-        }
+      const vcc = pinNode(part.pins.vcc);
+      const gnd = pinNode(part.pins.gnd);
+      if (vcc !== undefined && gnd !== undefined) {
+        elements.push({ a: vcc, b: gnd, resistance: 3000, id: `${part.id}:supply` });
       }
     }
 
     // ----------------------------------------------------------
-    // OP-AMP — supply rails load
+    // OP-AMP — quiescent supply current; OUT driven in the active pass
     // ----------------------------------------------------------
     if (part.kind === "opamp") {
-      const vcc = part.pins.vcc;
-      const vee = part.pins.vee;
-      if (vcc && vee) {
-        const ia = indexOf.get(vcc);
-        const ib = indexOf.get(vee);
-        if (ia !== undefined && ib !== undefined) {
-          elements.push({
-            a: uf.find(ia),
-            b: uf.find(ib),
-            resistance: 50000,
-            id: `${part.id}:supply`,
-          });
-        }
+      const vcc = pinNode(part.pins.vcc);
+      const vee = pinNode(part.pins.vee);
+      if (vcc !== undefined && vee !== undefined) {
+        elements.push({ a: vcc, b: vee, resistance: 5000, id: `${part.id}:supply` });
       }
     }
 
@@ -1105,88 +1138,49 @@ export function simulate(input: {
     // SERVO — supply load
     // ----------------------------------------------------------
     if (part.kind === "servo") {
-      const vcc = part.pins.vcc;
-      const gnd = part.pins.gnd;
-      if (vcc && gnd) {
-        const ia = indexOf.get(vcc);
-        const ib = indexOf.get(gnd);
-        if (ia !== undefined && ib !== undefined) {
-          elements.push({
-            a: uf.find(ia),
-            b: uf.find(ib),
-            resistance: 50,
-            id: `${part.id}:supply`,
-          });
-        }
+      const vcc = pinNode(part.pins.vcc);
+      const gnd = pinNode(part.pins.gnd);
+      if (vcc !== undefined && gnd !== undefined) {
+        elements.push({ a: vcc, b: gnd, resistance: 50, id: `${part.id}:supply` });
       }
     }
 
     // ----------------------------------------------------------
-    // OPTOCOUPLER — LED + open phototransistor
+    // OPTOCOUPLER — IR LED; the phototransistor C–E is switched in
+    // the active pass from the LED current.
     // ----------------------------------------------------------
     if (part.kind === "optocoupler") {
-      const la = part.pins.la;
-      const lk = part.pins.lk;
-      const c = part.pins.c;
-      const e = part.pins.e;
-      if (la && lk) {
-        const ia = indexOf.get(la);
-        const ik = indexOf.get(lk);
-        if (ia !== undefined && ik !== undefined) {
-          elements.push({
-            a: uf.find(ia),
-            b: uf.find(ik),
-            resistance: 50,
-            forwardVoltage: 1.2,
-            id: `${part.id}:led`,
-          });
-        }
+      const la = pinNode(part.pins.la);
+      const lk = pinNode(part.pins.lk);
+      const c = pinNode(part.pins.c);
+      const e = pinNode(part.pins.e);
+      if (la !== undefined && lk !== undefined) {
+        elements.push({
+          a: la,
+          b: lk,
+          resistance: 50,
+          forwardVoltage: 1.2,
+          id: `${part.id}:led`,
+        });
       }
-      if (c && e) {
-        const ic = indexOf.get(c);
-        const ie = indexOf.get(e);
-        if (ic !== undefined && ie !== undefined) {
-          elements.push({
-            a: uf.find(ic),
-            b: uf.find(ie),
-            resistance: 1e7,
-            id: `${part.id}:out`,
-          });
-        }
+      if (c !== undefined && e !== undefined) {
+        elements.push({ a: c, b: e, resistance: 1e9, id: `${part.id}:off` });
       }
     }
 
     // ----------------------------------------------------------
-    // 78xx REGULATOR — drop model as series resistance + ideal note
+    // 78xx REGULATOR — quiescent current IN→GND; the pass element
+    // IN→OUT is added in the active pass so OUT regulates to Vout.
     // ----------------------------------------------------------
     if (part.kind === "regulator") {
-      const inn = part.pins.in;
-      const gnd = part.pins.gnd;
-      const out = part.pins.out;
-      if (inn && gnd) {
-        const ia = indexOf.get(inn);
-        const ig = indexOf.get(gnd);
-        if (ia !== undefined && ig !== undefined) {
-          elements.push({
-            a: uf.find(ia),
-            b: uf.find(ig),
-            resistance: 2000,
-            id: `${part.id}:q`,
-          });
-        }
+      const inn = pinNode(part.pins.in);
+      const gnd = pinNode(part.pins.gnd);
+      const out = pinNode(part.pins.out);
+      if (inn !== undefined && gnd !== undefined) {
+        elements.push({ a: inn, b: gnd, resistance: 2000, id: `${part.id}:q` });
       }
-      // OUT is forced near target after solve via reporting; light load to gnd
-      if (out && gnd) {
-        const io = indexOf.get(out);
-        const ig = indexOf.get(gnd);
-        if (io !== undefined && ig !== undefined) {
-          elements.push({
-            a: uf.find(io),
-            b: uf.find(ig),
-            resistance: 10000,
-            id: `${part.id}:load`,
-          });
-        }
+      if (out !== undefined && gnd !== undefined) {
+        elements.push({ a: out, b: gnd, resistance: 100000, id: `${part.id}:bleed` });
       }
     }
 
@@ -1505,6 +1499,329 @@ export function simulate(input: {
       }
     }
   }
+
+  // ============================================================
+  // ACTIVE EDUCATIONAL PARTS (MOSFET, optocoupler, regulator,
+  // op-amp, 555, fuse)
+  // ============================================================
+  // These parts are state dependent. Each iteration derives every
+  // device's state from the last solution, stamps the matching
+  // equivalent circuit and re-solves until no device changes state.
+  // Fuses are checked once the devices have settled; a blown fuse is
+  // opened immediately and stays open in later frames until replaced.
+  const ACTIVE_KINDS = new Set([
+    "mosfet",
+    "optocoupler",
+    "regulator",
+    "opamp",
+    "timer555",
+    "fuse",
+  ]);
+  const activeParts = input.parts.filter((part) => ACTIVE_KINDS.has(part.kind));
+  const fuseBlownNow: Record<string, boolean> = {};
+  const mosfetOn: Record<string, { on: boolean; r: number }> = {};
+  const optoOn: Record<string, boolean> = {};
+  const opampSat: Record<string, "high" | "low" | null> = {};
+  const timerStates: Record<string, Timer555State> = {};
+  for (const part of input.parts) {
+    if (part.kind === "fuse" && (part.props.fuseBlown || input.prevBlownFuses?.[part.id])) {
+      fuseBlownNow[part.id] = true;
+    }
+  }
+
+  if (
+    activeParts.length > 0 &&
+    positiveNode !== null &&
+    negativeNode !== null &&
+    uf.find(positiveNode) !== uf.find(negativeNode)
+  ) {
+    const nodeV = (node?: number) =>
+      node === undefined ? 0 : (solved[uf.find(node)] ?? 0);
+
+    // Nets that touch anything besides a bare pin (used for "is this
+    // input connected?" checks on 555 TRIG/THRES/RESET).
+    const usedRoots = new Set<number>([uf.find(positiveNode), uf.find(negativeNode)]);
+    for (const el of elements) {
+      usedRoots.add(uf.find(el.a));
+      usedRoots.add(uf.find(el.b));
+    }
+    const connected = (n?: number) => n !== undefined && usedRoots.has(uf.find(n));
+
+    const between = (kind: "resistor" | "capacitor", x?: number, y?: number) => {
+      if (x === undefined || y === undefined) return undefined;
+      let total: number | undefined;
+      for (const part of input.parts) {
+        if (part.kind !== kind) continue;
+        const a = pinNode(part.pins.a);
+        const b = pinNode(part.pins.b);
+        if (a === undefined || b === undefined) continue;
+        if (!((a === x && b === y) || (a === y && b === x))) continue;
+        if (kind === "resistor") {
+          // Parallel resistors combine as conductances.
+          const r = Math.max(1e-3, part.props.resistance ?? 1000);
+          total = total === undefined ? r : 1 / (1 / total + 1 / r);
+        } else {
+          total = (total ?? 0) + Math.max(0, part.props.capacitance ?? 0);
+        }
+      }
+      return total;
+    };
+
+    // ---- 555 timers: advance in time once per frame ----
+    const dt = Math.max(0, input.mcuDeltaMs ?? 0);
+    for (const part of activeParts) {
+      if (part.kind !== "timer555") continue;
+      const gndN = pinNode(part.pins.gnd);
+      const vccN = pinNode(part.pins.vcc);
+      const trigN = pinNode(part.pins.trig);
+      const thresN = pinNode(part.pins.thres);
+      const dischN = pinNode(part.pins.disch);
+      const resetN = pinNode(part.pins.reset);
+      const supply = nodeV(vccN) - nodeV(gndN);
+      const powered = vccN !== undefined && gndN !== undefined && supply >= 4.5;
+      const mode = part.props.timer555Mode ?? "astable";
+      const prev = input.prevTimer555?.[part.id];
+      const rel = (n?: number) => nodeV(n) - nodeV(gndN);
+      const resetActive = connected(resetN) && rel(resetN) < 0.7;
+      const trigLow = connected(trigN) && rel(trigN) < supply / 3;
+      const thresHigh = connected(thresN) && rel(thresN) > (2 * supply) / 3;
+
+      let output: 0 | 1 = prev?.output ?? 0;
+      let phaseMs = prev?.phaseMs ?? 0;
+      let highMs: number | undefined;
+      let lowMs: number | undefined;
+      let frequencyHz: number | undefined;
+      let dutyCycle: number | undefined;
+      let timingFromBoard = false;
+
+      if (mode === "astable") {
+        const r1 = between("resistor", vccN, dischN);
+        const r2 = between("resistor", dischN, thresN) ?? between("resistor", dischN, trigN);
+        const c = between("capacitor", thresN, gndN) ?? between("capacitor", trigN, gndN);
+        if (r1 && r2 && c) {
+          // tH = 0.693 (R1 + R2) C, tL = 0.693 R2 C  (in ms)
+          highMs = 693 * (r1 + r2) * c;
+          lowMs = 693 * r2 * c;
+          timingFromBoard = true;
+        } else {
+          highMs = 500;
+          lowMs = 500;
+        }
+        highMs = Math.max(highMs, 1e-3);
+        lowMs = Math.max(lowMs, 1e-3);
+        const period = highMs + lowMs;
+        frequencyHz = 1000 / period;
+        dutyCycle = highMs / period;
+        if (!powered || resetActive) {
+          output = 0;
+          phaseMs = 0;
+        } else {
+          // Capacitor starts discharged, so the output starts HIGH.
+          phaseMs = prev?.powered ? (phaseMs + dt) % period : 0;
+          output = phaseMs < highMs ? 1 : 0;
+        }
+      } else if (mode === "monostable") {
+        const r = between("resistor", vccN, thresN) ?? between("resistor", vccN, dischN);
+        const c = between("capacitor", thresN, gndN) ?? between("capacitor", dischN, gndN);
+        highMs = r && c ? 1100 * r * c : 1000; // tW = 1.1 R C
+        timingFromBoard = Boolean(r && c);
+        if (!powered || resetActive) {
+          output = 0;
+          phaseMs = 0;
+        } else if (trigLow) {
+          output = 1;
+          phaseMs = 0;
+        } else if (output === 1) {
+          phaseMs += dt;
+          if (phaseMs >= highMs) {
+            output = 0;
+            phaseMs = 0;
+          }
+        }
+      } else {
+        // Bistable (SR latch): TRIG low sets, THRES high / RESET low clears.
+        if (!powered || resetActive) output = 0;
+        else if (trigLow) output = 1;
+        else if (thresHigh) output = 0;
+        phaseMs = 0;
+      }
+
+      timerStates[part.id] = {
+        id: part.id,
+        powered,
+        output,
+        mode,
+        phaseMs,
+        frequencyHz,
+        dutyCycle,
+        highMs,
+        lowMs,
+        timingFromBoard,
+        trigLow,
+      };
+    }
+
+    const rootNodes = new Set<number>();
+    for (const hole of getAllHoles()) {
+      const index = indexOf.get(hole);
+      if (index !== undefined) rootNodes.add(uf.find(index));
+    }
+    const rootNodeList = Array.from(rootNodes);
+
+    let lastKey = "";
+    let lastExtra: typeof elements = [];
+
+    for (let iter = 0; iter < 32; iter++) {
+      const extra: typeof elements = [];
+      const controlled: ControlledSource[] = [];
+      const keyParts: string[] = [];
+
+      for (const part of activeParts) {
+        const id = part.id;
+
+        if (part.kind === "mosfet") {
+          const g = pinNode(part.pins.g);
+          const d = pinNode(part.pins.d);
+          const s = pinNode(part.pins.s);
+          if (g === undefined || d === undefined || s === undefined) continue;
+          const model = mosfetModel(part.props.mosfetModel);
+          const vth = Math.abs(model.vth);
+          const vgs = nodeV(g) - nodeV(s);
+          const overdrive = model.channel === "p" ? -vgs - vth : vgs - vth;
+          const wasOn = mosfetOn[id]?.on ?? false;
+          const on = overdrive > (wasOn ? -0.05 : 0);
+          // ~5× Rds(on) right at threshold, approaching Rds(on) when fully enhanced.
+          const od = Math.max(0, overdrive);
+          const r = Number((model.rdsOn * (1 + 4 / (1 + 4 * od))).toPrecision(2));
+          mosfetOn[id] = { on, r };
+          if (on) extra.push({ a: d, b: s, resistance: r, id: `${id}:ch` });
+          keyParts.push(on ? `M${r}` : "M0");
+        }
+
+        if (part.kind === "optocoupler") {
+          const la = pinNode(part.pins.la);
+          const lk = pinNode(part.pins.lk);
+          const c = pinNode(part.pins.c);
+          const e = pinNode(part.pins.e);
+          const ledI = Math.max(0, (nodeV(la) - nodeV(lk) - 1.2) / 50);
+          const on = la !== undefined && lk !== undefined && ledI >= (optoOn[id] ? 0.0003 : 0.0005);
+          optoOn[id] = on;
+          if (on && c !== undefined && e !== undefined) {
+            extra.push({ a: c, b: e, resistance: 40, forwardVoltage: 0.2, id: `${id}:ce` });
+          }
+          keyParts.push(on ? "O1" : "O0");
+        }
+
+        if (part.kind === "regulator") {
+          const inN = pinNode(part.pins.in);
+          const gN = pinNode(part.pins.gnd);
+          const oN = pinNode(part.pins.out);
+          if (inN === undefined || gN === undefined || oN === undefined) continue;
+          const vin = nodeV(inN) - nodeV(gN);
+          const target = part.props.regulatorVout ?? 5;
+          if (vin > 2.5) {
+            // Pass element IN→OUT: drops whatever is needed to hold OUT at
+            // GND + Vout, but never less than the ~2 V 78xx dropout.
+            const drop = Math.round(Math.max(2, vin - target) * 100) / 100;
+            extra.push({ a: inN, b: oN, resistance: 0.2, forwardVoltage: drop, id: `${id}:pass` });
+            keyParts.push(`R${drop}`);
+          } else {
+            keyParts.push("R0");
+          }
+        }
+
+        if (part.kind === "opamp") {
+          const mode = part.props.opampMode ?? "comparator";
+          const o = pinNode(part.pins.out);
+          const p = pinNode(part.pins.inp);
+          const n = mode === "buffer" ? o : pinNode(part.pins.inn);
+          const vccN = pinNode(part.pins.vcc);
+          const veeN = pinNode(part.pins.vee);
+          if (o === undefined || p === undefined || n === undefined || vccN === undefined || veeN === undefined) {
+            continue;
+          }
+          const vpos = nodeV(vccN);
+          const vneg = nodeV(veeN);
+          if (vpos - vneg <= 3) {
+            keyParts.push("A-");
+            continue;
+          }
+          const vlin = (vpos + vneg) / 2 + OPAMP_GAIN * (nodeV(p) - nodeV(n));
+          const prev = opampSat[id];
+          let sat: "high" | "low" | null;
+          if (prev === "high") sat = vlin < vpos ? null : "high";
+          else if (prev === "low") sat = vlin > vneg ? null : "low";
+          else sat = vlin > vpos ? "high" : vlin < vneg ? "low" : null;
+          opampSat[id] = sat;
+          if (sat === "high") {
+            extra.push({ a: vccN, b: o, resistance: OPAMP_ROUT, id: `${id}:out` });
+          } else if (sat === "low") {
+            extra.push({ a: o, b: veeN, resistance: OPAMP_ROUT, id: `${id}:out` });
+          } else {
+            controlled.push({ out: o, p, n, refA: vccN, refB: veeN, gain: OPAMP_GAIN, rout: OPAMP_ROUT });
+          }
+          keyParts.push(`A${sat}`);
+        }
+
+        if (part.kind === "timer555") {
+          const st = timerStates[id];
+          const o = pinNode(part.pins.out);
+          const vccN = pinNode(part.pins.vcc);
+          const gndN = pinNode(part.pins.gnd);
+          const dischN = pinNode(part.pins.disch);
+          if (!st?.powered || o === undefined || vccN === undefined || gndN === undefined) continue;
+          if (st.output === 1) {
+            // NE555 output high sits ~1.2–1.7 V below VCC.
+            extra.push({ a: vccN, b: o, resistance: 10, forwardVoltage: 1.2, id: `${id}:out` });
+          } else {
+            extra.push({ a: o, b: gndN, resistance: 10, id: `${id}:out` });
+            if (dischN !== undefined) {
+              extra.push({ a: dischN, b: gndN, resistance: 10, id: `${id}:disch` });
+            }
+          }
+        }
+      }
+
+      const key = keyParts.join("|");
+      if (iter > 0 && key === lastKey) {
+        let blewFuse = false;
+        for (const part of activeParts) {
+          if (part.kind !== "fuse" || fuseBlownNow[part.id]) continue;
+          const r = Math.max(0.01, part.props.resistance ?? 0.05);
+          const current =
+            Math.abs(nodeV(pinNode(part.pins.a)) - nodeV(pinNode(part.pins.b))) / r;
+          if (current > (part.props.fuseCurrent ?? 0.5)) {
+            fuseBlownNow[part.id] = true;
+            for (const el of elements) if (el.id === part.id) el.resistance = 1e9;
+            blewFuse = true;
+          }
+        }
+        if (!blewFuse) break;
+      }
+
+      lastKey = key;
+      lastExtra = extra;
+      try {
+        solved = solve({
+          nodes: rootNodeList,
+          elements: [
+            ...elements.map((el) => ({ ...el, a: uf.find(el.a), b: uf.find(el.b) })),
+            ...extra,
+          ],
+          positiveNode: uf.find(positiveNode),
+          negativeNode: uf.find(negativeNode),
+          voltage: input.psuVoltage,
+          controlled,
+        });
+      } catch {
+        break;
+      }
+    }
+
+    // Keep the active elements for current accounting below.
+    for (const el of lastExtra) elements.push(el);
+  }
+
 
   // ============================================================
   // COPY NODE VOLTAGES BACK TO HOLES
@@ -3069,39 +3386,50 @@ export function simulate(input: {
     return solved[uf.find(idx)] ?? 0;
   };
 
+  // Nets that reach some other part / the PSU (used for servo SIG).
+  const otherPinRoots = (self: PlacedPart) => {
+    const roots = new Set<number>();
+    if (positiveNode !== null) roots.add(uf.find(positiveNode));
+    if (negativeNode !== null) roots.add(uf.find(negativeNode));
+    for (const other of input.parts) {
+      if (other.id === self.id) continue;
+      for (const hole of Object.values(other.pins)) {
+        const n = pinNode(hole);
+        if (n !== undefined) roots.add(n);
+      }
+    }
+    return roots;
+  };
+
   for (const part of input.parts) {
     if (part.kind === "mosfet") {
+      const model = mosfetModel(part.props.mosfetModel);
       const g = volt(part.pins.g);
       const d = volt(part.pins.d);
       const s = volt(part.pins.s);
-      const modelId = (part.props.mosfetModel as string) || "2n7000";
-      const isP = /9540|3401|p-ch|pchannel/i.test(modelId) || modelId === "irf9540" || modelId === "ao3401";
+      const state = mosfetOn[part.id];
+      const conducting = Boolean(state?.on);
       const vgs = g - s;
       const vds = d - s;
-      const vth = isP ? -2.0 : 2.0;
-      const conducting = isP ? vgs < vth : vgs > vth;
-      const rds = conducting ? 0.5 : 1e6;
-      const ids = conducting ? vds / rds : 0;
+      const ids = conducting && state ? vds / state.r : vds / 1e9;
       mosfets[part.id] = {
         id: part.id,
         conducting,
         vgs,
         vds,
         ids,
-        channel: isP ? "p" : "n",
+        channel: model.channel,
       };
     }
 
     if (part.kind === "zener") {
-      const va = volt(part.pins.a);
-      const vk = volt(part.pins.k);
-      const v = va - vk;
-      const model = (part.props.zenerModel as string) || "5v1";
-      const vzMap: Record<string, number> = { "3v3": 3.3, "5v1": 5.1, "6v2": 6.2, "9v1": 9.1, "12v": 12, "15v": 15 };
-      const vz = vzMap[model] ?? 5.1;
-      const breakdown = v < -vz + 0.05;
-      const forward = v > 0.7;
-      const current = forward ? Math.max(0, (v - 0.7) / 20) : breakdown ? Math.max(0, (-v - vz) / 15) : 0;
+      const model = zenerModel(part.props.zenerModel);
+      const v = volt(part.pins.a) - volt(part.pins.k);
+      const forwardI = Math.max(0, (v - DIODE_VF) / DIODE_RD);
+      const reverseI = Math.max(0, (-v - model.vz) / model.rz);
+      const forward = v >= DIODE_VF - 0.05;
+      const breakdown = -v >= model.vz - 0.05;
+      const current = forward ? forwardI : breakdown ? reverseI : 0;
       zeners[part.id] = { id: part.id, on: forward || breakdown, breakdown, current, voltage: v };
     }
 
@@ -3120,11 +3448,13 @@ export function simulate(input: {
     }
 
     if (part.kind === "rgb-led") {
-      const vk = volt(part.pins.k);
+      const com = volt(part.pins.k);
+      const commonAnode = part.props.rgbCommon === "anode";
       const ch = (name: string, vf: number) => {
-        const v = volt(part.pins[name]) - vk;
-        const on = v > vf * 0.85;
-        const brightness = on ? Math.min(1, Math.max(0, (v - vf) / 2 + 0.4)) : 0;
+        const v = commonAnode ? com - volt(part.pins[name]) : volt(part.pins[name]) - com;
+        const current = Math.max(0, (v - vf) / 30);
+        const on = current > 0.0005;
+        const brightness = on ? Math.min(1, 0.25 + (current / 0.02) * 0.75) : 0;
         return { on, brightness };
       };
       const r = ch("r", 1.9);
@@ -3147,78 +3477,77 @@ export function simulate(input: {
       const segs: boolean[] = [];
       for (const name of ["a", "b", "c", "d", "e", "f", "g"]) {
         const vs = volt(part.pins[name]);
-        const forward = commonAnode ? com - vs > 1.5 : vs - com > 1.5;
-        segs.push(forward);
+        segs.push((commonAnode ? com - vs : vs - com) >= 1.85);
       }
-      sevenSegments[part.id] = { id: part.id, segments: segs, digit: part.props.sevenSegDigit };
+      const pattern = segs.map((on) => (on ? "1" : "0")).join("");
+      sevenSegments[part.id] = { id: part.id, segments: segs, digit: SEVEN_SEG_DIGITS[pattern] };
     }
 
     if (part.kind === "timer555") {
-      const vcc = volt(part.pins.vcc);
-      const gnd = volt(part.pins.gnd);
-      const supply = vcc - gnd;
-      const powered = supply > 4.5;
       const mode = part.props.timer555Mode ?? "astable";
-      // Educational: astable toggles with time via a crude phase from supply presence
-      const output: 0 | 1 = powered ? 1 : 0;
-      timer555s[part.id] = { id: part.id, powered, output, mode };
+      timer555s[part.id] = timerStates[part.id] ?? {
+        id: part.id,
+        powered: false,
+        output: 0,
+        mode,
+      };
     }
 
     if (part.kind === "opamp") {
       const vcc = volt(part.pins.vcc);
       const vee = volt(part.pins.vee);
-      const inp = volt(part.pins.inp);
-      const inn = volt(part.pins.inn);
       const powered = vcc - vee > 3;
       const mode = part.props.opampMode ?? "comparator";
-      let output = 0;
-      if (powered) {
-        if (mode === "buffer") output = Math.max(vee + 0.5, Math.min(vcc - 0.5, inp));
-        else if (mode === "inverting") output = Math.max(vee + 0.5, Math.min(vcc - 0.5, vee + (vcc - vee) / 2 - (inp - inn)));
-        else output = inp >= inn ? vcc - 0.5 : vee + 0.5;
-      }
-      opamps[part.id] = { id: part.id, powered, output, mode };
+      const output = powered ? volt(part.pins.out) : 0;
+      opamps[part.id] = {
+        id: part.id,
+        powered,
+        output,
+        mode,
+        saturated: powered ? (opampSat[part.id] ?? null) : null,
+      };
     }
 
     if (part.kind === "servo") {
-      const vcc = volt(part.pins.vcc);
       const gnd = volt(part.pins.gnd);
-      const supply = vcc - gnd;
+      const supply = volt(part.pins.vcc) - gnd;
       const powered = supply > 4.0;
-      const angle = part.props.servoAngle ?? 90;
+      const sigNode = pinNode(part.pins.sig);
+      const sigConnected = sigNode !== undefined && otherPinRoots(part).has(sigNode);
+      let angle = part.props.servoAngle ?? 90;
+      if (powered && sigConnected && part.pins.sig) {
+        // Educational: SIG level 0…VCC maps to 0…180° (stand-in for PWM duty).
+        const sig = (voltages[part.pins.sig] ?? 0) - gnd;
+        angle = Math.round(Math.max(0, Math.min(1, sig / supply)) * 180);
+      }
       servos[part.id] = { id: part.id, powered, angle, voltage: supply };
     }
 
     if (part.kind === "optocoupler") {
-      const la = volt(part.pins.la);
-      const lk = volt(part.pins.lk);
-      const vled = la - lk;
-      const ledOn = vled > 1.0;
-      const ledCurrent = ledOn ? Math.max(0, (vled - 1.2) / 50) : 0;
+      const vled = volt(part.pins.la) - volt(part.pins.lk);
+      const ledCurrent = Math.max(0, (vled - 1.2) / 50);
       optocouplers[part.id] = {
         id: part.id,
-        ledOn,
-        outputConducting: ledOn && ledCurrent > 0.001,
+        ledOn: ledCurrent > 0.0002,
+        outputConducting: Boolean(optoOn[part.id]),
         ledCurrent,
       };
     }
 
     if (part.kind === "regulator") {
-      const vin = volt(part.pins.in) - volt(part.pins.gnd);
+      const gnd = volt(part.pins.gnd);
+      const vin = volt(part.pins.in) - gnd;
       const target = part.props.regulatorVout ?? 5;
-      const dropout = vin < target + 2;
-      const powered = vin > 3;
-      const vout = powered ? (dropout ? Math.max(0, vin - 1.5) : target) : 0;
+      const powered = vin > 2.5;
+      const dropout = powered && vin < target + 2;
+      const vout = powered ? volt(part.pins.out) - gnd : 0;
       regulators[part.id] = { id: part.id, powered, vin, vout, dropout };
     }
 
     if (part.kind === "fuse") {
-      const va = volt(part.pins.a);
-      const vb = volt(part.pins.b);
-      const r = part.props.fuseBlown ? 1e9 : (part.props.resistance ?? 0.05);
-      const current = Math.abs(va - vb) / Math.max(r, 1e-9);
-      const limit = part.props.fuseCurrent ?? 0.5;
-      const blown = Boolean(part.props.fuseBlown) || current > limit * 1.2;
+      const blown = Boolean(fuseBlownNow[part.id]);
+      const r = blown ? 1e9 : Math.max(0.01, part.props.resistance ?? 0.05);
+      const current = Math.abs(volt(part.pins.a) - volt(part.pins.b)) / r;
       if (blown) burned[part.id] = true;
       fuses[part.id] = { id: part.id, conducting: !blown, blown, current };
     }
