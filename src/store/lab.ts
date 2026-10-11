@@ -413,6 +413,31 @@ function getTwoPinKind(tool: ToolId): PartKind | "wire" | null {
     case "xnor":
       return "xnor";
 
+    case "mosfet":
+      return "mosfet";
+    case "zener":
+      return "zener";
+    case "ldr":
+      return "ldr";
+    case "rgb-led":
+      return "rgb-led";
+    case "seven-segment":
+      return "seven-segment";
+    case "timer555":
+      return "timer555";
+    case "opamp":
+      return "opamp";
+    case "servo":
+      return "servo";
+    case "thermistor":
+      return "thermistor";
+    case "optocoupler":
+      return "optocoupler";
+    case "regulator":
+      return "regulator";
+    case "fuse":
+      return "fuse";
+
     default:
       return null;
   }
@@ -455,11 +480,15 @@ export function computePinLayout(
     // LED / diode: adjacent columns on the same row (typical breadboard span).
     // Never jump the center trench — that left the body floating mid-board
     // with no connecting leads.
-    if (placement.kind === "led" || placement.kind === "diode") {
+    if (
+      placement.kind === "led" ||
+      placement.kind === "diode" ||
+      placement.kind === "zener"
+    ) {
       const next = offsetHole(anchor, 1) ?? offsetHole(anchor, -1) ?? anchor;
       holes.push(next);
     } else {
-      // Resistors etc.: span ~3 columns when possible.
+      // Resistors / LDR / thermistor / fuse etc.: span ~3 columns when possible.
       const b = offsetHole(anchor, 3) ?? offsetHole(anchor, 1) ?? anchor;
       holes.push(b);
     }
@@ -524,12 +553,29 @@ export function buildPreviewPart(
       resistance:
         kind === "resistor" || kind === "pot"
           ? defaults?.resistorValue ?? 1000
-          : undefined,
+          : kind === "ldr" || kind === "thermistor"
+            ? 10000
+            : kind === "fuse"
+              ? 0.05
+              : undefined,
       capacitance:
         kind === "capacitor" ? defaults?.capacitorValue ?? 10e-6 : undefined,
       tolerance: kind === "resistor" ? 5 : undefined,
       powerRating: kind === "resistor" || kind === "pot" ? 0.25 : undefined,
       ledColor: kind === "led" ? defaults?.ledColor ?? "red" : undefined,
+      mosfetModel: kind === "mosfet" ? "2n7000" : undefined,
+      zenerModel: kind === "zener" ? "5v1" : undefined,
+      diodeType: kind === "zener" ? "zener" : kind === "diode" ? "silicon" : undefined,
+      lightLevel: kind === "ldr" ? 0.5 : undefined,
+      temperatureC: kind === "thermistor" ? 25 : undefined,
+      r25: kind === "thermistor" ? 10000 : undefined,
+      fuseCurrent: kind === "fuse" ? 0.5 : undefined,
+      fuseBlown: kind === "fuse" ? false : undefined,
+      servoAngle: kind === "servo" ? 90 : undefined,
+      sevenSegCommon: kind === "seven-segment" ? "cathode" : undefined,
+      timer555Mode: kind === "timer555" ? "astable" : undefined,
+      opampMode: kind === "opamp" ? "comparator" : undefined,
+      regulatorVout: kind === "regulator" ? 5 : undefined,
       closed:
         kind === "switch" || kind === "button" ? false : undefined,
       switchType:
@@ -669,6 +715,43 @@ function getPlacement(tool: ToolId) {
     }
     if (kind === "transistor") {
       return { kind, pins: ["e", "b", "c"] };
+    }
+    if (kind === "mosfet") {
+      // G, D, S — common educational breadboard order
+      return { kind, pins: ["g", "d", "s"] };
+    }
+    if (kind === "zener") {
+      return { kind, pins: ["a", "k"] };
+    }
+    if (kind === "ldr" || kind === "thermistor" || kind === "fuse") {
+      return { kind, pins: ["a", "b"] };
+    }
+    if (kind === "rgb-led") {
+      // Common cathode RGB: R, G, B, GND
+      return { kind, pins: ["r", "g", "b", "k"] };
+    }
+    if (kind === "seven-segment") {
+      // a b c d e f g dp com
+      return { kind, pins: ["a", "b", "c", "d", "e", "f", "g", "dp", "com"] };
+    }
+    if (kind === "timer555") {
+      // Standard 8-pin 555: GND TRIG OUT RESET CONT THRES DISCH VCC
+      return { kind, pins: ["gnd", "trig", "out", "reset", "cont", "thres", "disch", "vcc"] };
+    }
+    if (kind === "opamp") {
+      // Single op-amp DIP-8 style simplified: in+, in-, vcc, vee, out
+      return { kind, pins: ["inp", "inn", "vcc", "vee", "out"] };
+    }
+    if (kind === "servo") {
+      return { kind, pins: ["vcc", "gnd", "sig"] };
+    }
+    if (kind === "optocoupler") {
+      // LED anode/cathode + phototransistor collector/emitter
+      return { kind, pins: ["la", "lk", "c", "e"] };
+    }
+    if (kind === "regulator") {
+      // 78xx: IN, GND, OUT
+      return { kind, pins: ["in", "gnd", "out"] };
     }
     if (kind === "thyristor") {
       // Real TO-220 SCR pinout (TYN612, BT151, etc.): Cathode, Anode, Gate
@@ -1174,7 +1257,13 @@ export const useLab = create<LabState>((set, get) => ({
         resistance:
           placement.kind === "resistor" || placement.kind === "pot"
             ? state.resistorValue
-            : undefined,
+            : placement.kind === "ldr"
+              ? 10000
+              : placement.kind === "thermistor"
+                ? 10000
+                : placement.kind === "fuse"
+                  ? 0.05
+                  : undefined,
         capacitance:
           placement.kind === "capacitor" ? state.capacitorValue : undefined,
         tolerance: placement.kind === "resistor" ? 5 : undefined,
@@ -1183,18 +1272,30 @@ export const useLab = create<LabState>((set, get) => ({
           placement.kind === "resistor" ? 200 :
           placement.kind === "capacitor" ? 16 :
           placement.kind === "led" ? 5 :
-          placement.kind === "diode" ? 50 : undefined,
+          placement.kind === "diode" || placement.kind === "zener" ? 50 : undefined,
         maxCurrent:
           placement.kind === "led" ? 0.02 :
-          placement.kind === "diode" ? 1 : undefined,
+          placement.kind === "diode" || placement.kind === "zener" ? 1 : undefined,
         forwardVoltage:
           placement.kind === "led"
             ? ({ red: 1.9, green: 2.2, yellow: 2.1, blue: 3.0 } as const)[state.ledColor]
             : undefined,
         capacitorType: placement.kind === "capacitor" ? "ceramic" : undefined,
-        diodeType: placement.kind === "diode" ? "silicon" : undefined,
+        diodeType: placement.kind === "diode" || placement.kind === "zener" ? (placement.kind === "zener" ? "zener" : "silicon") : undefined,
         package: placement.kind === "resistor" ? "axial" : undefined,
         ledColor: placement.kind === "led" ? state.ledColor : undefined,
+        mosfetModel: placement.kind === "mosfet" ? "2n7000" : undefined,
+        zenerModel: placement.kind === "zener" ? "5v1" : undefined,
+        lightLevel: placement.kind === "ldr" ? 0.5 : undefined,
+        temperatureC: placement.kind === "thermistor" ? 25 : undefined,
+        r25: placement.kind === "thermistor" ? 10000 : undefined,
+        fuseCurrent: placement.kind === "fuse" ? 0.5 : undefined,
+        fuseBlown: placement.kind === "fuse" ? false : undefined,
+        servoAngle: placement.kind === "servo" ? 90 : undefined,
+        sevenSegCommon: placement.kind === "seven-segment" ? "cathode" : undefined,
+        timer555Mode: placement.kind === "timer555" ? "astable" : undefined,
+        opampMode: placement.kind === "opamp" ? "comparator" : undefined,
+        regulatorVout: placement.kind === "regulator" ? 5 : undefined,
         closed:
           placement.kind === "switch" || placement.kind === "button"
             ? false

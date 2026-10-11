@@ -54,11 +54,12 @@ const COLORS = {
 
 const PALETTE: Array<{ title: string; items: SchematicKind[] }> = [
   { title: "Sources", items: ["vcc", "gnd", "dc-source", "probe"] },
-  { title: "Passives", items: ["resistor", "capacitor", "inductor", "pot"] },
-  { title: "Semiconductors", items: ["led", "diode", "transistor", "thyristor", "triac", "diac"] },
-  { title: "Switching & loads", items: ["switch", "button", "relay", "motor", "buzzer", "speaker"] },
+  { title: "Passives", items: ["resistor", "capacitor", "inductor", "pot", "ldr", "thermistor", "fuse"] },
+  { title: "Semiconductors", items: ["led", "rgb-led", "diode", "zener", "transistor", "mosfet", "thyristor", "triac", "diac"] },
+  { title: "Switching & loads", items: ["switch", "button", "relay", "motor", "servo", "buzzer", "speaker"] },
   { title: "Logic ICs", items: ["not", "and", "or", "nand", "nor", "xor", "xnor"] },
-  { title: "Modules", items: ["mcu", "lcd", "oled"] },
+  { title: "Analog & timing", items: ["opamp", "timer555", "optocoupler", "regulator"] },
+  { title: "Modules", items: ["mcu", "lcd", "oled", "seven-segment"] },
 ];
 
 const PREFIX: Record<string, string> = {
@@ -92,6 +93,18 @@ const PREFIX: Record<string, string> = {
   gnd: "GND",
   "dc-source": "V",
   probe: "TP",
+  mosfet: "Q",
+  zener: "D",
+  ldr: "LDR",
+  "rgb-led": "LED",
+  "seven-segment": "DIS",
+  timer555: "U",
+  opamp: "U",
+  servo: "M",
+  thermistor: "RT",
+  optocoupler: "U",
+  regulator: "U",
+  fuse: "F",
 };
 
 
@@ -186,6 +199,68 @@ const VARIANTS: Partial<Record<SchematicKind, VariantOption[]>> = {
   nor: [{ id: "7402", label: "7402 — Quad 2-input NOR" }],
   xor: [{ id: "7486", label: "7486 — Quad 2-input XOR" }],
   xnor: [{ id: "747266", label: "74LS266 — Quad 2-input XNOR" }],
+  mosfet: [
+    { id: "2n7000", label: "2N7000 — N-ch TO-92", group: "N-channel" },
+    { id: "bs170", label: "BS170 — N-ch TO-92", group: "N-channel" },
+    { id: "irf540", label: "IRF540N — N-ch TO-220", group: "N-channel" },
+    { id: "ao3400", label: "AO3400 — N-ch SOT-23", group: "N-channel" },
+    { id: "irf9540", label: "IRF9540 — P-ch TO-220", group: "P-channel" },
+    { id: "ao3401", label: "AO3401 — P-ch SOT-23", group: "P-channel" },
+  ],
+  zener: [
+    { id: "3v3", label: "3.3 V" },
+    { id: "5v1", label: "5.1 V" },
+    { id: "6v2", label: "6.2 V" },
+    { id: "9v1", label: "9.1 V" },
+    { id: "12v", label: "12 V" },
+    { id: "15v", label: "15 V" },
+  ],
+  "rgb-led": [
+    { id: "cc", label: "Common cathode" },
+    { id: "ca", label: "Common anode" },
+  ],
+  "seven-segment": [
+    { id: "cc", label: "Common cathode" },
+    { id: "ca", label: "Common anode" },
+  ],
+  timer555: [
+    { id: "astable", label: "Astable" },
+    { id: "monostable", label: "Monostable" },
+    { id: "bistable", label: "Bistable" },
+  ],
+  opamp: [
+    { id: "comparator", label: "Comparator" },
+    { id: "buffer", label: "Voltage follower" },
+    { id: "inverting", label: "Inverting amp" },
+  ],
+  servo: [
+    { id: "sg90", label: "SG90 9g" },
+    { id: "mg996r", label: "MG996R" },
+  ],
+  regulator: [
+    { id: "7805", label: "7805 — 5 V" },
+    { id: "7809", label: "7809 — 9 V" },
+    { id: "7812", label: "7812 — 12 V" },
+    { id: "1117-3.3", label: "AMS1117 3.3 V" },
+  ],
+  fuse: [
+    { id: "0.5a", label: "500 mA" },
+    { id: "1a", label: "1 A" },
+    { id: "2a", label: "2 A" },
+    { id: "5a", label: "5 A" },
+  ],
+  ldr: [
+    { id: "gl5528", label: "GL5528" },
+    { id: "gl5537", label: "GL5537" },
+  ],
+  thermistor: [
+    { id: "ntc10k", label: "NTC 10 kΩ" },
+    { id: "ntc100k", label: "NTC 100 kΩ" },
+  ],
+  optocoupler: [
+    { id: "pc817", label: "PC817" },
+    { id: "4n35", label: "4N35" },
+  ],
 };
 
 const DEFAULT_VARIANT: Partial<Record<SchematicKind, string>> = {
@@ -209,6 +284,18 @@ const DEFAULT_VARIANT: Partial<Record<SchematicKind, string>> = {
   nor: "7402",
   xor: "7486",
   xnor: "747266",
+  mosfet: "2n7000",
+  zener: "5v1",
+  "rgb-led": "cc",
+  "seven-segment": "cc",
+  timer555: "astable",
+  opamp: "comparator",
+  servo: "sg90",
+  regulator: "7805",
+  fuse: "0.5a",
+  ldr: "gl5528",
+  thermistor: "ntc10k",
+  optocoupler: "pc817",
 };
 
 function logicPinLabel(kind: LogicGateKind, variant: string, pin: number): string {
@@ -295,8 +382,27 @@ const LED_HEX: Record<string, string> = {
 };
 
 const uid = (prefix: string) => `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
-const titleOf = (kind: SchematicKind) =>
-  kind === "dc-source" ? "DC Source" : kind === "vcc" ? "VCC" : kind === "gnd" ? "GND" : kind === "probe" ? "Probe" : kind[0].toUpperCase() + kind.slice(1);
+const titleOf = (kind: SchematicKind) => {
+  const map: Partial<Record<SchematicKind, string>> = {
+    "dc-source": "DC Source",
+    vcc: "VCC",
+    gnd: "GND",
+    probe: "Probe",
+    mosfet: "MOSFET",
+    zener: "Zener",
+    ldr: "Photoresistor (LDR)",
+    "rgb-led": "RGB LED",
+    "seven-segment": "7-Segment",
+    timer555: "555 Timer",
+    opamp: "Op-Amp",
+    servo: "Servo",
+    thermistor: "Thermistor",
+    optocoupler: "Optocoupler",
+    regulator: "Voltage Regulator",
+    fuse: "Fuse",
+  };
+  return map[kind] ?? kind[0].toUpperCase() + kind.slice(1);
+};
 const snap = (n: number) => Math.round(n / GRID) * GRID;
 
 
@@ -308,9 +414,13 @@ const VALUE_KINDS = new Set<SchematicKind>([
   "pot",
   "led",
   "diode",
+  "zener",
   "buzzer",
   "speaker",
   "motor",
+  "ldr",
+  "thermistor",
+  "fuse",
 ]);
 
 function valueUnit(kind: SchematicKind): string {
@@ -403,11 +513,15 @@ function pinsFor(kind: SchematicKind, variant: string = ""): PinDef[] {
     case "resistor":
     case "inductor":
     case "diode":
+    case "zener":
     case "led":
     case "diac":
     case "buzzer":
     case "speaker":
     case "motor":
+    case "ldr":
+    case "thermistor":
+    case "fuse":
       return [
         { id: "a", x: -40, y: 0 },
         { id: "b", x: 40, y: 0 },
@@ -495,6 +609,69 @@ function pinsFor(kind: SchematicKind, variant: string = ""): PinDef[] {
         { id: "gnd", x: -48, y: 0, label: "GND" },
         { id: "sda", x: -48, y: 20, label: "SDA" },
         { id: "scl", x: 48, y: 0, label: "SCL" },
+      ];
+    case "mosfet":
+      return [
+        { id: "g", x: -36, y: 0, label: "G" },
+        { id: "d", x: 8, y: -36, label: "D" },
+        { id: "s", x: 8, y: 36, label: "S" },
+      ];
+    case "rgb-led":
+      return [
+        { id: "r", x: -30, y: -20, label: "R" },
+        { id: "g", x: -30, y: 0, label: "G" },
+        { id: "b", x: -30, y: 20, label: "B" },
+        { id: "k", x: 36, y: 0, label: "K" },
+      ];
+    case "seven-segment":
+      return [
+        { id: "a", x: -20, y: -40, label: "a" },
+        { id: "b", x: 20, y: -28, label: "b" },
+        { id: "c", x: 20, y: 28, label: "c" },
+        { id: "d", x: -20, y: 40, label: "d" },
+        { id: "e", x: -40, y: 20, label: "e" },
+        { id: "f", x: -40, y: -20, label: "f" },
+        { id: "g", x: 0, y: 0, label: "g" },
+        { id: "dp", x: 36, y: 36, label: "dp" },
+        { id: "com", x: 40, y: 0, label: "COM" },
+      ];
+    case "timer555":
+      return [
+        { id: "gnd", x: -48, y: 28, label: "GND" },
+        { id: "trig", x: -48, y: 8, label: "TR" },
+        { id: "out", x: -48, y: -12, label: "OUT" },
+        { id: "reset", x: -48, y: -32, label: "RST" },
+        { id: "cont", x: 48, y: -32, label: "CV" },
+        { id: "thres", x: 48, y: -12, label: "TH" },
+        { id: "disch", x: 48, y: 8, label: "DIS" },
+        { id: "vcc", x: 48, y: 28, label: "VCC" },
+      ];
+    case "opamp":
+      return [
+        { id: "inp", x: -40, y: -16, label: "+" },
+        { id: "inn", x: -40, y: 16, label: "−" },
+        { id: "vcc", x: 0, y: -36, label: "V+" },
+        { id: "vee", x: 0, y: 36, label: "V−" },
+        { id: "out", x: 40, y: 0, label: "OUT" },
+      ];
+    case "servo":
+      return [
+        { id: "vcc", x: -36, y: -16, label: "VCC" },
+        { id: "gnd", x: -36, y: 16, label: "GND" },
+        { id: "sig", x: 36, y: 0, label: "SIG" },
+      ];
+    case "optocoupler":
+      return [
+        { id: "la", x: -40, y: -16, label: "A" },
+        { id: "lk", x: -40, y: 16, label: "K" },
+        { id: "c", x: 40, y: -16, label: "C" },
+        { id: "e", x: 40, y: 16, label: "E" },
+      ];
+    case "regulator":
+      return [
+        { id: "in", x: -40, y: 0, label: "IN" },
+        { id: "gnd", x: 0, y: 28, label: "GND" },
+        { id: "out", x: 40, y: 0, label: "OUT" },
       ];
     default:
       return [
@@ -963,6 +1140,151 @@ function SymbolBody({ kind, variant, lit = false }: { kind: SchematicKind; varia
           <rect x="-40" y="-28" width="80" height="56" rx="3" fill="#101827" stroke={s} strokeWidth="2" />
           <rect x="-28" y="-14" width="56" height="20" fill="#0f172a" stroke="#64748b" strokeWidth="1" />
           <text y="24" textAnchor="middle" fill={s} fontSize="9">OLED</text>
+        </>
+      );
+
+    case "mosfet": {
+      const isP = /9540|3401|p-ch|ao3401|irf9540/i.test(variant);
+      return (
+        <>
+          {/* Drain (top) and Source (bottom) */}
+          <path d="M8 -36V-14M8 14V36" fill="none" stroke={s} strokeWidth="2" />
+          {/* Broken channel (enhancement mode) */}
+          <path d="M8 -14V-6M8 -2V2M8 6V14" fill="none" stroke={s} strokeWidth="2.5" />
+          {/* Gate insulation gap + gate terminal left */}
+          <path d="M-4 -16V16" fill="none" stroke={s} strokeWidth="2" />
+          <path d="M-36 0H-12" fill="none" stroke={s} strokeWidth="2" />
+          <path d="M-12 -12V12" fill="none" stroke={s} strokeWidth="2" />
+          {/* Body diode arrow on source: N inward, P outward */}
+          {isP ? (
+            <path d="M8 14L2 8M8 14L14 8" fill="none" stroke={s} strokeWidth="1.8" />
+          ) : (
+            <path d="M8 14L2 20M8 14L14 20" fill="none" stroke={s} strokeWidth="1.8" />
+          )}
+          <text x="18" y="-20" fill={s} fontSize="9">{isP ? "P" : "N"}</text>
+        </>
+      );
+    }
+
+    case "zener":
+      return (
+        <>
+          <path d="M-28 0H-10" fill="none" stroke={s} strokeWidth="2" />
+          <path d="M-10 -12L10 0L-10 12Z" fill={s} opacity="0.9" />
+          <path d="M10 -12V12" fill="none" stroke={s} strokeWidth="2.5" />
+          <path d="M10 -12L16 -16M10 12L16 16" fill="none" stroke={s} strokeWidth="2" />
+          <path d="M10 0H28" fill="none" stroke={s} strokeWidth="2" />
+        </>
+      );
+
+    case "ldr":
+      return (
+        <>
+          {/* Zigzag resistor body */}
+          <path d="M-28 0H-20L-16 -10L-8 10L0 -10L8 10L16 -10L20 0H28" fill="none" stroke={s} strokeWidth="2" strokeLinejoin="round" />
+          {/* Circle outline common on LDR symbols */}
+          <circle cx="0" cy="0" r="18" fill="none" stroke={s} strokeWidth="1.5" opacity="0.7" />
+          {/* Incoming light arrows */}
+          <path d="M-12 -28L-6 -20M0 -30L0 -20M12 -28L6 -20" fill="none" stroke="#fbbf24" strokeWidth="1.6" strokeLinecap="round" />
+          <path d="M-8 -22L-6 -20L-9 -20M2 -22L0 -20L-2 -20M10 -22L6 -20L9 -20" fill="none" stroke="#fbbf24" strokeWidth="1.4" />
+        </>
+      );
+
+    case "thermistor":
+      return (
+        <>
+          <path d="M-28 0H-20L-16 -10L-8 10L0 -10L8 10L16 -10L20 0H28" fill="none" stroke={s} strokeWidth="2" strokeLinejoin="round" />
+          <text x="0" y="-18" textAnchor="middle" fill={s} fontSize="9">t°</text>
+        </>
+      );
+
+    case "fuse":
+      return (
+        <>
+          {/* IEC fuse: rectangular body, solid link, terminal leads */}
+          <rect x="-18" y="-10" width="36" height="20" rx="1" fill="none" stroke={s} strokeWidth="2" />
+          <path d="M-28 0H-18M18 0H28" fill="none" stroke={s} strokeWidth="2" />
+          <path d="M-12 0H12" fill="none" stroke={s} strokeWidth="2" />
+        </>
+      );
+
+    case "rgb-led":
+      return (
+        <>
+          <path d="M-16 -8L8 0L-16 8Z" fill={lit ? "#f87171" : s} opacity="0.85" />
+          <path d="M8 -12V12" fill="none" stroke={s} strokeWidth="2" />
+          <path d="M-30 -20H-16M-30 0H-16M-30 20H-16M8 0H28" fill="none" stroke={s} strokeWidth="2" />
+          <text x="-22" y="-22" fill="#f87171" fontSize="8">R</text>
+          <text x="-22" y="4" fill="#4ade80" fontSize="8">G</text>
+          <text x="-22" y="24" fill="#60a5fa" fontSize="8">B</text>
+        </>
+      );
+
+    case "seven-segment":
+      return (
+        <>
+          <rect x="-28" y="-36" width="56" height="72" rx="3" fill="#101827" stroke={s} strokeWidth="2" />
+          <path d="M-14 -24H14M14 -20V-4M14 4V20M-14 24H14M-14 20V4M-14 -4V-20M-10 0H10" fill="none" stroke="#334155" strokeWidth="3" strokeLinecap="round" />
+          <text y="40" textAnchor="middle" fill={s} fontSize="8">7-seg</text>
+        </>
+      );
+
+    case "timer555":
+      return (
+        <>
+          <rect x="-40" y="-36" width="80" height="72" rx="3" fill="#101827" stroke={s} strokeWidth="2" />
+          <text y="-4" textAnchor="middle" fill={s} fontSize="12" fontWeight="700">555</text>
+          <text y="12" textAnchor="middle" fill="#64748b" fontSize="9">Timer</text>
+        </>
+      );
+
+    case "opamp":
+      return (
+        <>
+          <path d="M-28 -28L28 0L-28 28Z" fill="none" stroke={s} strokeWidth="2" />
+          <path d="M-28 -16H-40M-28 16H-40M28 0H40M0 -28V-36M0 28V36" fill="none" stroke={s} strokeWidth="2" />
+          <text x="-16" y="-10" fill={s} fontSize="12">+</text>
+          <text x="-16" y="16" fill={s} fontSize="14">−</text>
+        </>
+      );
+
+    case "servo":
+      return (
+        <>
+          <rect x="-28" y="-22" width="56" height="44" rx="3" fill="#101827" stroke={s} strokeWidth="2" />
+          <circle cx="8" cy="0" r="10" fill="none" stroke={s} strokeWidth="1.5" />
+          <path d="M8 0L16 -6" fill="none" stroke="#60a5fa" strokeWidth="2" />
+          <text x="-16" y="4" fill={s} fontSize="9">SV</text>
+        </>
+      );
+
+    case "optocoupler":
+      return (
+        <>
+          <rect x="-40" y="-28" width="80" height="56" rx="3" fill="none" stroke={s} strokeWidth="2" />
+          {/* LED */}
+          <path d="M-30 -8L-14 0L-30 8Z" fill={s} opacity="0.85" />
+          <path d="M-14 -12V12" fill="none" stroke={s} strokeWidth="2" />
+          <path d="M-40 -16H-30M-40 16H-30" fill="none" stroke={s} strokeWidth="2" />
+          {/* Optical link arrows */}
+          <path d="M-6 -6L6 -10M-6 6L6 10" fill="none" stroke="#fbbf24" strokeWidth="1.5" />
+          {/* Phototransistor (NPN style) */}
+          <path d="M14 -14V14" fill="none" stroke={s} strokeWidth="2" />
+          <path d="M14 0H26" fill="none" stroke={s} strokeWidth="2" />
+          <path d="M26 0L34 -10M26 0L34 10" fill="none" stroke={s} strokeWidth="2" />
+          <path d="M34 -10L30 -6M34 10L30 6" fill="none" stroke={s} strokeWidth="1.5" />
+          <path d="M34 -10H40M34 10H40" fill="none" stroke={s} strokeWidth="2" />
+        </>
+      );
+
+    case "regulator":
+      return (
+        <>
+          <rect x="-32" y="-20" width="64" height="40" rx="3" fill="#101827" stroke={s} strokeWidth="2" />
+          <text y="4" textAnchor="middle" fill={s} fontSize="10" fontWeight="700">
+            {variant?.toUpperCase?.() || "78xx"}
+          </text>
+          <path d="M-40 0H-32M32 0H40M0 20V28" fill="none" stroke={s} strokeWidth="2" />
         </>
       );
 

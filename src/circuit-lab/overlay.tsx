@@ -183,6 +183,79 @@ const TOOLS: {
   },
 
   {
+    id: "mosfet",
+    label: "MOSFET",
+    hint: "N/P-channel — G D S",
+    icon: Cpu,
+  },
+  {
+    id: "zener",
+    label: "Zener",
+    hint: "Breakdown voltage reference",
+    icon: Zap,
+  },
+  {
+    id: "ldr",
+    label: "LDR",
+    hint: "Photoresistor — light sensor",
+    icon: Lightbulb,
+  },
+  {
+    id: "thermistor",
+    label: "Thermistor",
+    hint: "NTC temperature sensor",
+    icon: Gauge,
+  },
+  {
+    id: "rgb-led",
+    label: "RGB LED",
+    hint: "Common cathode R G B K",
+    icon: Lightbulb,
+  },
+  {
+    id: "fuse",
+    label: "Fuse",
+    hint: "Overcurrent protection",
+    icon: Minus,
+  },
+  {
+    id: "seven-segment",
+    label: "7-Segment",
+    hint: "Digit display",
+    icon: Gauge,
+  },
+  {
+    id: "timer555",
+    label: "555 Timer",
+    hint: "Classic timer IC",
+    icon: Cpu,
+  },
+  {
+    id: "opamp",
+    label: "Op-Amp",
+    hint: "Operational amplifier",
+    icon: Cpu,
+  },
+  {
+    id: "servo",
+    label: "Servo",
+    hint: "Position servo — VCC GND SIG",
+    icon: Gauge,
+  },
+  {
+    id: "optocoupler",
+    label: "Optocoupler",
+    hint: "Isolated LED + phototransistor",
+    icon: Zap,
+  },
+  {
+    id: "regulator",
+    label: "Regulator",
+    hint: "78xx linear regulator",
+    icon: Zap,
+  },
+
+  {
     id: "motor",
     label: "DC Motor",
     hint: "3V / 5V / 6V / 9V / 12V hobby motor",
@@ -285,6 +358,18 @@ const PIN_ORDER: Partial<Record<ToolId, string[]>> = {
   nor: Array.from({ length: 14 }, (_, index) => `pin ${index + 1}`),
   xor: Array.from({ length: 14 }, (_, index) => `pin ${index + 1}`),
   xnor: Array.from({ length: 14 }, (_, index) => `pin ${index + 1}`),
+  mosfet: ["G · gate", "D · drain", "S · source"],
+  zener: ["anode +", "cathode −"],
+  ldr: ["A", "B"],
+  thermistor: ["A", "B"],
+  fuse: ["A", "B"],
+  "rgb-led": ["R", "G", "B", "K · common"],
+  "seven-segment": ["a", "b", "c", "d", "e", "f", "g", "dp", "COM"],
+  timer555: ["GND", "TRIG", "OUT", "RESET", "CONT", "THRES", "DISCH", "VCC"],
+  opamp: ["IN+", "IN−", "VCC", "VEE", "OUT"],
+  servo: ["VCC", "GND", "SIG"],
+  optocoupler: ["LED A", "LED K", "C", "E"],
+  regulator: ["IN", "GND", "OUT"],
 };
 
 const QUAD_GATE_PIN_LABELS: Record<number, string> = {

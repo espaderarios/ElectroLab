@@ -917,6 +917,280 @@ export function simulate(input: {
     }
 
     // ----------------------------------------------------------
+    // MOSFET (simple threshold switch model)
+    // ----------------------------------------------------------
+    if (part.kind === "mosfet") {
+      const g = part.pins.g;
+      const d = part.pins.d;
+      const s = part.pins.s;
+      if (g && d && s) {
+        const ig = indexOf.get(g);
+        const id_ = indexOf.get(d);
+        const is_ = indexOf.get(s);
+        if (ig !== undefined && id_ !== undefined && is_ !== undefined) {
+          // High impedance gate (leak)
+          elements.push({
+            a: uf.find(ig),
+            b: uf.find(is_),
+            resistance: 1e8,
+            id: `${part.id}:gate`,
+          });
+          // Default off-channel until post-solve refinement
+          elements.push({
+            a: uf.find(id_),
+            b: uf.find(is_),
+            resistance: 1e6,
+            id: `${part.id}:ch`,
+          });
+        }
+      }
+    }
+
+    // ----------------------------------------------------------
+    // ZENER DIODE
+    // ----------------------------------------------------------
+    if (part.kind === "zener") {
+      const a = part.pins.a;
+      const k = part.pins.k;
+      if (a && k) {
+        const ia = indexOf.get(a);
+        const ik = indexOf.get(k);
+        if (ia !== undefined && ik !== undefined) {
+          elements.push({
+            a: uf.find(ia),
+            b: uf.find(ik),
+            resistance: 1000,
+            id: part.id,
+          });
+        }
+      }
+    }
+
+    // ----------------------------------------------------------
+    // LDR / THERMISTOR / FUSE (resistive two-terminal)
+    // ----------------------------------------------------------
+    if (part.kind === "ldr") {
+      const a = part.pins.a;
+      const b = part.pins.b;
+      if (a && b) {
+        const ia = indexOf.get(a);
+        const ib = indexOf.get(b);
+        if (ia !== undefined && ib !== undefined) {
+          const light = Math.max(0, Math.min(1, part.props.lightLevel ?? 0.5));
+          // ~1 MΩ dark → ~1 kΩ bright
+          const r = 1_000_000 * Math.pow(0.001, light) + 500;
+          elements.push({ a: uf.find(ia), b: uf.find(ib), resistance: r, id: part.id });
+        }
+      }
+    }
+    if (part.kind === "thermistor") {
+      const a = part.pins.a;
+      const b = part.pins.b;
+      if (a && b) {
+        const ia = indexOf.get(a);
+        const ib = indexOf.get(b);
+        if (ia !== undefined && ib !== undefined) {
+          const r25 = part.props.r25 ?? 10000;
+          const t = part.props.temperatureC ?? 25;
+          // Simplified B-parameter approx (B≈3950)
+          const B = 3950;
+          const r = r25 * Math.exp(B * (1 / (t + 273.15) - 1 / 298.15));
+          elements.push({ a: uf.find(ia), b: uf.find(ib), resistance: Math.max(10, r), id: part.id });
+        }
+      }
+    }
+    if (part.kind === "fuse") {
+      const a = part.pins.a;
+      const b = part.pins.b;
+      if (a && b) {
+        const ia = indexOf.get(a);
+        const ib = indexOf.get(b);
+        if (ia !== undefined && ib !== undefined) {
+          const blown = Boolean(part.props.fuseBlown);
+          elements.push({
+            a: uf.find(ia),
+            b: uf.find(ib),
+            resistance: blown ? 1e9 : (part.props.resistance ?? 0.05),
+            id: part.id,
+          });
+        }
+      }
+    }
+
+    // ----------------------------------------------------------
+    // RGB LED (common cathode) — three LED branches
+    // ----------------------------------------------------------
+    if (part.kind === "rgb-led") {
+      const k = part.pins.k;
+      for (const ch of ["r", "g", "b"] as const) {
+        const p = part.pins[ch];
+        if (!p || !k) continue;
+        const ia = indexOf.get(p);
+        const ik = indexOf.get(k);
+        if (ia === undefined || ik === undefined) continue;
+        const vf = ch === "r" ? 1.9 : ch === "g" ? 2.2 : 3.0;
+        elements.push({
+          a: uf.find(ia),
+          b: uf.find(ik),
+          resistance: 30,
+          forwardVoltage: vf,
+          id: `${part.id}:${ch}`,
+        });
+      }
+    }
+
+    // ----------------------------------------------------------
+    // 7-SEGMENT — each segment as LED to common
+    // ----------------------------------------------------------
+    if (part.kind === "seven-segment") {
+      const com = part.pins.com;
+      const commonAnode = part.props.sevenSegCommon === "anode";
+      for (const seg of ["a", "b", "c", "d", "e", "f", "g", "dp"] as const) {
+        const p = part.pins[seg];
+        if (!p || !com) continue;
+        const ia = indexOf.get(p);
+        const ic = indexOf.get(com);
+        if (ia === undefined || ic === undefined) continue;
+        elements.push({
+          a: uf.find(commonAnode ? ic : ia),
+          b: uf.find(commonAnode ? ia : ic),
+          resistance: 40,
+          forwardVoltage: 1.9,
+          id: `${part.id}:${seg}`,
+        });
+      }
+    }
+
+    // ----------------------------------------------------------
+    // 555 TIMER — supply load; output modeled after solve
+    // ----------------------------------------------------------
+    if (part.kind === "timer555") {
+      const vcc = part.pins.vcc;
+      const gnd = part.pins.gnd;
+      if (vcc && gnd) {
+        const iv = indexOf.get(vcc);
+        const ig = indexOf.get(gnd);
+        if (iv !== undefined && ig !== undefined) {
+          elements.push({
+            a: uf.find(iv),
+            b: uf.find(ig),
+            resistance: 5000,
+            id: `${part.id}:supply`,
+          });
+        }
+      }
+    }
+
+    // ----------------------------------------------------------
+    // OP-AMP — supply rails load
+    // ----------------------------------------------------------
+    if (part.kind === "opamp") {
+      const vcc = part.pins.vcc;
+      const vee = part.pins.vee;
+      if (vcc && vee) {
+        const ia = indexOf.get(vcc);
+        const ib = indexOf.get(vee);
+        if (ia !== undefined && ib !== undefined) {
+          elements.push({
+            a: uf.find(ia),
+            b: uf.find(ib),
+            resistance: 50000,
+            id: `${part.id}:supply`,
+          });
+        }
+      }
+    }
+
+    // ----------------------------------------------------------
+    // SERVO — supply load
+    // ----------------------------------------------------------
+    if (part.kind === "servo") {
+      const vcc = part.pins.vcc;
+      const gnd = part.pins.gnd;
+      if (vcc && gnd) {
+        const ia = indexOf.get(vcc);
+        const ib = indexOf.get(gnd);
+        if (ia !== undefined && ib !== undefined) {
+          elements.push({
+            a: uf.find(ia),
+            b: uf.find(ib),
+            resistance: 50,
+            id: `${part.id}:supply`,
+          });
+        }
+      }
+    }
+
+    // ----------------------------------------------------------
+    // OPTOCOUPLER — LED + open phototransistor
+    // ----------------------------------------------------------
+    if (part.kind === "optocoupler") {
+      const la = part.pins.la;
+      const lk = part.pins.lk;
+      const c = part.pins.c;
+      const e = part.pins.e;
+      if (la && lk) {
+        const ia = indexOf.get(la);
+        const ik = indexOf.get(lk);
+        if (ia !== undefined && ik !== undefined) {
+          elements.push({
+            a: uf.find(ia),
+            b: uf.find(ik),
+            resistance: 50,
+            forwardVoltage: 1.2,
+            id: `${part.id}:led`,
+          });
+        }
+      }
+      if (c && e) {
+        const ic = indexOf.get(c);
+        const ie = indexOf.get(e);
+        if (ic !== undefined && ie !== undefined) {
+          elements.push({
+            a: uf.find(ic),
+            b: uf.find(ie),
+            resistance: 1e7,
+            id: `${part.id}:out`,
+          });
+        }
+      }
+    }
+
+    // ----------------------------------------------------------
+    // 78xx REGULATOR — drop model as series resistance + ideal note
+    // ----------------------------------------------------------
+    if (part.kind === "regulator") {
+      const inn = part.pins.in;
+      const gnd = part.pins.gnd;
+      const out = part.pins.out;
+      if (inn && gnd) {
+        const ia = indexOf.get(inn);
+        const ig = indexOf.get(gnd);
+        if (ia !== undefined && ig !== undefined) {
+          elements.push({
+            a: uf.find(ia),
+            b: uf.find(ig),
+            resistance: 2000,
+            id: `${part.id}:q`,
+          });
+        }
+      }
+      // OUT is forced near target after solve via reporting; light load to gnd
+      if (out && gnd) {
+        const io = indexOf.get(out);
+        const ig = indexOf.get(gnd);
+        if (io !== undefined && ig !== undefined) {
+          elements.push({
+            a: uf.find(io),
+            b: uf.find(ig),
+            resistance: 10000,
+            id: `${part.id}:load`,
+          });
+        }
+      }
+    }
+
+    // ----------------------------------------------------------
     // ARDUINO / MCU POWER LOAD
     // ----------------------------------------------------------
     // Model the MCU's own active consumption as a high-value equivalent
@@ -2772,6 +3046,184 @@ export function simulate(input: {
     nodeCurrents[hole] = (nodeCurrentByUf.get(node) ?? 0) / 2;
   }
 
+  // ============================================================
+  // NEW EDUCATIONAL PARTS — status maps
+  // ============================================================
+  const mosfets: NonNullable<SimResult["mosfets"]> = {};
+  const zeners: NonNullable<SimResult["zeners"]> = {};
+  const ldrs: NonNullable<SimResult["ldrs"]> = {};
+  const thermistors: NonNullable<SimResult["thermistors"]> = {};
+  const rgbLeds: NonNullable<SimResult["rgbLeds"]> = {};
+  const sevenSegments: NonNullable<SimResult["sevenSegments"]> = {};
+  const timer555s: NonNullable<SimResult["timer555s"]> = {};
+  const opamps: NonNullable<SimResult["opamps"]> = {};
+  const servos: NonNullable<SimResult["servos"]> = {};
+  const optocouplers: NonNullable<SimResult["optocouplers"]> = {};
+  const regulators: NonNullable<SimResult["regulators"]> = {};
+  const fuses: NonNullable<SimResult["fuses"]> = {};
+
+  const volt = (hole?: string | null) => {
+    if (!hole) return 0;
+    const idx = indexOf.get(hole);
+    if (idx === undefined) return 0;
+    return solved[uf.find(idx)] ?? 0;
+  };
+
+  for (const part of input.parts) {
+    if (part.kind === "mosfet") {
+      const g = volt(part.pins.g);
+      const d = volt(part.pins.d);
+      const s = volt(part.pins.s);
+      const modelId = (part.props.mosfetModel as string) || "2n7000";
+      const isP = /9540|3401|p-ch|pchannel/i.test(modelId) || modelId === "irf9540" || modelId === "ao3401";
+      const vgs = g - s;
+      const vds = d - s;
+      const vth = isP ? -2.0 : 2.0;
+      const conducting = isP ? vgs < vth : vgs > vth;
+      const rds = conducting ? 0.5 : 1e6;
+      const ids = conducting ? vds / rds : 0;
+      mosfets[part.id] = {
+        id: part.id,
+        conducting,
+        vgs,
+        vds,
+        ids,
+        channel: isP ? "p" : "n",
+      };
+    }
+
+    if (part.kind === "zener") {
+      const va = volt(part.pins.a);
+      const vk = volt(part.pins.k);
+      const v = va - vk;
+      const model = (part.props.zenerModel as string) || "5v1";
+      const vzMap: Record<string, number> = { "3v3": 3.3, "5v1": 5.1, "6v2": 6.2, "9v1": 9.1, "12v": 12, "15v": 15 };
+      const vz = vzMap[model] ?? 5.1;
+      const breakdown = v < -vz + 0.05;
+      const forward = v > 0.7;
+      const current = forward ? Math.max(0, (v - 0.7) / 20) : breakdown ? Math.max(0, (-v - vz) / 15) : 0;
+      zeners[part.id] = { id: part.id, on: forward || breakdown, breakdown, current, voltage: v };
+    }
+
+    if (part.kind === "ldr") {
+      const light = Math.max(0, Math.min(1, part.props.lightLevel ?? 0.5));
+      const resistance = 1_000_000 * Math.pow(0.001, light) + 500;
+      ldrs[part.id] = { id: part.id, resistance, lightLevel: light };
+    }
+
+    if (part.kind === "thermistor") {
+      const r25 = part.props.r25 ?? 10000;
+      const t = part.props.temperatureC ?? 25;
+      const B = 3950;
+      const resistance = r25 * Math.exp(B * (1 / (t + 273.15) - 1 / 298.15));
+      thermistors[part.id] = { id: part.id, resistance, temperatureC: t };
+    }
+
+    if (part.kind === "rgb-led") {
+      const vk = volt(part.pins.k);
+      const ch = (name: string, vf: number) => {
+        const v = volt(part.pins[name]) - vk;
+        const on = v > vf * 0.85;
+        const brightness = on ? Math.min(1, Math.max(0, (v - vf) / 2 + 0.4)) : 0;
+        return { on, brightness };
+      };
+      const r = ch("r", 1.9);
+      const g = ch("g", 2.2);
+      const b = ch("b", 3.0);
+      rgbLeds[part.id] = {
+        id: part.id,
+        r: r.on,
+        g: g.on,
+        b: b.on,
+        brightnessR: r.brightness,
+        brightnessG: g.brightness,
+        brightnessB: b.brightness,
+      };
+    }
+
+    if (part.kind === "seven-segment") {
+      const com = volt(part.pins.com);
+      const commonAnode = part.props.sevenSegCommon === "anode";
+      const segs: boolean[] = [];
+      for (const name of ["a", "b", "c", "d", "e", "f", "g"]) {
+        const vs = volt(part.pins[name]);
+        const forward = commonAnode ? com - vs > 1.5 : vs - com > 1.5;
+        segs.push(forward);
+      }
+      sevenSegments[part.id] = { id: part.id, segments: segs, digit: part.props.sevenSegDigit };
+    }
+
+    if (part.kind === "timer555") {
+      const vcc = volt(part.pins.vcc);
+      const gnd = volt(part.pins.gnd);
+      const supply = vcc - gnd;
+      const powered = supply > 4.5;
+      const mode = part.props.timer555Mode ?? "astable";
+      // Educational: astable toggles with time via a crude phase from supply presence
+      const output: 0 | 1 = powered ? 1 : 0;
+      timer555s[part.id] = { id: part.id, powered, output, mode };
+    }
+
+    if (part.kind === "opamp") {
+      const vcc = volt(part.pins.vcc);
+      const vee = volt(part.pins.vee);
+      const inp = volt(part.pins.inp);
+      const inn = volt(part.pins.inn);
+      const powered = vcc - vee > 3;
+      const mode = part.props.opampMode ?? "comparator";
+      let output = 0;
+      if (powered) {
+        if (mode === "buffer") output = Math.max(vee + 0.5, Math.min(vcc - 0.5, inp));
+        else if (mode === "inverting") output = Math.max(vee + 0.5, Math.min(vcc - 0.5, vee + (vcc - vee) / 2 - (inp - inn)));
+        else output = inp >= inn ? vcc - 0.5 : vee + 0.5;
+      }
+      opamps[part.id] = { id: part.id, powered, output, mode };
+    }
+
+    if (part.kind === "servo") {
+      const vcc = volt(part.pins.vcc);
+      const gnd = volt(part.pins.gnd);
+      const supply = vcc - gnd;
+      const powered = supply > 4.0;
+      const angle = part.props.servoAngle ?? 90;
+      servos[part.id] = { id: part.id, powered, angle, voltage: supply };
+    }
+
+    if (part.kind === "optocoupler") {
+      const la = volt(part.pins.la);
+      const lk = volt(part.pins.lk);
+      const vled = la - lk;
+      const ledOn = vled > 1.0;
+      const ledCurrent = ledOn ? Math.max(0, (vled - 1.2) / 50) : 0;
+      optocouplers[part.id] = {
+        id: part.id,
+        ledOn,
+        outputConducting: ledOn && ledCurrent > 0.001,
+        ledCurrent,
+      };
+    }
+
+    if (part.kind === "regulator") {
+      const vin = volt(part.pins.in) - volt(part.pins.gnd);
+      const target = part.props.regulatorVout ?? 5;
+      const dropout = vin < target + 2;
+      const powered = vin > 3;
+      const vout = powered ? (dropout ? Math.max(0, vin - 1.5) : target) : 0;
+      regulators[part.id] = { id: part.id, powered, vin, vout, dropout };
+    }
+
+    if (part.kind === "fuse") {
+      const va = volt(part.pins.a);
+      const vb = volt(part.pins.b);
+      const r = part.props.fuseBlown ? 1e9 : (part.props.resistance ?? 0.05);
+      const current = Math.abs(va - vb) / Math.max(r, 1e-9);
+      const limit = part.props.fuseCurrent ?? 0.5;
+      const blown = Boolean(part.props.fuseBlown) || current > limit * 1.2;
+      if (blown) burned[part.id] = true;
+      fuses[part.id] = { id: part.id, conducting: !blown, blown, current };
+    }
+  }
+
   return {
     voltages,
     currents,
@@ -2795,6 +3247,18 @@ export function simulate(input: {
     motors,
     speakers,
     logicGates,
+    mosfets,
+    zeners,
+    ldrs,
+    thermistors,
+    rgbLeds,
+    sevenSegments,
+    timer555s,
+    opamps,
+    servos,
+    optocouplers,
+    regulators,
+    fuses,
 
     mcus,
     lcds,
