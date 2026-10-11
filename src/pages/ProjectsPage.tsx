@@ -225,9 +225,10 @@ export function ProjectsPage() {
                           type="button"
                           title="Open in editor"
                           onClick={() => navigate(`/editor/${p.id}`)}
-                          className="p-2 rounded-lg hover:bg-slate-700 text-slate-300"
+                          className="flex flex-col items-center gap-0.5 rounded-lg px-2 py-1.5 text-slate-300 hover:bg-slate-700"
                         >
                           <FolderOpen size={16} />
+                          <span className="text-[10px] leading-none">Open</span>
                         </button>
                         <button
                           type="button"
