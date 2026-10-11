@@ -42,6 +42,8 @@ import {
   RESISTOR_VALUES,
   CAPACITOR_VALUES,
   MOTOR_MODELS,
+  MOSFET_MODELS,
+  ZENER_MODELS,
   type ToolId,
   type WireColor,
   type MotorModelId,
@@ -183,6 +185,79 @@ const TOOLS: {
   },
 
   {
+    id: "mosfet",
+    label: "MOSFET",
+    hint: "N/P-channel — G D S",
+    icon: Cpu,
+  },
+  {
+    id: "zener",
+    label: "Zener",
+    hint: "Breakdown voltage reference",
+    icon: Zap,
+  },
+  {
+    id: "ldr",
+    label: "LDR",
+    hint: "Photoresistor — light sensor",
+    icon: Lightbulb,
+  },
+  {
+    id: "thermistor",
+    label: "Thermistor",
+    hint: "NTC temperature sensor",
+    icon: Gauge,
+  },
+  {
+    id: "rgb-led",
+    label: "RGB LED",
+    hint: "Common cathode R G B K",
+    icon: Lightbulb,
+  },
+  {
+    id: "fuse",
+    label: "Fuse",
+    hint: "Overcurrent protection",
+    icon: Minus,
+  },
+  {
+    id: "seven-segment",
+    label: "7-Segment",
+    hint: "Digit display",
+    icon: Gauge,
+  },
+  {
+    id: "timer555",
+    label: "555 Timer",
+    hint: "Classic timer IC",
+    icon: Cpu,
+  },
+  {
+    id: "opamp",
+    label: "Op-Amp",
+    hint: "Operational amplifier",
+    icon: Cpu,
+  },
+  {
+    id: "servo",
+    label: "Servo",
+    hint: "Position servo — VCC GND SIG",
+    icon: Gauge,
+  },
+  {
+    id: "optocoupler",
+    label: "Optocoupler",
+    hint: "Isolated LED + phototransistor",
+    icon: Zap,
+  },
+  {
+    id: "regulator",
+    label: "Regulator",
+    hint: "78xx linear regulator",
+    icon: Zap,
+  },
+
+  {
     id: "motor",
     label: "DC Motor",
     hint: "3V / 5V / 6V / 9V / 12V hobby motor",
@@ -285,6 +360,18 @@ const PIN_ORDER: Partial<Record<ToolId, string[]>> = {
   nor: Array.from({ length: 14 }, (_, index) => `pin ${index + 1}`),
   xor: Array.from({ length: 14 }, (_, index) => `pin ${index + 1}`),
   xnor: Array.from({ length: 14 }, (_, index) => `pin ${index + 1}`),
+  mosfet: ["G · gate", "D · drain", "S · source"],
+  zener: ["anode +", "cathode −"],
+  ldr: ["A", "B"],
+  thermistor: ["A", "B"],
+  fuse: ["A", "B"],
+  "rgb-led": ["R", "G", "B", "K · common"],
+  "seven-segment": ["a", "b", "c", "d", "e", "f", "g", "dp", "COM"],
+  timer555: ["1 · GND", "2 · TRIG", "3 · OUT", "4 · RESET", "5 · CONT", "6 · THRES", "7 · DISCH", "8 · VCC"],
+  opamp: ["1 · NC", "2 · IN−", "3 · IN+", "4 · V−", "5 · NC", "6 · OUT", "7 · V+", "8 · NC"],
+  servo: ["VCC", "GND", "SIG"],
+  optocoupler: ["LED A", "LED K", "C", "E"],
+  regulator: ["IN", "GND", "OUT"],
 };
 
 const QUAD_GATE_PIN_LABELS: Record<number, string> = {
@@ -531,6 +618,33 @@ function formatCurrent(value: number) {
 
 function formatVoltage(value: number) {
   return `${value.toFixed(2)} V`;
+}
+
+const NEW_PART_SECTION = { marginTop: 15, paddingTop: 13, borderTop: "1px solid rgba(255,255,255,.08)" } as const;
+const NEW_PART_TITLE = { fontSize: 10, fontWeight: 700, letterSpacing: 1.3, textTransform: "uppercase", color: "#94a3b8" } as const;
+const NEW_PART_LABEL = { display: "block", marginTop: 9, fontSize: 9, color: "#64748b" } as const;
+const NEW_PART_HINT = { marginTop: 8, fontSize: 10, color: "#64748b", lineHeight: 1.45 } as const;
+const NEW_PART_SELECT = {
+  width: "100%",
+  marginTop: 8,
+  padding: 9,
+  borderRadius: 9,
+  background: "#111827",
+  color: "white",
+  border: "1px solid rgba(255,255,255,.12)",
+} as const;
+
+function NewPartReadout({ items }: { items: [string, string][] }) {
+  return (
+    <div style={{ marginTop: 9, display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
+      {items.map(([label, value]) => (
+        <div key={label} style={{ padding: 8, borderRadius: 8, background: "rgba(255,255,255,.04)" }}>
+          <div style={{ fontSize: 8, color: "#64748b" }}>{label}</div>
+          <div style={{ marginTop: 2, fontFamily: "ui-monospace,monospace", fontSize: 11 }}>{value}</div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 
@@ -791,6 +905,7 @@ export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
     (s) => s.setSelectedResistance
   );
   const setSelectedProp = useLab((s) => s.setSelectedProp);
+  const replaceFuse = useLab((s) => s.replaceFuse);
 
   const setSelectedLedColor = useLab(
     (s) => s.setSelectedLedColor
@@ -3165,6 +3280,234 @@ export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
             </div>
           )}
 
+
+          {selected!.kind === "mosfet" && (() => {
+            const st = sim.mosfets?.[selected!.id];
+            const modelId = selected!.props.mosfetModel ?? "2n7000";
+            const model = MOSFET_MODELS[modelId] ?? MOSFET_MODELS["2n7000"];
+            return (
+              <div style={NEW_PART_SECTION}>
+                <div style={NEW_PART_TITLE}>MOSFET</div>
+                <select value={modelId} onChange={(e) => setSelectedProp("mosfetModel", e.target.value)} style={NEW_PART_SELECT}>
+                  {Object.entries(MOSFET_MODELS).map(([id, m]) => <option key={id} value={id}>{m.label} · {m.package} · {m.channel.toUpperCase()}-ch</option>)}
+                </select>
+                <NewPartReadout items={[
+                  ["V(th)", `${model.channel === "p" ? "−" : ""}${Math.abs(model.vth).toFixed(1)} V`],
+                  ["R(ds,on)", `${model.rdsOn} Ω`],
+                  ["State", st?.conducting ? "ON" : "OFF"],
+                  ["V(GS)", formatVoltage(st?.vgs ?? 0)],
+                  ["I(D)", `${((st?.ids ?? 0) * 1000).toFixed(1)} mA`],
+                  ["V(DS)", formatVoltage(st?.vds ?? 0)],
+                ]} />
+              </div>
+            );
+          })()}
+
+          {selected!.kind === "zener" && (() => {
+            const st = sim.zeners?.[selected!.id];
+            const modelId = selected!.props.zenerModel ?? "5v1";
+            return (
+              <div style={NEW_PART_SECTION}>
+                <div style={NEW_PART_TITLE}>Zener diode</div>
+                <select value={modelId} onChange={(e) => setSelectedProp("zenerModel", e.target.value)} style={NEW_PART_SELECT}>
+                  {Object.entries(ZENER_MODELS).map(([id, m]) => <option key={id} value={id}>{m.label} · V(z) {m.vz} V</option>)}
+                </select>
+                <NewPartReadout items={[
+                  ["State", st?.breakdown ? "Breakdown" : st?.on ? "Forward" : "Off"],
+                  ["V(AK)", formatVoltage(st?.voltage ?? 0)],
+                  ["I", `${((st?.current ?? 0) * 1000).toFixed(1)} mA`],
+                ]} />
+                <div style={NEW_PART_HINT}>Place cathode (K) toward + to regulate at V(z); use a series resistor.</div>
+              </div>
+            );
+          })()}
+
+          {selected!.kind === "ldr" && (() => {
+            const light = selected!.props.lightLevel ?? 0.5;
+            const st = sim.ldrs?.[selected!.id];
+            return (
+              <div style={NEW_PART_SECTION}>
+                <div style={NEW_PART_TITLE}>Photoresistor (LDR)</div>
+                <label style={NEW_PART_LABEL}>LIGHT LEVEL · {Math.round(light * 100)}%
+                  <input type="range" min={0} max={1} step={0.01} value={light} onChange={(e) => setSelectedProp("lightLevel", Number(e.target.value))} style={{ width: "100%", marginTop: 6 }} />
+                </label>
+                <NewPartReadout items={[["Resistance", formatResistance(st?.resistance ?? 0)]]} />
+              </div>
+            );
+          })()}
+
+          {selected!.kind === "thermistor" && (() => {
+            const t = selected!.props.temperatureC ?? 25;
+            const st = sim.thermistors?.[selected!.id];
+            return (
+              <div style={NEW_PART_SECTION}>
+                <div style={NEW_PART_TITLE}>NTC thermistor</div>
+                <label style={NEW_PART_LABEL}>TEMPERATURE · {t} °C
+                  <input type="range" min={-20} max={120} step={1} value={t} onChange={(e) => setSelectedProp("temperatureC", Number(e.target.value))} style={{ width: "100%", marginTop: 6 }} />
+                </label>
+                <label style={NEW_PART_LABEL}>R25
+                  <select value={selected!.props.r25 ?? 10000} onChange={(e) => setSelectedProp("r25", Number(e.target.value))} style={NEW_PART_SELECT}>
+                    {[1000, 4700, 10000, 47000, 100000].map((r) => <option key={r} value={r}>{formatResistance(r)} @ 25 °C</option>)}
+                  </select>
+                </label>
+                <NewPartReadout items={[["Resistance", formatResistance(st?.resistance ?? 0)], ["Model", "B = 3950 K"]]} />
+              </div>
+            );
+          })()}
+
+          {selected!.kind === "fuse" && (() => {
+            const st = sim.fuses?.[selected!.id];
+            return (
+              <div style={NEW_PART_SECTION}>
+                <div style={NEW_PART_TITLE}>Fuse</div>
+                <label style={NEW_PART_LABEL}>RATING
+                  <select value={selected!.props.fuseCurrent ?? 0.5} onChange={(e) => setSelectedProp("fuseCurrent", Number(e.target.value))} style={NEW_PART_SELECT}>
+                    {[0.1, 0.25, 0.5, 1, 2, 3, 5].map((a) => <option key={a} value={a}>{a} A</option>)}
+                  </select>
+                </label>
+                <NewPartReadout items={[["State", st?.blown ? "BLOWN" : "OK"], ["I", `${((st?.current ?? 0) * 1000).toFixed(1)} mA`]]} />
+                {st?.blown && (
+                  <button type="button" onClick={() => replaceFuse(selected!.id)} style={{ ...NEW_PART_SELECT, cursor: "pointer", background: "#7f1d1d", fontWeight: 700 }}>
+                    Replace fuse
+                  </button>
+                )}
+              </div>
+            );
+          })()}
+
+          {selected!.kind === "rgb-led" && (() => {
+            const st = sim.rgbLeds?.[selected!.id];
+            return (
+              <div style={NEW_PART_SECTION}>
+                <div style={NEW_PART_TITLE}>RGB LED</div>
+                <label style={NEW_PART_LABEL}>COMMON PIN
+                  <select value={selected!.props.rgbCommon ?? "cathode"} onChange={(e) => setSelectedProp("rgbCommon", e.target.value)} style={NEW_PART_SELECT}>
+                    <option value="cathode">Common cathode (COM → GND)</option>
+                    <option value="anode">Common anode (COM → +V)</option>
+                  </select>
+                </label>
+                <NewPartReadout items={[["R", st?.r ? "ON" : "off"], ["G", st?.g ? "ON" : "off"], ["B", st?.b ? "ON" : "off"]]} />
+              </div>
+            );
+          })()}
+
+          {selected!.kind === "seven-segment" && (() => {
+            const st = sim.sevenSegments?.[selected!.id];
+            return (
+              <div style={NEW_PART_SECTION}>
+                <div style={NEW_PART_TITLE}>7-segment display</div>
+                <label style={NEW_PART_LABEL}>COMMON PIN
+                  <select value={selected!.props.sevenSegCommon ?? "cathode"} onChange={(e) => setSelectedProp("sevenSegCommon", e.target.value)} style={NEW_PART_SELECT}>
+                    <option value="cathode">Common cathode (COM → GND)</option>
+                    <option value="anode">Common anode (COM → +V)</option>
+                  </select>
+                </label>
+                <NewPartReadout items={[
+                  ["Lit", (st?.segments ?? []).map((on, i) => (on ? "abcdefg"[i] : "")).join("") || "—"],
+                  ["Digit", st?.digit !== undefined ? String(st.digit) : "—"],
+                ]} />
+              </div>
+            );
+          })()}
+
+          {selected!.kind === "timer555" && (() => {
+            const st = sim.timer555s?.[selected!.id];
+            const mode = selected!.props.timer555Mode ?? "astable";
+            return (
+              <div style={NEW_PART_SECTION}>
+                <div style={NEW_PART_TITLE}>555 timer</div>
+                <select value={mode} onChange={(e) => setSelectedProp("timer555Mode", e.target.value)} style={NEW_PART_SELECT}>
+                  <option value="astable">Astable · free-running oscillator</option>
+                  <option value="monostable">Monostable · one-shot pulse</option>
+                  <option value="bistable">Bistable · SR latch</option>
+                </select>
+                <NewPartReadout items={[
+                  ["Power", st?.powered ? "ON" : "off (VCC ≥ 4.5 V)"],
+                  ["OUT", st?.output ? "HIGH" : "LOW"],
+                  ...(mode === "astable" && st?.frequencyHz
+                    ? [["f", `${st.frequencyHz.toFixed(st.frequencyHz < 10 ? 2 : 0)} Hz`], ["Duty", `${Math.round((st.dutyCycle ?? 0) * 100)}%`]] as [string, string][]
+                    : []),
+                  ...(mode === "monostable" && st?.highMs ? [["Pulse", `${st.highMs.toFixed(0)} ms`]] as [string, string][] : []),
+                ]} />
+                <div style={NEW_PART_HINT}>
+                  {mode === "astable"
+                    ? st?.timingFromBoard
+                      ? "Timing from R1 (VCC–DISCH), R2 (DISCH–THRES) and C (THRES–GND)."
+                      : "Add R1 (VCC–DISCH), R2 (DISCH–THRES/TRIG) and C (THRES–GND) to set timing; using 1 Hz default."
+                    : mode === "monostable"
+                      ? "Pull TRIG below VCC/3 to fire; width 1.1·R·C from R (VCC–THRES) and C (THRES–GND)."
+                      : "TRIG low sets OUT high; THRES high or RESET low clears it."}
+                </div>
+              </div>
+            );
+          })()}
+
+          {selected!.kind === "opamp" && (() => {
+            const st = sim.opamps?.[selected!.id];
+            return (
+              <div style={NEW_PART_SECTION}>
+                <div style={NEW_PART_TITLE}>Op-amp</div>
+                <select value={selected!.props.opampMode ?? "comparator"} onChange={(e) => setSelectedProp("opampMode", e.target.value)} style={NEW_PART_SELECT}>
+                  <option value="comparator">Open loop / comparator</option>
+                  <option value="buffer">Voltage follower (internal OUT→IN−)</option>
+                  <option value="inverting">Inverting amp (wire Rin, Rf)</option>
+                </select>
+                <NewPartReadout items={[
+                  ["Power", st?.powered ? "ON" : "off"],
+                  ["OUT", formatVoltage(st?.output ?? 0)],
+                  ["State", st?.saturated ? `sat. ${st.saturated}` : st?.powered ? "linear" : "—"],
+                ]} />
+                <div style={NEW_PART_HINT}>Feedback is real: gain comes from the resistors you wire between OUT, IN− and the input.</div>
+              </div>
+            );
+          })()}
+
+          {selected!.kind === "servo" && (() => {
+            const st = sim.servos?.[selected!.id];
+            const angle = selected!.props.servoAngle ?? 90;
+            return (
+              <div style={NEW_PART_SECTION}>
+                <div style={NEW_PART_TITLE}>Servo</div>
+                <label style={NEW_PART_LABEL}>MANUAL ANGLE · {angle}° (when SIG is unconnected)
+                  <input type="range" min={0} max={180} step={1} value={angle} onChange={(e) => setSelectedProp("servoAngle", Number(e.target.value))} style={{ width: "100%", marginTop: 6 }} />
+                </label>
+                <NewPartReadout items={[["Power", st?.powered ? "ON" : "off"], ["Angle", `${st?.angle ?? angle}°`], ["Supply", formatVoltage(st?.voltage ?? 0)]]} />
+                <div style={NEW_PART_HINT}>When SIG is wired, 0 V → 0° and VCC → 180°.</div>
+              </div>
+            );
+          })()}
+
+          {selected!.kind === "optocoupler" && (() => {
+            const st = sim.optocouplers?.[selected!.id];
+            return (
+              <div style={NEW_PART_SECTION}>
+                <div style={NEW_PART_TITLE}>Optocoupler (4N35)</div>
+                <NewPartReadout items={[
+                  ["LED", st?.ledOn ? "ON" : "off"],
+                  ["I(F)", `${((st?.ledCurrent ?? 0) * 1000).toFixed(1)} mA`],
+                  ["C–E", st?.outputConducting ? "conducting" : "open"],
+                ]} />
+              </div>
+            );
+          })()}
+
+          {selected!.kind === "regulator" && (() => {
+            const st = sim.regulators?.[selected!.id];
+            return (
+              <div style={NEW_PART_SECTION}>
+                <div style={NEW_PART_TITLE}>Linear regulator</div>
+                <select value={selected!.props.regulatorVout ?? 5} onChange={(e) => setSelectedProp("regulatorVout", Number(e.target.value))} style={NEW_PART_SELECT}>
+                  {[3.3, 5, 6, 8, 9, 12, 15].map((v) => <option key={v} value={v}>{v === 3.3 ? "LM1117-3.3" : `78${String(v).padStart(2, "0")}`} · {v} V</option>)}
+                </select>
+                <NewPartReadout items={[
+                  ["V(in)", formatVoltage(st?.vin ?? 0)],
+                  ["V(out)", formatVoltage(st?.vout ?? 0)],
+                  ["State", !st?.powered ? "off" : st.dropout ? "DROPOUT" : "regulating"],
+                ]} />
+                <div style={NEW_PART_HINT}>Needs about 2 V of headroom (V(in) ≥ V(out) + 2 V).</div>
+              </div>
+            );
+          })()}
 
           {selected!.kind === "motor" && (
             <div style={{ marginTop: 15, paddingTop: 13, borderTop: "1px solid rgba(255,255,255,.08)" }}>

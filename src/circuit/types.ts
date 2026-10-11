@@ -86,7 +86,19 @@ export type ToolId =
   | "nand"
   | "nor"
   | "xor"
-  | "xnor";
+  | "xnor"
+  | "mosfet"
+  | "zener"
+  | "ldr"
+  | "rgb-led"
+  | "seven-segment"
+  | "timer555"
+  | "opamp"
+  | "servo"
+  | "thermistor"
+  | "optocoupler"
+  | "regulator"
+  | "fuse";
 
 export type TransistorModelId =
   | "2n3904"   // TO-92 NPN
@@ -124,7 +136,19 @@ export type PartKind =
   | "nand"
   | "nor"
   | "xor"
-  | "xnor";
+  | "xnor"
+  | "mosfet"
+  | "zener"
+  | "ldr"
+  | "rgb-led"
+  | "seven-segment"
+  | "timer555"
+  | "opamp"
+  | "servo"
+  | "thermistor"
+  | "optocoupler"
+  | "regulator"
+  | "fuse";
 
 export type MotorModelId = "3v" | "5v" | "6v" | "9v" | "12v";
 export type LogicGateFamily = "not" | "and" | "or" | "nand" | "nor" | "xor" | "xnor";
@@ -246,6 +270,50 @@ export type DiacModelId =
   | "db4"      // ~40 V breakover
   | "ht32";    // ~32 V breakover
 
+/** N/P-channel MOSFET models (educational). */
+export type MosfetModelId =
+  | "2n7000"   // N-ch TO-92
+  | "bs170"    // N-ch TO-92
+  | "irf540"   // N-ch TO-220
+  | "irf9540"  // P-ch TO-220
+  | "ao3400"   // N-ch SOT-23
+  | "ao3401";  // P-ch SOT-23
+
+export const MOSFET_MODELS: Record<
+  MosfetModelId,
+  {
+    label: string;
+    channel: "n" | "p";
+    package: string;
+    vth: number;
+    rdsOn: number;
+    maxVds: number;
+    maxId: number;
+  }
+> = {
+  "2n7000": { label: "2N7000", channel: "n", package: "TO-92", vth: 2.1, rdsOn: 5.0, maxVds: 60, maxId: 0.2 },
+  bs170:    { label: "BS170", channel: "n", package: "TO-92", vth: 2.1, rdsOn: 5.0, maxVds: 60, maxId: 0.5 },
+  irf540:   { label: "IRF540N", channel: "n", package: "TO-220", vth: 4.0, rdsOn: 0.044, maxVds: 100, maxId: 33 },
+  irf9540:  { label: "IRF9540", channel: "p", package: "TO-220", vth: -4.0, rdsOn: 0.2, maxVds: -100, maxId: -23 },
+  ao3400:   { label: "AO3400", channel: "n", package: "SOT-23", vth: 1.0, rdsOn: 0.03, maxVds: 30, maxId: 5.7 },
+  ao3401:   { label: "AO3401", channel: "p", package: "SOT-23", vth: -1.0, rdsOn: 0.05, maxVds: -30, maxId: -4.0 },
+};
+
+/** Common zener voltages (educational). */
+export type ZenerModelId = "3v3" | "5v1" | "6v2" | "9v1" | "12v" | "15v";
+
+export const ZENER_MODELS: Record<
+  ZenerModelId,
+  { label: string; vz: number; rz: number; maxPower: number }
+> = {
+  "3v3": { label: "BZX 3.3V", vz: 3.3, rz: 15, maxPower: 0.5 },
+  "5v1": { label: "BZX 5.1V", vz: 5.1, rz: 12, maxPower: 0.5 },
+  "6v2": { label: "BZX 6.2V", vz: 6.2, rz: 10, maxPower: 0.5 },
+  "9v1": { label: "BZX 9.1V", vz: 9.1, rz: 12, maxPower: 0.5 },
+  "12v": { label: "BZX 12V", vz: 12, rz: 15, maxPower: 0.5 },
+  "15v": { label: "BZX 15V", vz: 15, rz: 18, maxPower: 0.5 },
+};
+
 export type WireColor =
   | "red"
   | "black"
@@ -318,6 +386,39 @@ export interface PlacedPart {
 
     /** Logic IC gate type uses A/B inputs, Y output, VCC and GND. */
     gateFamily?: LogicGateFamily;
+
+    /** MOSFET model id. */
+    mosfetModel?: MosfetModelId;
+    /** Zener breakdown voltage model. */
+    zenerModel?: ZenerModelId;
+    /** Ambient light level for LDR (0 = dark, 1 = bright). */
+    lightLevel?: number;
+    /** Ambient temperature °C for thermistor. */
+    temperatureC?: number;
+    /** Thermistor nominal resistance at 25 °C. */
+    r25?: number;
+    /** Fuse trip current (A). */
+    fuseCurrent?: number;
+    /** Whether fuse has blown. */
+    fuseBlown?: boolean;
+    /** Servo angle target 0–180°. */
+    servoAngle?: number;
+    /** 7-segment common type. */
+    sevenSegCommon?: "cathode" | "anode";
+    /** RGB LED common pin type. */
+    rgbCommon?: "cathode" | "anode";
+    /** Digit currently shown on 7-segment (0–9) when driven as a unit. */
+    sevenSegDigit?: number;
+    /** 555 timer mode. */
+    timer555Mode?: "astable" | "monostable" | "bistable";
+    /**
+     * Op-amp configuration. "comparator" = open loop (wire your own feedback
+     * for amplifiers), "buffer" = internal OUT→IN− unity-gain follower,
+     * "inverting" = open loop, expects external Rin/Rf feedback.
+     */
+    opampMode?: "comparator" | "buffer" | "inverting";
+    /** Regulator output voltage (e.g. 5 for 7805). */
+    regulatorVout?: number;
   };
 }
 
@@ -480,6 +581,109 @@ export interface LcdSimState {
   electricalState?: "off" | "undervoltage" | "normal" | "overvoltage" | "shorted";
   current?: number;
 }
+export interface MosfetState {
+  id: string;
+  conducting: boolean;
+  vgs: number;
+  vds: number;
+  ids: number;
+  channel: "n" | "p";
+}
+
+export interface ZenerState {
+  id: string;
+  on: boolean;
+  breakdown: boolean;
+  current: number;
+  voltage: number;
+}
+
+export interface LdrState {
+  id: string;
+  resistance: number;
+  lightLevel: number;
+}
+
+export interface ThermistorState {
+  id: string;
+  resistance: number;
+  temperatureC: number;
+}
+
+export interface RgbLedState {
+  id: string;
+  r: boolean;
+  g: boolean;
+  b: boolean;
+  brightnessR: number;
+  brightnessG: number;
+  brightnessB: number;
+}
+
+export interface SevenSegState {
+  id: string;
+  segments: boolean[]; // a,b,c,d,e,f,g
+  digit?: number;
+}
+
+export interface Timer555State {
+  id: string;
+  powered: boolean;
+  output: 0 | 1;
+  mode: "astable" | "monostable" | "bistable";
+  /** Time spent in the current output state (ms). */
+  phaseMs?: number;
+  /** Astable frequency derived from the timing network (Hz). */
+  frequencyHz?: number;
+  /** Astable duty cycle (0–1). */
+  dutyCycle?: number;
+  /** Monostable pulse width / astable high time (ms). */
+  highMs?: number;
+  /** Astable low time (ms). */
+  lowMs?: number;
+  /** True when timing R/C were found on the board (else defaults are used). */
+  timingFromBoard?: boolean;
+  /** Previous TRIG level (for monostable edge detection). */
+  trigLow?: boolean;
+}
+
+export interface OpampState {
+  id: string;
+  powered: boolean;
+  output: number;
+  mode: string;
+  saturated?: "high" | "low" | null;
+}
+
+export interface ServoState {
+  id: string;
+  powered: boolean;
+  angle: number;
+  voltage: number;
+}
+
+export interface OptocouplerState {
+  id: string;
+  ledOn: boolean;
+  outputConducting: boolean;
+  ledCurrent: number;
+}
+
+export interface RegulatorState {
+  id: string;
+  powered: boolean;
+  vin: number;
+  vout: number;
+  dropout: boolean;
+}
+
+export interface FuseState {
+  id: string;
+  conducting: boolean;
+  blown: boolean;
+  current: number;
+}
+
 export interface SimResult {
   ok?: boolean;
   error?: string;
@@ -525,6 +729,18 @@ export interface SimResult {
   motors?: Record<string, MotorState>;
   logicGates?: Record<string, { output: 0 | 1; powered: boolean }>;
   speakers?: Record<string, SpeakerState>;
+  mosfets?: Record<string, MosfetState>;
+  zeners?: Record<string, ZenerState>;
+  ldrs?: Record<string, LdrState>;
+  thermistors?: Record<string, ThermistorState>;
+  rgbLeds?: Record<string, RgbLedState>;
+  sevenSegments?: Record<string, SevenSegState>;
+  timer555s?: Record<string, Timer555State>;
+  opamps?: Record<string, OpampState>;
+  servos?: Record<string, ServoState>;
+  optocouplers?: Record<string, OptocouplerState>;
+  regulators?: Record<string, RegulatorState>;
+  fuses?: Record<string, FuseState>;
   oledPowered?: boolean;
   oledText?: string;
   oledVoltage?: number;

@@ -525,9 +525,99 @@ export function ComponentLibrarySymbol({
     nor: <GateSymbol label="NOR" />,
     xor: <GateSymbol label="XOR" />,
     xnor: <GateSymbol label="XNOR" />,
+    mosfet: <MosfetSymbol />,
+    zener: <ZenerSymbol />,
+    ldr: <LdrSymbol />,
+    "rgb-led": <RgbLedSymbol />,
+    "seven-segment": <SevenSegSymbol />,
+    timer555: <Timer555Symbol />,
+    opamp: <OpampSymbol />,
+    servo: <ServoSymbol />,
+    thermistor: <ThermistorSymbol />,
+    optocoupler: <OptocouplerSymbol />,
+    regulator: <RegulatorSymbol />,
+    fuse: <FuseSymbol />,
   };
   return symbols[kind] ?? <span />;
 }
+
+
+const ZenerSymbol = () => (
+  <svg viewBox="0 0 48 24" width="34" height="24">
+    <path d="M2 12H16L28 4V20L16 12M28 4V20M28 12H46" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+    <path d="M28 4L34 1M28 20L34 23" fill="none" stroke="currentColor" strokeWidth="2" />
+  </svg>
+);
+const MosfetSymbol = () => (
+  <svg viewBox="0 0 48 36" width="34" height="27">
+    <path d="M24 4V12M24 24V32M18 12V24M12 10V26M12 18H18M6 18H12M24 12H18M24 24H18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+  </svg>
+);
+const LdrSymbol = () => (
+  <svg viewBox="0 0 48 28" width="34" height="24">
+    <path d="M2 16H9L12 9L16 23L20 9L24 23L28 9L32 23L35 16H46" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+    <path d="M16 6L21 1M26 6L31 1" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+  </svg>
+);
+const RgbLedSymbol = () => (
+  <svg viewBox="0 0 48 32" width="34" height="26">
+    <path d="M10 10L26 16L10 22Z" fill="none" stroke="currentColor" strokeWidth="2" />
+    <path d="M26 8V24M2 10H10M2 16H10M2 22H10M26 16H46" fill="none" stroke="currentColor" strokeWidth="2" />
+  </svg>
+);
+const SevenSegSymbol = () => (
+  <svg viewBox="0 0 40 48" width="28" height="32">
+    <rect x="4" y="4" width="32" height="40" rx="3" fill="none" stroke="currentColor" strokeWidth="2" />
+    <path d="M12 12H28M28 14V22M28 26V34M12 36H28M12 34V26M12 22V14M14 24H26" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+  </svg>
+);
+const Timer555Symbol = () => (
+  <svg viewBox="0 0 48 32" width="34" height="24">
+    <rect x="4" y="4" width="40" height="24" rx="3" fill="none" stroke="currentColor" strokeWidth="2" />
+    <text x="24" y="20" textAnchor="middle" fill="currentColor" fontSize="11" fontWeight="700" fontFamily="sans-serif">555</text>
+  </svg>
+);
+const OpampSymbol = () => (
+  <svg viewBox="0 0 48 36" width="34" height="27">
+    <path d="M8 6L40 18L8 30Z" fill="none" stroke="currentColor" strokeWidth="2" />
+    <path d="M2 12H8M2 24H8M40 18H46M24 6V2M24 30V34" fill="none" stroke="currentColor" strokeWidth="2" />
+    <text x="14" y="15" fill="currentColor" fontSize="10">+</text>
+    <text x="14" y="27" fill="currentColor" fontSize="12">−</text>
+  </svg>
+);
+const ServoSymbol = () => (
+  <svg viewBox="0 0 48 32" width="34" height="24">
+    <rect x="6" y="8" width="28" height="16" rx="2" fill="none" stroke="currentColor" strokeWidth="2" />
+    <circle cx="30" cy="16" r="7" fill="none" stroke="currentColor" strokeWidth="2" />
+    <path d="M30 16L36 12" fill="none" stroke="currentColor" strokeWidth="2" />
+  </svg>
+);
+const ThermistorSymbol = () => (
+  <svg viewBox="0 0 48 28" width="34" height="24">
+    <path d="M2 16H9L12 9L16 23L20 9L24 23L28 9L32 23L35 16H46" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+    <text x="24" y="8" textAnchor="middle" fill="currentColor" fontSize="9">t°</text>
+  </svg>
+);
+const OptocouplerSymbol = () => (
+  <svg viewBox="0 0 48 32" width="34" height="24">
+    <rect x="4" y="4" width="40" height="24" rx="2" fill="none" stroke="currentColor" strokeWidth="2" />
+    <path d="M12 10L20 16L12 22Z" fill="none" stroke="currentColor" strokeWidth="1.8" />
+    <path d="M20 10V22M28 10V22M28 13H34M28 19H34" fill="none" stroke="currentColor" strokeWidth="1.8" />
+  </svg>
+);
+const RegulatorSymbol = () => (
+  <svg viewBox="0 0 48 28" width="34" height="24">
+    <rect x="10" y="6" width="28" height="16" rx="2" fill="none" stroke="currentColor" strokeWidth="2" />
+    <path d="M2 14H10M38 14H46M24 22V26" fill="none" stroke="currentColor" strokeWidth="2" />
+    <text x="24" y="17" textAnchor="middle" fill="currentColor" fontSize="8" fontWeight="700">78xx</text>
+  </svg>
+);
+const FuseSymbol = () => (
+  <svg viewBox="0 0 48 24" width="34" height="24">
+    <rect x="14" y="7" width="20" height="10" rx="2" fill="none" stroke="currentColor" strokeWidth="2" />
+    <path d="M2 12H14M34 12H46M18 12H30" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="3 2" />
+  </svg>
+);
 
 const COMPS: LibPart[] = [
   { name: "Resistor", desc: "Various values ±1%, ±5%", type: "Passive", tool: "resistor", symbol: <ResistorSymbol /> },
@@ -556,6 +646,18 @@ const COMPS: LibPart[] = [
   { name: "NOR IC", desc: "Y = NOT (A OR B)", type: "Integrated Circuits", tool: "nor", symbol: <GateSymbol label="NOR" /> },
   { name: "XOR IC", desc: "Y = A XOR B", type: "Integrated Circuits", tool: "xor", symbol: <GateSymbol label="XOR" /> },
   { name: "XNOR IC", desc: "Y = A XNOR B", type: "Integrated Circuits", tool: "xnor", symbol: <GateSymbol label="XNOR" /> },
+  { name: "MOSFET", desc: "2N7000, IRF540, AO3400…", type: "Semiconductor", tool: "mosfet", symbol: <MosfetSymbol /> },
+  { name: "Zener diode", desc: "3.3 V – 15 V reference", type: "Semiconductor", tool: "zener", symbol: <ZenerSymbol /> },
+  { name: "Photoresistor (LDR)", desc: "Light-dependent resistor", type: "Passive", tool: "ldr", symbol: <LdrSymbol /> },
+  { name: "RGB LED", desc: "Common-cathode R/G/B", type: "Semiconductor", tool: "rgb-led", symbol: <RgbLedSymbol /> },
+  { name: "7-Segment display", desc: "Digit a–g + dp", type: "Integrated Circuits", tool: "seven-segment", symbol: <SevenSegSymbol /> },
+  { name: "555 Timer", desc: "Astable / monostable / bistable", type: "Integrated Circuits", tool: "timer555", symbol: <Timer555Symbol /> },
+  { name: "Op-Amp", desc: "Comparator / buffer / inverting", type: "Integrated Circuits", tool: "opamp", symbol: <OpampSymbol /> },
+  { name: "Servo", desc: "Hobby servo VCC/GND/SIG", type: "Electromechanical", tool: "servo", symbol: <ServoSymbol /> },
+  { name: "Thermistor", desc: "NTC temperature sensor", type: "Passive", tool: "thermistor", symbol: <ThermistorSymbol /> },
+  { name: "Optocoupler", desc: "PC817 / 4N35 isolation", type: "Integrated Circuits", tool: "optocoupler", symbol: <OptocouplerSymbol /> },
+  { name: "Voltage regulator", desc: "7805 / 7809 / 7812 / 3.3 V", type: "Integrated Circuits", tool: "regulator", symbol: <RegulatorSymbol /> },
+  { name: "Fuse", desc: "Resettable overcurrent link", type: "Passive", tool: "fuse", symbol: <FuseSymbol /> },
 ];
 
 const CATEGORIES = [

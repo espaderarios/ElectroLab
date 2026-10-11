@@ -1058,14 +1058,20 @@ const PALETTE: Array<{
       { id: 'res', label: 'Resistor', symbol: <ResistorSymbol />, tool: 'resistor' },
       { id: 'cap', label: 'Capacitor', symbol: <CapacitorSymbol />, tool: 'capacitor' },
       { id: 'ind', label: 'Inductor', symbol: <InductorSymbol />, tool: 'inductor' },
+      { id: 'ldr', label: 'LDR', symbol: 'LDR', tool: 'ldr' },
+      { id: 'thermistor', label: 'Thermistor', symbol: 'NTC', tool: 'thermistor' },
+      { id: 'fuse', label: 'Fuse', symbol: 'F', tool: 'fuse' },
     ],
   },
   {
     title: 'Semiconductors',
     items: [
       { id: 'diode', label: 'Diode', symbol: <DiodeSymbol />, tool: 'diode' },
+      { id: 'zener', label: 'Zener', symbol: 'Z', tool: 'zener' },
       { id: 'led', label: 'LED', symbol: <LedSymbol />, tool: 'led' },
+      { id: 'rgb-led', label: 'RGB LED', symbol: 'RGB', tool: 'rgb-led' },
       { id: 'transistor', label: 'Transistor', symbol: <TransistorSymbol />, tool: 'transistor' },
+      { id: 'mosfet', label: 'MOSFET', symbol: 'MOS', tool: 'mosfet' },
       { id: 'thyristor', label: 'Thyristor (SCR)', symbol: <ThyristorSymbol />, tool: 'thyristor' },
       { id: 'triac', label: 'TRIAC', symbol: <TriacSymbol />, tool: 'triac' },
       { id: 'diac', label: 'DIAC', symbol: <DiacSymbol />, tool: 'diac' },
@@ -1091,6 +1097,16 @@ const PALETTE: Array<{
     title: 'Actuators',
     items: [
       { id: 'motor', label: 'DC Motor', symbol: <MotorSymbol />, tool: 'motor' },
+      { id: 'servo', label: 'Servo', symbol: 'SV', tool: 'servo' },
+    ],
+  },
+  {
+    title: 'Analog & Timing',
+    items: [
+      { id: 'opamp', label: 'Op-Amp', symbol: 'OA', tool: 'opamp' },
+      { id: 'timer555', label: '555 Timer', symbol: '555', tool: 'timer555' },
+      { id: 'optocoupler', label: 'Optocoupler', symbol: 'OC', tool: 'optocoupler' },
+      { id: 'regulator', label: 'Regulator', symbol: '78xx', tool: 'regulator' },
     ],
   },
   {
@@ -1098,6 +1114,7 @@ const PALETTE: Array<{
     items: [
       { id: 'lcd', label: 'LCD 16×2', symbol: <LcdSymbol />, tool: 'lcd' },
       { id: 'oled', label: 'OLED', symbol: <OledSymbol />, tool: 'oled' },
+      { id: 'seven-segment', label: '7-Segment', symbol: '8.', tool: 'seven-segment' },
       { id: 'mcu', label: 'Arduino / MCU', symbol: <McuSymbol />, tool: 'mcu' },
     ],
   },

@@ -32,6 +32,11 @@ let _lastPlace: { key: string; at: number; tool: string } = {
 /** Hole clicks are ignored until this timestamp (ms). */
 let _suppressHolePlaceUntil = 0;
 
+/** Dual-inline packages that straddle the centre channel. */
+const DIP_KINDS = new Set<string>([
+  "not", "and", "or", "nand", "nor", "xor", "xnor", "timer555", "opamp",
+]);
+
 /** Terminal-strip row groups (same half of the board). */
 const ROW_GROUPS: string[][] = [
   ["A", "B", "C", "D", "E"],
@@ -188,6 +193,8 @@ interface LabState {
 
   setSelectedResistance: (value: number) => void;
   setSelectedProp: (key: keyof PlacedPart["props"], value: unknown) => void;
+  /** Replace a blown fuse (clears its persisted blown state). */
+  replaceFuse: (partId: string) => void;
 
   setTransistorModel: (model: import("@/circuit/types").TransistorModelId) => void;
   setSelectedTransistorModel: (model: import("@/circuit/types").TransistorModelId) => void;
@@ -324,7 +331,14 @@ function runSimulation(state: {
 }) {
   const prevLatched: Record<string, boolean> = {};
   const prevMotorCurrents: Record<string, number> = {};
+  const prevBlownFuses: Record<string, boolean> = {};
+  const prevTimer555: NonNullable<SimResult["timer555s"]> = {};
+  // A blown fuse stays open (even across power cycles) until it is replaced.
+  for (const [id, f] of Object.entries(state.sim?.fuses ?? {})) {
+    if (f.blown) prevBlownFuses[id] = true;
+  }
   if (state.powerOn && state.sim) {
+    Object.assign(prevTimer555, state.sim.timer555s ?? {});
     for (const [id, t] of Object.entries(state.sim.thyristors ?? {})) {
       if (t.conducting) prevLatched[id] = true;
     }
@@ -335,7 +349,14 @@ function runSimulation(state: {
       if (typeof m.current === "number") prevMotorCurrents[id] = m.current;
     }
   }
-  return simulate({ ...state, prevLatched, prevMotorCurrents, mcuDeltaMs: state.mcuDeltaMs });
+  return simulate({
+    ...state,
+    prevLatched,
+    prevMotorCurrents,
+    prevBlownFuses,
+    prevTimer555,
+    mcuDeltaMs: state.mcuDeltaMs,
+  });
 }
 
 function getTwoPinKind(tool: ToolId): PartKind | "wire" | null {
@@ -413,6 +434,31 @@ function getTwoPinKind(tool: ToolId): PartKind | "wire" | null {
     case "xnor":
       return "xnor";
 
+    case "mosfet":
+      return "mosfet";
+    case "zener":
+      return "zener";
+    case "ldr":
+      return "ldr";
+    case "rgb-led":
+      return "rgb-led";
+    case "seven-segment":
+      return "seven-segment";
+    case "timer555":
+      return "timer555";
+    case "opamp":
+      return "opamp";
+    case "servo":
+      return "servo";
+    case "thermistor":
+      return "thermistor";
+    case "optocoupler":
+      return "optocoupler";
+    case "regulator":
+      return "regulator";
+    case "fuse":
+      return "fuse";
+
     default:
       return null;
   }
@@ -439,27 +485,32 @@ export function computePinLayout(
     holes.push(anchor);
     const next = offsetHole(anchor, 1) ?? anchor;
     holes.push(next);
-  } else if (["not", "and", "or", "nand", "nor", "xor", "xnor"].includes(placement.kind)) {
-    // A DIP-14 straddles the centre channel. With the package notch at the
-    // left, the lower/near row is pins 1-7 and the upper/far row returns
-    // pins 8-14 from right to left, matching the physical DIP numbering.
-    const startCol = Math.min(Math.max(1, parsed!.col), BOARD.cols - 6);
-    for (let i = 0; i < 7; i++) {
+  } else if (DIP_KINDS.has(placement.kind)) {
+    // A DIP straddles the centre channel. With the package notch at the
+    // left, the lower/near row is pins 1..n/2 and the upper/far row returns
+    // the remaining pins from right to left, matching physical DIP numbering.
+    const half = placement.pins.length / 2;
+    const startCol = Math.min(Math.max(1, parsed!.col), BOARD.cols - half + 1);
+    for (let i = 0; i < half; i++) {
       holes.push(`F${startCol + i}` as HoleId);
     }
-    for (let i = 0; i < 7; i++) {
-      holes.push(`E${startCol + 6 - i}` as HoleId);
+    for (let i = 0; i < half; i++) {
+      holes.push(`E${startCol + half - 1 - i}` as HoleId);
     }
   } else if (placement.pins.length === 2) {
     holes.push(anchor);
     // LED / diode: adjacent columns on the same row (typical breadboard span).
     // Never jump the center trench — that left the body floating mid-board
     // with no connecting leads.
-    if (placement.kind === "led" || placement.kind === "diode") {
+    if (
+      placement.kind === "led" ||
+      placement.kind === "diode" ||
+      placement.kind === "zener"
+    ) {
       const next = offsetHole(anchor, 1) ?? offsetHole(anchor, -1) ?? anchor;
       holes.push(next);
     } else {
-      // Resistors etc.: span ~3 columns when possible.
+      // Resistors / LDR / thermistor / fuse etc.: span ~3 columns when possible.
       const b = offsetHole(anchor, 3) ?? offsetHole(anchor, 1) ?? anchor;
       holes.push(b);
     }
@@ -524,12 +575,30 @@ export function buildPreviewPart(
       resistance:
         kind === "resistor" || kind === "pot"
           ? defaults?.resistorValue ?? 1000
-          : undefined,
+          : kind === "ldr" || kind === "thermistor"
+            ? 10000
+            : kind === "fuse"
+              ? 0.05
+              : undefined,
       capacitance:
         kind === "capacitor" ? defaults?.capacitorValue ?? 10e-6 : undefined,
       tolerance: kind === "resistor" ? 5 : undefined,
       powerRating: kind === "resistor" || kind === "pot" ? 0.25 : undefined,
       ledColor: kind === "led" ? defaults?.ledColor ?? "red" : undefined,
+      mosfetModel: kind === "mosfet" ? "2n7000" : undefined,
+      zenerModel: kind === "zener" ? "5v1" : undefined,
+      diodeType: kind === "zener" ? "zener" : kind === "diode" ? "silicon" : undefined,
+      lightLevel: kind === "ldr" ? 0.5 : undefined,
+      temperatureC: kind === "thermistor" ? 25 : undefined,
+      r25: kind === "thermistor" ? 10000 : undefined,
+      fuseCurrent: kind === "fuse" ? 0.5 : undefined,
+      fuseBlown: kind === "fuse" ? false : undefined,
+      servoAngle: kind === "servo" ? 90 : undefined,
+      sevenSegCommon: kind === "seven-segment" ? "cathode" : undefined,
+      rgbCommon: kind === "rgb-led" ? "cathode" : undefined,
+      timer555Mode: kind === "timer555" ? "astable" : undefined,
+      opampMode: kind === "opamp" ? "comparator" : undefined,
+      regulatorVout: kind === "regulator" ? 5 : undefined,
       closed:
         kind === "switch" || kind === "button" ? false : undefined,
       switchType:
@@ -554,7 +623,6 @@ export function buildPreviewPart(
           ? kind as PlacedPart["props"]["gateFamily"]
           : undefined,
       capacitorType: kind === "capacitor" ? "ceramic" : undefined,
-      diodeType: kind === "diode" ? "silicon" : undefined,
     },
   };
 }
@@ -571,7 +639,7 @@ export function reanchorPartPins(
   const parsed = parseTerminalHole(anchor);
   if (!parsed) return null;
 
-  if (["not", "and", "or", "nand", "nor", "xor", "xnor"].includes(part.kind)) {
+  if (DIP_KINDS.has(part.kind)) {
     return computePinLayout(part.kind, anchor)?.pins ?? null;
   }
 
@@ -669,6 +737,44 @@ function getPlacement(tool: ToolId) {
     }
     if (kind === "transistor") {
       return { kind, pins: ["e", "b", "c"] };
+    }
+    if (kind === "mosfet") {
+      // G, D, S — common educational breadboard order
+      return { kind, pins: ["g", "d", "s"] };
+    }
+    if (kind === "zener") {
+      return { kind, pins: ["a", "k"] };
+    }
+    if (kind === "ldr" || kind === "thermistor" || kind === "fuse") {
+      return { kind, pins: ["a", "b"] };
+    }
+    if (kind === "rgb-led") {
+      // Common cathode RGB: R, G, B, GND
+      return { kind, pins: ["r", "g", "b", "k"] };
+    }
+    if (kind === "seven-segment") {
+      // a b c d e f g dp com
+      return { kind, pins: ["a", "b", "c", "d", "e", "f", "g", "dp", "com"] };
+    }
+    if (kind === "timer555") {
+      // NE555 DIP-8: 1 GND, 2 TRIG, 3 OUT, 4 RESET, 5 CONT, 6 THRES, 7 DISCH, 8 VCC
+      return { kind, pins: ["gnd", "trig", "out", "reset", "cont", "thres", "disch", "vcc"] };
+    }
+    if (kind === "opamp") {
+      // Single op-amp DIP-8 (741 / OP07 style): 1 NULL, 2 IN−, 3 IN+, 4 V−,
+      // 5 NULL, 6 OUT, 7 V+, 8 NC
+      return { kind, pins: ["nc1", "inn", "inp", "vee", "nc5", "out", "vcc", "nc8"] };
+    }
+    if (kind === "servo") {
+      return { kind, pins: ["vcc", "gnd", "sig"] };
+    }
+    if (kind === "optocoupler") {
+      // LED anode/cathode + phototransistor collector/emitter
+      return { kind, pins: ["la", "lk", "c", "e"] };
+    }
+    if (kind === "regulator") {
+      // 78xx: IN, GND, OUT
+      return { kind, pins: ["in", "gnd", "out"] };
     }
     if (kind === "thyristor") {
       // Real TO-220 SCR pinout (TYN612, BT151, etc.): Cathode, Anode, Gate
@@ -1174,7 +1280,13 @@ export const useLab = create<LabState>((set, get) => ({
         resistance:
           placement.kind === "resistor" || placement.kind === "pot"
             ? state.resistorValue
-            : undefined,
+            : placement.kind === "ldr"
+              ? 10000
+              : placement.kind === "thermistor"
+                ? 10000
+                : placement.kind === "fuse"
+                  ? 0.05
+                  : undefined,
         capacitance:
           placement.kind === "capacitor" ? state.capacitorValue : undefined,
         tolerance: placement.kind === "resistor" ? 5 : undefined,
@@ -1183,18 +1295,31 @@ export const useLab = create<LabState>((set, get) => ({
           placement.kind === "resistor" ? 200 :
           placement.kind === "capacitor" ? 16 :
           placement.kind === "led" ? 5 :
-          placement.kind === "diode" ? 50 : undefined,
+          placement.kind === "diode" || placement.kind === "zener" ? 50 : undefined,
         maxCurrent:
           placement.kind === "led" ? 0.02 :
-          placement.kind === "diode" ? 1 : undefined,
+          placement.kind === "diode" || placement.kind === "zener" ? 1 : undefined,
         forwardVoltage:
           placement.kind === "led"
             ? ({ red: 1.9, green: 2.2, yellow: 2.1, blue: 3.0 } as const)[state.ledColor]
             : undefined,
         capacitorType: placement.kind === "capacitor" ? "ceramic" : undefined,
-        diodeType: placement.kind === "diode" ? "silicon" : undefined,
+        diodeType: placement.kind === "zener" ? "zener" : placement.kind === "diode" ? "silicon" : undefined,
         package: placement.kind === "resistor" ? "axial" : undefined,
         ledColor: placement.kind === "led" ? state.ledColor : undefined,
+        mosfetModel: placement.kind === "mosfet" ? "2n7000" : undefined,
+        zenerModel: placement.kind === "zener" ? "5v1" : undefined,
+        lightLevel: placement.kind === "ldr" ? 0.5 : undefined,
+        temperatureC: placement.kind === "thermistor" ? 25 : undefined,
+        r25: placement.kind === "thermistor" ? 10000 : undefined,
+        fuseCurrent: placement.kind === "fuse" ? 0.5 : undefined,
+        fuseBlown: placement.kind === "fuse" ? false : undefined,
+        servoAngle: placement.kind === "servo" ? 90 : undefined,
+        sevenSegCommon: placement.kind === "seven-segment" ? "cathode" : undefined,
+        rgbCommon: placement.kind === "rgb-led" ? "cathode" : undefined,
+        timer555Mode: placement.kind === "timer555" ? "astable" : undefined,
+        opampMode: placement.kind === "opamp" ? "comparator" : undefined,
+        regulatorVout: placement.kind === "regulator" ? 5 : undefined,
         closed:
           placement.kind === "switch" || placement.kind === "button"
             ? false
@@ -1655,7 +1780,10 @@ export const useLab = create<LabState>((set, get) => ({
   /** Advance MCU/peripheral virtual time without changing the circuit topology. */
   tickSimulation: (deltaMs) =>
     set((state) => {
-      if (!state.powerOn || !state.parts.some((part) => part.kind === "mcu")) {
+      if (
+        !state.powerOn ||
+        !state.parts.some((part) => part.kind === "mcu" || part.kind === "timer555")
+      ) {
         return state;
       }
       const clamped = Math.max(0, Math.min(100, deltaMs));
@@ -1708,6 +1836,18 @@ export const useLab = create<LabState>((set, get) => ({
         history: [...state.history, snapshot(state)],
         future: [],
       };
+    }),
+
+  replaceFuse: (partId) =>
+    set((state) => {
+      const fuses = { ...(state.sim?.fuses ?? {}) };
+      delete fuses[partId];
+      const parts = state.parts.map((part) =>
+        part.id === partId
+          ? { ...part, props: { ...part.props, fuseBlown: false } }
+          : part,
+      );
+      return { parts, sim: runSimulation({ ...state, parts, sim: { ...state.sim, fuses } }) };
     }),
 
   setSelectedProp: (key, value) =>
@@ -2163,6 +2303,8 @@ setSelectedCapacitance: (capacitance) =>
       if (!state.selectedId) return state;
       const part = state.parts.find((p) => p.id === state.selectedId);
       if (!part) return state;
+      // DIP-8 packages must keep straddling the centre channel.
+      if (part.kind === "timer555" || part.kind === "opamp") return state;
 
       const newPins = rotatePins90Clockwise(part.pins);
       if (!newPins) return state;
