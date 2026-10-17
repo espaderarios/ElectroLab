@@ -1639,6 +1639,7 @@ export function CircuitEditorPage() {
             className="hidden lg:inline-flex p-2 rounded-lg border border-transparent hover:border-[#1e293b] hover:bg-slate-800 text-slate-400 transition flex-col items-center"
             title="Redo"
           >
+            
             <Redo2 size={16} />
             <label className="text-[9px] text-slate-400 mt-0.5">
               Redo
