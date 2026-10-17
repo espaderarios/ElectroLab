@@ -1058,14 +1058,20 @@ const PALETTE: Array<{
       { id: 'res', label: 'Resistor', symbol: <ResistorSymbol />, tool: 'resistor' },
       { id: 'cap', label: 'Capacitor', symbol: <CapacitorSymbol />, tool: 'capacitor' },
       { id: 'ind', label: 'Inductor', symbol: <InductorSymbol />, tool: 'inductor' },
+      { id: 'ldr', label: 'LDR', symbol: 'LDR', tool: 'ldr' },
+      { id: 'thermistor', label: 'Thermistor', symbol: 'NTC', tool: 'thermistor' },
+      { id: 'fuse', label: 'Fuse', symbol: 'F', tool: 'fuse' },
     ],
   },
   {
     title: 'Semiconductors',
     items: [
       { id: 'diode', label: 'Diode', symbol: <DiodeSymbol />, tool: 'diode' },
+      { id: 'zener', label: 'Zener', symbol: 'Z', tool: 'zener' },
       { id: 'led', label: 'LED', symbol: <LedSymbol />, tool: 'led' },
+      { id: 'rgb-led', label: 'RGB LED', symbol: 'RGB', tool: 'rgb-led' },
       { id: 'transistor', label: 'Transistor', symbol: <TransistorSymbol />, tool: 'transistor' },
+      { id: 'mosfet', label: 'MOSFET', symbol: 'MOS', tool: 'mosfet' },
       { id: 'thyristor', label: 'Thyristor (SCR)', symbol: <ThyristorSymbol />, tool: 'thyristor' },
       { id: 'triac', label: 'TRIAC', symbol: <TriacSymbol />, tool: 'triac' },
       { id: 'diac', label: 'DIAC', symbol: <DiacSymbol />, tool: 'diac' },
@@ -1091,6 +1097,16 @@ const PALETTE: Array<{
     title: 'Actuators',
     items: [
       { id: 'motor', label: 'DC Motor', symbol: <MotorSymbol />, tool: 'motor' },
+      { id: 'servo', label: 'Servo', symbol: 'SV', tool: 'servo' },
+    ],
+  },
+  {
+    title: 'Analog & Timing',
+    items: [
+      { id: 'opamp', label: 'Op-Amp', symbol: 'OA', tool: 'opamp' },
+      { id: 'timer555', label: '555 Timer', symbol: '555', tool: 'timer555' },
+      { id: 'optocoupler', label: 'Optocoupler', symbol: 'OC', tool: 'optocoupler' },
+      { id: 'regulator', label: 'Regulator', symbol: '78xx', tool: 'regulator' },
     ],
   },
   {
@@ -1098,6 +1114,7 @@ const PALETTE: Array<{
     items: [
       { id: 'lcd', label: 'LCD 16×2', symbol: <LcdSymbol />, tool: 'lcd' },
       { id: 'oled', label: 'OLED', symbol: <OledSymbol />, tool: 'oled' },
+      { id: 'seven-segment', label: '7-Segment', symbol: '8.', tool: 'seven-segment' },
       { id: 'mcu', label: 'Arduino / MCU', symbol: <McuSymbol />, tool: 'mcu' },
     ],
   },
@@ -1484,7 +1501,40 @@ export function CircuitEditorPage() {
 
         <div className="flex-1" />
 
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setPartDragEnabled(!partDragEnabled)}
+            className={`hidden lg:inline-flex p-2 rounded-lg border transition flex-col items-center ${
+              partDragEnabled
+                ? 'border-blue-500/40 bg-blue-600/15 text-blue-400'
+                : 'border-transparent hover:border-[#1e293b] hover:bg-slate-800 text-slate-400'
+            }`}
+            title={
+              partDragEnabled
+                ? 'Drag parts ON — long-press a component to move it (click to turn off)'
+                : 'Drag parts OFF — click to select components and choose where the nodes go in the breadboard manually (click to enable)'
+            }
+            aria-pressed={partDragEnabled}
+          >
+            <div
+            className="hidden lg:inline-flex p-2 rounded-lg transition flex-col items-center"
+            >
+              <div>
+              <span
+                className={`relative inline-flex h-2.5 w-5 shrink-0 items-center rounded-full transition-colors ${
+                  partDragEnabled ? "bg-blue-900" : "bg-[var(--app-border)]"
+                }`}
+              >
+                <span
+                  className={`inline-block h-2 w-2 transform rounded-full bg-white shadow transition-transform ${
+                    partDragEnabled ? "translate-x-2.5" : "translate-x-0.5"
+                  }`}
+                />
+              </span>
+              </div>
+          <label className="text-[9px] text-slate-400 mt-0.5">Drag</label>
+          </div>
+          </button>
           <button
             onClick={() => {
               const lab = useLab.getState()
@@ -1510,7 +1560,7 @@ export function CircuitEditorPage() {
             }
           >
             <MousePointer2 size={16} />
-            <label className="text-[10px] text-slate-400 mt-0.5">
+            <label className="text-[9px] text-slate-400 mt-0.5">
               Select
             </label>
           </button>
@@ -1541,7 +1591,7 @@ export function CircuitEditorPage() {
             }
           >
             <Trash2 size={16} />
-            <label className="text-[10px] text-slate-400 mt-0.5">
+            <label className="text-[9px] text-slate-400 mt-0.5">
               Delete
             </label>
           </button>
@@ -1552,7 +1602,7 @@ export function CircuitEditorPage() {
             title="Rotate selected component clockwise on the breadboard"
           >
             <RotateCw size={16} />
-            <label className="text-[10px] text-slate-400 mt-0.5">
+            <label className="text-[9px] text-slate-400 mt-0.5">
               Rotate
             </label>
           </button>
@@ -1568,7 +1618,7 @@ export function CircuitEditorPage() {
             aria-pressed={moveMode}
           >
             <Move size={16} />
-            <label className="text-[10px] text-slate-400 mt-0.5">
+            <label className="text-[9px] text-slate-400 mt-0.5">
               Move
             </label>
           </button>
@@ -1579,7 +1629,7 @@ export function CircuitEditorPage() {
             title="Undo"
           >
             <Undo2 size={16} />
-            <label className="text-[10px] text-slate-400 mt-0.5">
+            <label className="text-[9px] text-slate-400 mt-0.5">
               Undo
             </label>
           </button>
@@ -1590,7 +1640,7 @@ export function CircuitEditorPage() {
             title="Redo"
           >
             <Redo2 size={16} />
-            <label className="text-[10px] text-slate-400 mt-0.5">
+            <label className="text-[9px] text-slate-400 mt-0.5">
               Redo
             </label>
           </button>
@@ -1601,7 +1651,7 @@ export function CircuitEditorPage() {
             title="Zoom Out"
           >
             <ZoomOut size={16} />
-            <label className="text-[10px] text-slate-400 mt-0.5">
+            <label className="text-[9px] text-slate-400 mt-0.5">
               Zoom Out
             </label>
           </button>
@@ -1612,7 +1662,7 @@ export function CircuitEditorPage() {
             title="Zoom In"
           >
             <ZoomIn size={16} />
-            <label className="text-[10px] text-slate-400 mt-0.5">
+            <label className="text-[9px] text-slate-400 mt-0.5">
               Zoom In
             </label>
           </button>
@@ -1622,7 +1672,7 @@ export function CircuitEditorPage() {
             className="hidden xl:inline-flex px-2 py-2 rounded-lg border border-transparent hover:border-[#1e293b] hover:bg-slate-800 text-[11px] text-slate-500 transition flex-col items-center"
             title="Reset camera view"
           >
-            <label className="text-[10px] text-slate-400 mt-0.5">
+            <label className="text-[9px] text-slate-400 mt-0.5">
               Reset
             </label>
           </button>
@@ -1769,33 +1819,6 @@ export function CircuitEditorPage() {
                   </button>
                 )
               })}
-            </div>
-            <div>
-                        <button
-            onClick={() => setPartDragEnabled(!partDragEnabled)}
-            className="mt-2 w-full flex-col items-center gap-3 rounded-lg border border-[var(--app-border)] bg-[var(--app-control)] px-3 py-2 text-xs font-medium text-[var(--app-text)] hover:bg-[var(--app-hover)] transition-colors"
-            title={
-              partDragEnabled
-                ? 'Drag parts ON — long-press a component to move it (click to turn off)'
-                : 'Drag parts OFF — click to select components and choose where the nodes go in the breadboard manually (click to enable)'
-            }
-            aria-pressed={partDragEnabled}
-          >
-              <div>
-              <span
-                className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
-                  partDragEnabled ? "bg-blue-900" : "bg-[var(--app-border)]"
-                }`}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
-                    partDragEnabled ? "translate-x-4" : "translate-x-0.5"
-                  }`}
-                />
-              </span>
-              </div>
-          <label>Drag</label>
-          </button>
             </div>
           </div>
             {filteredPalette.length === 0 ? (

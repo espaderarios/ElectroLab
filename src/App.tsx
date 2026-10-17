@@ -18,6 +18,10 @@ import { BuiltInFlashcardsPage } from "./pages/BuiltIn-Flashcards";
 import { GamesPage } from "./pages/GamesPage";
 import { ConceptsPage } from "./pages/ConceptsPage";
 import { SchematicPage } from "./pages/SchematicPage";
+import { AboutComponentsPage } from "./pages/AboutComponentsPage";
+import MatlabTutorialPage from "./pages/MatlabTutorialPage";
+import PythonTutorialPage from "./pages/PythonTutorialPage";
+
 
 export default function App() {
   const location = useLocation();
@@ -54,8 +58,11 @@ export default function App() {
           <Route path="/schematic" element={<SchematicPage />} />
           <Route path="/library" element={<LibraryPage />} />
           <Route path="/components" element={<ComponentLibrary />} />
+          <Route path="/about-components" element={<AboutComponentsPage />} />
           <Route path="/learn" element={<LearnPage />} />
           <Route path="/concepts" element={<ConceptsPage />} />
+          <Route path="/matlab" element={<MatlabTutorialPage />} />
+          <Route path="/python" element={<PythonTutorialPage />} />
           <Route path="/builtin-flashcards" element={<BuiltInFlashcardsPage />} />
           <Route path="/games" element={<GamesPage />} />
           <Route path="/templates" element={<TemplatesPage />} />

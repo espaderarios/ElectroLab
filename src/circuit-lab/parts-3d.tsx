@@ -121,7 +121,7 @@ function TubeWire({
   b,
   color,
   lift = 1,
-  radius = 0.022,
+  radius = 0.019,
   style = "flat",
 }: {
   a: THREE.Vector3;
@@ -215,9 +215,15 @@ function TubeWire({
   useEffect(() => () => geom.dispose(), [geom]);
 
   return (
-    <mesh geometry={geom} castShadow>
-      <meshStandardMaterial color={color} roughness={0.42} metalness={0.08} />
-    </mesh>
+<mesh geometry={geom} castShadow receiveShadow>
+  <meshPhysicalMaterial
+    color={color}
+    roughness={0.58}
+    metalness={0.02}
+    clearcoat={0.18}
+    clearcoatRoughness={0.55}
+  />
+</mesh>
   );
 }
 
@@ -647,34 +653,43 @@ function LedAura({
   const light = useRef<THREE.PointLight>(null);
   const energy = useRef(0);
 
-  useFrame(({ clock }, delta) => {
+  useFrame((_, delta) => {
     energy.current = THREE.MathUtils.damp(
       energy.current,
-      active ? brightness : 0,
-      10,
+      active ? Math.max(0.05, brightness) : 0,
+      12,
       delta,
     );
 
-    const shimmer = 0.94 + Math.sin(clock.getElapsedTime() * 6.4) * 0.06;
-    const glow = energy.current * shimmer;
+    const glow = energy.current;
 
     if (halo.current) {
-      const scale = 0.75 + glow * 0.85;
+      const scale = 0.42 + glow * 0.38;
       halo.current.scale.setScalar(scale);
     }
+
     if (haloMaterial.current) {
-      haloMaterial.current.opacity = glow * 0.18;
+      haloMaterial.current.opacity = glow * 0.10;
     }
+
     if (light.current) {
-      light.current.intensity = glow * 8;
+      light.current.intensity = glow * 1.35;
     }
   });
 
   return (
     <group position={position}>
-      <pointLight ref={light} color={color} distance={2.5} decay={2} />
+      <pointLight
+        ref={light}
+        color={color}
+        intensity={0}
+        distance={1.15}
+        decay={2}
+        castShadow={false}
+      />
+
       <mesh ref={halo}>
-        <sphereGeometry args={[0.22, 18, 18]} />
+        <sphereGeometry args={[0.13, 20, 16]} />
         <meshBasicMaterial
           ref={haloMaterial}
           color={color}
@@ -786,8 +801,6 @@ export function ResistorMesh({
   selected: boolean;
   sim: SimResult;
 }) {
-
-
   // ---------------------------------------------------------
   // PIN POSITIONS
   // ---------------------------------------------------------
@@ -797,7 +810,6 @@ export function ResistorMesh({
   const isBurned = Boolean(sim.burned?.[part.id]);
 
   // Direction from pin 1 -> pin 2.
-  // The resistor lies horizontally across the breadboard.
   const dir = b.clone().sub(a);
   dir.y = 0;
 
@@ -813,29 +825,20 @@ export function ResistorMesh({
   // RESISTOR DIMENSIONS
   // ---------------------------------------------------------
 
-  // Size relative to the distance between the two breadboard
-  // holes instead of using a completely fixed resistor size.
-  const bodyLength = Math.min(
-    0.34,
-    Math.max(0.18, pinDistance * 0.52),
-  );
+  // Fixed proportions resembling a typical 1/4 W axial resistor.
+  const bodyLength = 0.26;
+  const bodyRadius = 0.048;
 
-  const bodyRadius = 0.052;
+  // Height above the breadboard.
+  const bodyY = BOARD.height + 0.15;
 
-  // Height of the resistor above the breadboard.
-  const bodyY = BOARD.height + 0.16;
-
-  // Center of resistor body.
+  // Center of the resistor body.
   const body = a.clone().lerp(b, 0.5);
   body.y = bodyY;
 
   // ---------------------------------------------------------
   // BODY ROTATION
   // ---------------------------------------------------------
-  //
-  // CapsuleGeometry is aligned along LOCAL Y.
-  // Rotate local Y so it follows pin 1 -> pin 2.
-  //
 
   const quat = new THREE.Quaternion().setFromUnitVectors(
     new THREE.Vector3(0, 1, 0),
@@ -859,40 +862,24 @@ export function ResistorMesh({
   // ---------------------------------------------------------
   // LEAD GEOMETRY
   // ---------------------------------------------------------
-  //
-  // Each lead looks like:
-  //
-  //             resistor
-  //       ╭────────────────╮
-  // ──────╯                ╰──────
-  //       │                    │
-  //       │                    │
-  //       ●                    ●
-  //
-  // The vertical section goes into the breadboard hole.
-  //
 
-  const leadRadius = 0.012;
-  const leadHeight = bodyY - BOARD.height;
+  const leadRadius = 0.0105;
 
   function makeBentLead(
     pin: THREE.Vector3,
     bodyEnd: THREE.Vector3,
   ) {
-    // Point directly underneath the resistor body end.
     const verticalTop = new THREE.Vector3(
       pin.x,
       bodyY,
       pin.z,
     );
 
-    // Slightly inside the body before the lead enters it.
     const horizontalEnd = bodyEnd.clone();
 
-    // Make a smooth 90-degree bend.
     const bendPoint = new THREE.Vector3(
       pin.x,
-      BOARD.height + 0.035,
+      BOARD.height + 0.032,
       pin.z,
     );
 
@@ -904,7 +891,7 @@ export function ResistorMesh({
     ]);
 
     curve.curveType = "centripetal";
-    curve.tension = 0.15;
+    curve.tension = 0.16;
 
     return curve;
   }
@@ -920,10 +907,9 @@ export function ResistorMesh({
     Number(part.props.resistance ?? 1000),
   );
 
-  // Keep the bands centered around the body.
   const bandSpacing = Math.min(
-    0.055,
-    bodyLength * 0.18,
+    0.042,
+    bodyLength * 0.17,
   );
 
   const bandStart =
@@ -935,187 +921,119 @@ export function ResistorMesh({
 
   return (
     <group
-      onClick={(e) => {
-        e.stopPropagation();
-
+      onClick={(event) => {
+        event.stopPropagation();
         useLab.getState().select(part.id);
       }}
     >
-      {/* =====================================================
+      {/* ------------------------------------------------------
           METAL LEAD — PIN 1
-      ===================================================== */}
+      ------------------------------------------------------ */}
 
-      <mesh
-        castShadow
-        receiveShadow
-      >
+      <mesh castShadow receiveShadow>
         <tubeGeometry
-          args={[
-            leadCurveA,
-            16,
-            leadRadius,
-            8,
-            false,
-          ]}
+          args={[leadCurveA, 24, leadRadius, 10, false]}
         />
 
         <meshStandardMaterial
-          color="#666666"
-          metalness={0.85}
-          roughness={0.25}
+          color="#a8adb2"
+          metalness={0.94}
+          roughness={0.3}
         />
       </mesh>
 
-      {/* =====================================================
+      {/* ------------------------------------------------------
           METAL LEAD — PIN 2
-      ===================================================== */}
+      ------------------------------------------------------ */}
 
-      <mesh
-        castShadow
-        receiveShadow
-      >
+      <mesh castShadow receiveShadow>
         <tubeGeometry
-          args={[
-            leadCurveB,
-            16,
-            leadRadius,
-            8,
-            false,
-          ]}
+          args={[leadCurveB, 24, leadRadius, 10, false]}
         />
 
         <meshStandardMaterial
-          color="#666666"
-          metalness={0.85}
-          roughness={0.25}
+          color="#a8adb2"
+          metalness={0.94}
+          roughness={0.3}
         />
       </mesh>
 
-      {/* =====================================================
+      {/* ------------------------------------------------------
           RESISTOR BODY
-      ===================================================== */}
+      ------------------------------------------------------ */}
 
-      <group
-        position={body}
-        quaternion={quat}
-      >
-        <mesh
-          castShadow
-          receiveShadow
-        >
+      <group position={body} quaternion={quat}>
+        {/* Beige epoxy body */}
+        <mesh castShadow receiveShadow>
           <capsuleGeometry
-            args={[
-              bodyRadius,
-              bodyLength,
-              8,
-              16,
-            ]}
+            args={[bodyRadius * 0.78, bodyLength * 0.72, 6, 20]}
           />
 
           <meshStandardMaterial
-            color={
-              selected
-                ? "#f4d58d"
-                : "#d6b47c"
-            }
-            roughness={0.48}
+            color={selected ? "#f4d58d" : "#cbb489"}
+            roughness={0.64}
             metalness={0}
           />
         </mesh>
 
-        {/* =================================================
-            COLOR BANDS
-        ================================================= */}
-
-        {bands.map((c, i) => (
+        {/* Metal end caps */}
+        {[-1, 1].map((side) => (
           <mesh
-            key={`${c}-${i}`}
-            position={[
-              0,
-              bandStart + i * bandSpacing,
-              0,
-            ]}
+            key={side}
+            position={[0, side * bodyLength * 0.43, 0]}
             castShadow
           >
             <cylinderGeometry
               args={[
-                bodyRadius + 0.003,
-                bodyRadius + 0.003,
-                0.019,
-                16,
+                bodyRadius * 0.74,
+                bodyRadius * 0.74,
+                bodyLength * 0.13,
+                20,
               ]}
             />
 
             <meshStandardMaterial
-              color={c}
-              roughness={0.35}
-              metalness={0}
+              color="#9ba1a6"
+              metalness={0.92}
+              roughness={0.3}
             />
           </mesh>
         ))}
 
-        {/* =================================================
-            SMALL END CAPS
-        ================================================= */}
+        {/* Color bands — slightly larger than the epoxy body */}
+        {bands.map((bandColor, index) => (
+          <mesh
+            key={`${bandColor}-${index}`}
+            position={[0, bandStart + index * bandSpacing, 0]}
+            castShadow
+          >
+            <cylinderGeometry
+              args={[
+                bodyRadius * 0.84,
+                bodyRadius * 0.84,
+                bodyLength * 0.08,
+                20,
+              ]}
+            />
 
-        <mesh
-          position={[
-            0,
-            -bodyLength / 2,
-            0,
-          ]}
-          castShadow
-        >
-          <sphereGeometry
-            args={[
-              bodyRadius * 0.96,
-              16,
-              12,
-            ]}
-          />
-
-          <meshStandardMaterial
-            color={
-              selected
-                ? "#f4d58d"
-                : "#d6b47c"
-            }
-            roughness={0.48}
-          />
-        </mesh>
-
-        <mesh
-          position={[
-            0,
-            bodyLength / 2,
-            0,
-          ]}
-          castShadow
-        >
-          <sphereGeometry
-            args={[
-              bodyRadius * 0.96,
-              16,
-              12,
-            ]}
-          />
-
-          <meshStandardMaterial
-            color={
-              selected
-                ? "#f4d58d"
-                : "#d6b47c"
-            }
-            roughness={0.48}
-          />
-        </mesh>
+            <meshStandardMaterial
+              color={bandColor}
+              roughness={0.5}
+              metalness={0}
+            />
+          </mesh>
+        ))}
       </group>
 
-      {/* =====================================================
-          PIN LABELS
-      ===================================================== */}
+      {/* ------------------------------------------------------
+          BURN-OUT SMOKE
+      ------------------------------------------------------ */}
+
       <SmokePuffs
-        position={a.clone().lerp(b, 0.5).setY(BOARD.height + 0.2)}
+        position={a
+          .clone()
+          .lerp(b, 0.5)
+          .setY(BOARD.height + 0.18)}
         active={isBurned}
       />
     </group>
@@ -1131,21 +1049,15 @@ export function LedMesh({
   selected: boolean;
   sim: SimResult;
 }) {
-  // ---------------------------------------------------------
-  // PINS — body sits between the two holes, slightly above board
-  // ---------------------------------------------------------
   const a = vec(part.pins.a);
   const k = vec(part.pins.k);
 
   const mid = a.clone().lerp(k, 0.5);
-  const baseY = BOARD.height + 0.05;
-  const body = new THREE.Vector3(mid.x, baseY + 0.09, mid.z);
+  const baseY = BOARD.height + 0.13;
+  const body = new THREE.Vector3(mid.x, baseY + 0.16, mid.z);
 
-  // Lead bend height (where vertical pin turns toward the body)
-  const bendY = BOARD.height + 0.07;
-
-  const color =
-    LED_HEX[part.props.ledColor ?? "red"] ?? "#ef4444";
+  const bendY = BOARD.height + 0.055;
+  const color = LED_HEX[part.props.ledColor ?? "red"] ?? "#ef4444";
 
   const state = sim.leds[part.id];
   const brightness = state?.brightness ?? 0;
@@ -1153,7 +1065,7 @@ export function LedMesh({
   const isBurned =
     Boolean(state?.overcurrent) || Boolean(sim.burned?.[part.id]);
 
-  const displayColor = isBurned ? "#1c1917" : color;
+  const lensColor = isBurned ? "#241f1c" : color;
   const glowColor = isBurned ? "#ea580c" : color;
 
   const lensMaterial = useRef<THREE.MeshStandardMaterial>(null);
@@ -1163,69 +1075,104 @@ export function LedMesh({
   useFrame(({ clock }, delta) => {
     lensEnergy.current = THREE.MathUtils.damp(
       lensEnergy.current,
-      isOn ? brightness : 0,
-      10,
+      isOn ? Math.max(0.06, brightness) : 0,
+      12,
       delta,
     );
+
     const energy = lensEnergy.current;
+    const flicker =
+      0.985 + Math.sin(clock.getElapsedTime() * 18) * 0.015;
+
     if (lensMaterial.current) {
-      const shimmer = 0.97 + Math.sin(clock.getElapsedTime() * 6) * 0.03;
-      lensMaterial.current.emissiveIntensity = 0.08 + energy * 3.8 * shimmer;
+      lensMaterial.current.emissiveIntensity =
+        0.025 + energy * 2.35 * flicker;
     }
+
     if (dieMaterial.current) {
-      dieMaterial.current.emissiveIntensity = 0.15 + energy * 5;
+      dieMaterial.current.emissiveIntensity =
+        0.08 + energy * 4.2 * flicker;
     }
   });
 
-  const baseRadius = 0.07;
-  const baseHeight = 0.05;
-  const domeRadius = 0.09;
-  const leadRadius = 0.011;
+  // Real 5 mm LED proportions, scaled to the scene.
+  const flangeRadius = 0.072;
+  const bodyRadius = 0.058;
+  const bodyHeight = 0.115;
+  const domeRadius = 0.058;
+  const leadRadius = 0.0095;
 
-  /** Vertical stub from hole up to bend, then horizontal/diagonal to body. */
   function Lead({
     from,
-    metal = "#b8bcc2",
+    metal = "#b9bec4",
   }: {
     from: THREE.Vector3;
     metal?: string;
   }) {
     const bend = new THREE.Vector3(from.x, bendY, from.z);
     const toBody = new THREE.Vector3(body.x, bendY, body.z);
-    const vertH = Math.max(0.01, bendY - from.y);
-    const horiz = bend.distanceTo(toBody);
-    const horizMid = bend.clone().lerp(toBody, 0.5);
-    // Orient a thin cylinder along XZ from bend → body
-    const dir = new THREE.Vector3().subVectors(toBody, bend);
-    const yaw = Math.atan2(dir.x, dir.z);
+
+    const verticalHeight = Math.max(0.008, bendY - from.y);
+    const horizontal = bend.distanceTo(toBody);
+    const horizontalMid = bend.clone().lerp(toBody, 0.5);
+
+    const direction = new THREE.Vector3().subVectors(toBody, bend);
+    const yaw = Math.atan2(direction.x, direction.z);
 
     return (
       <group>
-        {/* Vertical into the hole */}
-        <mesh position={[from.x, from.y + vertH / 2, from.z]} castShadow>
-          <cylinderGeometry args={[leadRadius, leadRadius, vertH, 8]} />
-          <meshStandardMaterial color={metal} metalness={0.92} roughness={0.2} />
-        </mesh>
-        {/* Run toward the LED body */}
-        {horiz > 0.005 && (
-          <mesh
-            position={[horizMid.x, bendY, horizMid.z]}
-            rotation={[Math.PI / 2, 0, -yaw]}
-            castShadow
-          >
-            <cylinderGeometry args={[leadRadius, leadRadius, horiz, 8]} />
-            <meshStandardMaterial color={metal} metalness={0.92} roughness={0.2} />
-          </mesh>
-        )}
-        {/* Short riser into the package */}
         <mesh
-          position={[body.x * 0.15 + from.x * 0.85, (bendY + baseY) / 2, body.z * 0.15 + from.z * 0.85]}
+          position={[from.x, from.y + verticalHeight / 2, from.z]}
           castShadow
         >
           <cylinderGeometry
-            args={[leadRadius * 0.95, leadRadius * 0.95, Math.max(0.01, baseY - bendY + 0.02), 8]}
+            args={[leadRadius, leadRadius, verticalHeight, 10]}
           />
-          <meshStandardMaterial color={metal} metalness={0.92} roughness={0.2} />
+          <meshStandardMaterial
+            color={metal}
+            metalness={0.95}
+            roughness={0.24}
+          />
+        </mesh>
+
+        {horizontal > 0.004 && (
+          <mesh
+            position={[horizontalMid.x, bendY, horizontalMid.z]}
+            rotation={[Math.PI / 2, 0, -yaw]}
+            castShadow
+          >
+            <cylinderGeometry
+              args={[leadRadius, leadRadius, horizontal, 10]}
+            />
+            <meshStandardMaterial
+              color={metal}
+              metalness={0.95}
+              roughness={0.24}
+            />
+          </mesh>
+        )}
+
+        <mesh
+          position={[
+            body.x * 0.2 + from.x * 0.8,
+            (bendY + baseY) / 2,
+            body.z * 0.2 + from.z * 0.8,
+          ]}
+          castShadow
+        >
+          <cylinderGeometry
+            args={[
+              leadRadius * 0.94,
+              leadRadius * 0.94,
+              Math.max(0.008, baseY - bendY + 0.018),
+              10,
+            ]}
+          />
+          <meshStandardMaterial
+            color={metal}
+            metalness={0.95}
+            roughness={0.24}
+          />
         </mesh>
       </group>
     );
@@ -1233,46 +1180,76 @@ export function LedMesh({
 
   return (
     <group
-      onClick={(e) => {
-        e.stopPropagation();
+      onClick={(event) => {
+        event.stopPropagation();
         useLab.getState().select(part.id);
       }}
     >
-      {/* Anode lead (slightly longer look: stays silver) */}
-      <Lead from={a} metal="#c5c9ce" />
-      {/* Cathode lead */}
-      <Lead from={k} metal="#9ca3af" />
+      <Lead from={a} metal="#c3c7cc" />
+      <Lead from={k} metal="#a7adb4" />
 
-      {/* Flat epoxy base */}
+      {/* Molded epoxy package */}
       <mesh
-        position={[body.x, baseY, body.z]}
-        scale={selected ? [1.08, 1.08, 1.08] : [1, 1, 1]}
+        position={[body.x, baseY + bodyHeight * 0.5, body.z]}
         castShadow
         receiveShadow
       >
-        <cylinderGeometry args={[baseRadius, baseRadius * 1.06, baseHeight, 24]} />
-        <meshStandardMaterial color="#e8eaed" metalness={0.15} roughness={0.35} />
+        <cylinderGeometry
+          args={[bodyRadius, bodyRadius, bodyHeight, 28]}
+        />
+        <meshStandardMaterial
+          color={isBurned ? "#2a2320" : "#e7e9ec"}
+          roughness={0.24}
+          metalness={0.02}
+          transparent
+          opacity={0.86}
+        />
       </mesh>
 
-      {/* Rim / collar */}
-      <mesh position={[body.x, baseY + 0.028, body.z]} castShadow>
-        <cylinderGeometry args={[0.058, 0.064, 0.03, 24]} />
-        <meshStandardMaterial color="#f1f5f9" metalness={0.1} roughness={0.3} />
-      </mesh>
-
-      {/* Colored dome (hemisphere) */}
+      {/* Flange at the base */}
       <mesh
-        position={[body.x, baseY + baseHeight * 0.55 + domeRadius * 0.35, body.z]}
-        scale={selected ? [1.06, 1.06, 1.06] : [1, 1, 1]}
+        position={[body.x, baseY + 0.008, body.z]}
+        castShadow
+        receiveShadow
+      >
+        <cylinderGeometry
+          args={[flangeRadius, flangeRadius * 1.03, 0.018, 28]}
+        />
+        <meshStandardMaterial
+          color={isBurned ? "#2a2320" : "#eceef1"}
+          roughness={0.3}
+          metalness={0.02}
+          transparent
+          opacity={0.9}
+        />
+      </mesh>
+
+      {/* Colored diffusing dome */}
+      <mesh
+        position={[
+          body.x,
+          baseY + bodyHeight - domeRadius * 0.18,
+          body.z,
+        ]}
         castShadow
       >
-        <sphereGeometry args={[domeRadius, 32, 24, 0, Math.PI * 2, 0, Math.PI / 2]} />
+        <sphereGeometry
+          args={[
+            domeRadius,
+            36,
+            24,
+            0,
+            Math.PI * 2,
+            0,
+            Math.PI / 2,
+          ]}
+        />
         <meshStandardMaterial
           ref={lensMaterial}
-          color={displayColor}
+          color={lensColor}
           emissive={isBurned ? "#ea580c" : color}
-          emissiveIntensity={0.08}
-          roughness={0.16}
+          emissiveIntensity={0.025}
+          roughness={0.13}
           metalness={0}
           transparent
           opacity={0.82}
@@ -1280,50 +1257,68 @@ export function LedMesh({
         />
       </mesh>
 
-      {/* Inner die */}
-      <mesh position={[body.x, baseY + 0.08, body.z]}>
-        <boxGeometry args={[0.02, 0.026, 0.02]} />
+      {/* Internal reflector cup */}
+      <mesh position={[body.x, baseY + 0.042, body.z]}>
+        <cylinderGeometry
+          args={[0.031, 0.019, 0.021, 20, 1, true]}
+        />
         <meshStandardMaterial
-          ref={dieMaterial}
-          color="#fff7d6"
-          emissive={isBurned ? "#ea580c" : color}
-          emissiveIntensity={0.15}
-          metalness={0.1}
+          color="#dfe4e8"
+          metalness={0.82}
           roughness={0.2}
+          side={THREE.DoubleSide}
         />
       </mesh>
 
-      {/* Reflector cup */}
-      <mesh position={[body.x, baseY + 0.062, body.z]}>
-        <cylinderGeometry args={[0.038, 0.024, 0.014, 20]} />
-        <meshStandardMaterial color="#f8fafc" metalness={0.85} roughness={0.16} />
+      {/* Emitting die */}
+      <mesh position={[body.x, baseY + 0.05, body.z]}>
+        <boxGeometry args={[0.017, 0.016, 0.017]} />
+        <meshStandardMaterial
+          ref={dieMaterial}
+          color="#fff8e1"
+          emissive={isBurned ? "#ea580c" : color}
+          emissiveIntensity={0.08}
+          roughness={0.18}
+          metalness={0.05}
+        />
       </mesh>
 
       <LedAura
-        position={body}
+        position={new THREE.Vector3(
+          body.x,
+          baseY + bodyHeight * 0.62,
+          body.z,
+        )}
         color={glowColor}
         active={isOn || isBurned}
-        brightness={isBurned ? 1 : brightness}
+        brightness={isBurned ? 0.85 : brightness}
       />
+
       <SmokePuffs
-        position={new THREE.Vector3(body.x, body.y + 0.06, body.z)}
+        position={new THREE.Vector3(body.x, body.y + 0.05, body.z)}
         active={isBurned}
       />
 
-      <Html position={[body.x, body.y + 0.22, body.z]} center distanceFactor={5}>
-        <div
-          style={{
-            color: "#f8fafc",
-            fontSize: "10px",
-            fontWeight: 900,
-            textShadow: "0 2px 6px #000",
-            pointerEvents: "none",
-            whiteSpace: "nowrap",
-          }}
+      {part.props.label && (
+        <Html
+          position={[body.x, body.y + 0.19, body.z]}
+          center
+          distanceFactor={5}
         >
-          {part.props.label || "LED"}
-        </div>
-      </Html>
+          <div
+            style={{
+              color: "#f8fafc",
+              fontSize: "10px",
+              fontWeight: 900,
+              textShadow: "0 2px 6px #000",
+              pointerEvents: "none",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {part.props.label}
+          </div>
+        </Html>
+      )}
     </group>
   );
 }
@@ -1377,15 +1372,11 @@ export function DiodeMesh({
   // BODY DIMENSIONS
   // =========================================================
 
+  const bodyRadius = 0.052;
   const bodyLength = Math.min(
-    0.50,
-    Math.max(
-      0.28,
-      pinDistance * 0.60,
-    ),
+    0.38,
+    Math.max(0.22, pinDistance * 0.48),
   );
-
-  const bodyRadius = 0.075;
 
   const halfBody = bodyLength / 2;
 
@@ -1590,15 +1581,11 @@ export function DiodeMesh({
             ]}
           />
 
-          <meshStandardMaterial
-            color={
-              selected
-                ? "#242424"
-                : "#050505"
-            }
-            metalness={0.35}
-            roughness={0.28}
-          />
+        <meshStandardMaterial
+          color={selected ? "#2f2f2f" : "#151515"}
+          roughness={0.48}
+          metalness={0.02}
+        />
         </mesh>
 
 
@@ -1715,23 +1702,19 @@ export function DiodeMesh({
           castShadow
           receiveShadow
         >
-          <cylinderGeometry
-            args={[
-              bodyRadius * 1.005,
-              bodyRadius * 1.005,
-              0.018,
-              32,
-              1,
-            ]}
-          />
-
-          {/* THIS MUST BE BLACK */}
-
-          <meshStandardMaterial
-            color="#020202"
-            metalness={0.35}
-            roughness={0.28}
-          />
+<cylinderGeometry
+  args={[
+    bodyRadius * 1.02,
+    bodyRadius * 1.02,
+    0.028,
+    24,
+  ]}
+/>
+<meshStandardMaterial
+  color="#d8dadd"
+  roughness={0.35}
+  metalness={0.05}
+/>
         </mesh>
 
 
@@ -2288,6 +2271,29 @@ export function SwitchMesh({
   );
 }
 
+const CAPACITOR_MATERIALS = {
+  ceramic: {
+    color: "#d8b269",
+    roughness: 0.66,
+    metalness: 0.0,
+  },
+  film: {
+    color: "#1f7a45",
+    roughness: 0.42,
+    metalness: 0.0,
+  },
+  electrolytic: {
+    color: "#16233a",
+    roughness: 0.34,
+    metalness: 0.08,
+  },
+  tantalum: {
+    color: "#c26a3c",
+    roughness: 0.48,
+    metalness: 0.03,
+  },
+};
+
 export function CapacitorMesh({
   part,
   selected,
@@ -2443,31 +2449,26 @@ export function CapacitorMesh({
       bodyY,
     );
 
-  // =========================================================
-  // COLORS
-  // =========================================================
+// =========================================================
+// MATERIAL
+// =========================================================
 
-  let bodyColor = "#d6a84f";
+const capacitorMaterial =
+  CAPACITOR_MATERIALS[
+    capacitorType as keyof typeof CAPACITOR_MATERIALS
+  ];
 
-  if (capacitorType === "ceramic") {
-    bodyColor = "#d9a441";
-  }
+const bodyColor = selected
+  ? "#93c5fd"
+  : capacitorMaterial.color;
 
-  if (capacitorType === "film") {
-    bodyColor = "#16803c";
-  }
+const bodyRoughness = selected
+  ? 0.35
+  : capacitorMaterial.roughness;
 
-  if (capacitorType === "electrolytic") {
-    bodyColor = "#111827";
-  }
-
-  if (capacitorType === "tantalum") {
-    bodyColor = "#d97745";
-  }
-
-  if (selected) {
-    bodyColor = "#f8fafc";
-  }
+const bodyMetalness = selected
+  ? 0.03
+  : capacitorMaterial.metalness;
 
   // =========================================================
   // RENDER
@@ -2564,8 +2565,8 @@ export function CapacitorMesh({
 
               <meshStandardMaterial
                 color={bodyColor}
-                metalness={0.05}
-                roughness={0.34}
+                roughness={bodyRoughness}
+                metalness={bodyMetalness}
               />
             </mesh>
 
@@ -2588,8 +2589,9 @@ export function CapacitorMesh({
               />
 
               <meshStandardMaterial
-                color="#f4c76a"
-                roughness={0.3}
+                color={bodyColor}
+                roughness={bodyRoughness}
+                metalness={bodyMetalness}
               />
             </mesh>
 
@@ -2617,8 +2619,8 @@ export function CapacitorMesh({
 
               <meshStandardMaterial
                 color={bodyColor}
-                metalness={0.05}
-                roughness={0.3}
+                roughness={bodyRoughness}
+                metalness={bodyMetalness}
               />
             </mesh>
 
@@ -2672,8 +2674,8 @@ export function CapacitorMesh({
 
               <meshStandardMaterial
                 color={bodyColor}
-                metalness={0.12}
-                roughness={0.28}
+                roughness={bodyRoughness}
+                metalness={bodyMetalness}
               />
             </mesh>
 
@@ -2696,9 +2698,9 @@ export function CapacitorMesh({
               />
 
               <meshStandardMaterial
-                color="#cbd5e1"
-                metalness={0.85}
-                roughness={0.22}
+                color={bodyColor}
+                metalness={bodyMetalness}
+                roughness={bodyRoughness}
               />
             </mesh>
 
@@ -2777,8 +2779,8 @@ export function CapacitorMesh({
 
               <meshStandardMaterial
                 color={bodyColor}
-                roughness={0.3}
-                metalness={0.05}
+                roughness={bodyRoughness}
+                metalness={bodyMetalness}
               />
             </mesh>
 
@@ -2800,7 +2802,7 @@ export function CapacitorMesh({
               />
 
               <meshStandardMaterial
-                color="#f8fafc"
+                color={bodyColor}
               />
             </mesh>
 
@@ -4590,9 +4592,9 @@ export function PotMesh({
         />
 
         <meshStandardMaterial
-          color={bodyColor}
-          roughness={0.48}
-          metalness={0.38}
+          color="#23282d"
+          roughness={0.58}
+          metalness={0.18}
         />
       </mesh>
 
@@ -4654,9 +4656,9 @@ export function PotMesh({
         />
 
         <meshStandardMaterial
-          color="#b8bec3"
-          roughness={0.25}
-          metalness={0.9}
+          color="#9ba1a6"
+          roughness={0.34}
+          metalness={0.82}
         />
       </mesh>
 
@@ -4808,9 +4810,9 @@ export function PotMesh({
           />
 
           <meshStandardMaterial
-            color="#aeb5ba"
-            roughness={0.23}
-            metalness={0.96}
+            color="#9aa1a6"
+            roughness={0.36}
+            metalness={0.82}
           />
         </mesh>
 
@@ -5375,9 +5377,9 @@ export function McuMesh({
         ]}
       />
       <meshStandardMaterial
-        color="#b68a36"
-        metalness={0.65}
-        roughness={0.3}
+        color={selected ? "#1167a5" : "#0b6b41"}
+        roughness={0.52}
+        metalness={0.02}
       />
     </mesh>
   );
@@ -5831,9 +5833,9 @@ export function McuMesh({
               ]}
             />
             <meshStandardMaterial
-              color="#aeb3b8"
-              metalness={0.82}
-              roughness={0.22}
+              color="#8f959b"
+              metalness={0.78}
+              roughness={0.34}
             />
           </mesh>
 
@@ -8601,6 +8603,864 @@ function LogicGateMesh({
   );
 }
 
+
+/** Generic two-pin axial body between holes a and b. */
+function TwoPinBody({
+  aId,
+  bId,
+  selected,
+  bodyColor,
+  accentColor,
+  label,
+  bodyRadius = 0.07,
+  bodyScale = 0.55,
+}: {
+  aId?: string;
+  bId?: string;
+  selected: boolean;
+  bodyColor: string;
+  accentColor?: string;
+  label?: string;
+  bodyRadius?: number;
+  bodyScale?: number;
+}) {
+  if (!aId || !bId) return null;
+  const a = vec(aId as any);
+  const b = vec(bId as any);
+  const dir = b.clone().sub(a);
+  dir.y = 0;
+  const pinDistance = dir.length();
+  if (pinDistance < 0.001) return null;
+  dir.normalize();
+  const body = a.clone().lerp(b, 0.5);
+  body.y = BOARD.height + 0.14;
+  const bodyLength = Math.min(0.48, Math.max(0.22, pinDistance * bodyScale));
+  const half = bodyLength / 2;
+  const quat = new THREE.Quaternion().setFromUnitVectors(
+    new THREE.Vector3(0, 1, 0),
+    dir,
+  );
+  return (
+    <group
+      onClick={(ev) => {
+        ev.stopPropagation();
+      }}
+    >
+      <BentBoardLead pin={a} body={body} />
+      <BentBoardLead pin={b} body={body} />
+      <group position={body} quaternion={quat}>
+        <mesh>
+          <cylinderGeometry args={[bodyRadius, bodyRadius, bodyLength, 16]} />
+          <meshStandardMaterial
+            color={selected ? "#60a5fa" : bodyColor}
+            roughness={0.45}
+            metalness={0.15}
+          />
+        </mesh>
+        {accentColor && (
+          <mesh position={[0, half * 0.55, 0]}>
+            <cylinderGeometry args={[bodyRadius * 1.05, bodyRadius * 1.05, 0.04, 12]} />
+            <meshStandardMaterial color={accentColor} metalness={0.6} roughness={0.3} />
+          </mesh>
+        )}
+        {label && (
+          <Html position={[0, 0, bodyRadius + 0.02]} center distanceFactor={6} style={{ pointerEvents: "none", fontSize: 9, color: "#e2e8f0", fontWeight: 700 }}>
+            {label}
+          </Html>
+        )}
+      </group>
+    </group>
+  );
+}
+
+export function MosfetMesh({
+  part,
+  selected,
+  sim,
+}: {
+  part: PlacedPart;
+  selected: boolean;
+  sim: SimResult;
+}) {
+  const g = part.pins.g ? vec(part.pins.g) : null;
+  const d = part.pins.d ? vec(part.pins.d) : null;
+  const s = part.pins.s ? vec(part.pins.s) : null;
+  if (!g || !d || !s) return null;
+  const body = g.clone().add(d).add(s).multiplyScalar(1 / 3);
+  body.y = BOARD.height + 0.2;
+  const on = Boolean(sim.mosfets?.[part.id]?.conducting);
+  const model = String(part.props.mosfetModel || "2n7000");
+  const to220 = /irf|540|9540/i.test(model);
+  return (
+    <group
+      onClick={(ev) => {
+        ev.stopPropagation();
+        useLab.getState().select(part.id);
+      }}
+    >
+      <BentBoardLead pin={g} body={body} color="#94a3b8" />
+      <BentBoardLead pin={d} body={body} color="#94a3b8" />
+      <BentBoardLead pin={s} body={body} color="#94a3b8" />
+      <group position={body}>
+        {to220 ? (
+          <>
+            <mesh position={[0, 0.06, 0]}>
+              <boxGeometry args={[0.22, 0.14, 0.1]} />
+              <meshStandardMaterial color={selected ? "#3b82f6" : "#1e293b"} roughness={0.4} metalness={0.2} />
+            </mesh>
+            <mesh position={[0, 0.14, -0.01]}>
+              <boxGeometry args={[0.2, 0.02, 0.12]} />
+              <meshStandardMaterial color="#94a3b8" metalness={0.8} roughness={0.25} />
+            </mesh>
+          </>
+        ) : (
+          <mesh>
+            <cylinderGeometry args={[0.09, 0.1, 0.2, 16]} />
+            <meshStandardMaterial color={selected ? "#3b82f6" : "#334155"} roughness={0.45} />
+          </mesh>
+        )}
+        <mesh position={[0.08, 0.12, 0.06]}>
+          <sphereGeometry args={[0.016, 10, 10]} />
+          <meshStandardMaterial
+            color={on ? "#22c55e" : "#334155"}
+            emissive={on ? "#16a34a" : "#000000"}
+            emissiveIntensity={on ? 1.2 : 0}
+          />
+        </mesh>
+        <Html position={[0, 0.18, 0]} center distanceFactor={6} style={{ pointerEvents: "none", fontSize: 8, color: "#94a3b8", fontWeight: 700 }}>
+          MOS
+        </Html>
+      </group>
+    </group>
+  );
+}
+
+export function ZenerMesh({
+  part,
+  selected,
+  sim,
+}: {
+  part: PlacedPart;
+  selected: boolean;
+  sim: SimResult;
+}) {
+  const a = part.pins.a ? vec(part.pins.a) : null;
+  const k = part.pins.k ? vec(part.pins.k) : null;
+  if (!a || !k) return null;
+  const dir = k.clone().sub(a);
+  dir.y = 0;
+  if (dir.length() < 0.001) return null;
+  dir.normalize();
+  const body = a.clone().lerp(k, 0.5);
+  body.y = BOARD.height + 0.14;
+  const bodyLength = 0.32;
+  const half = bodyLength / 2;
+  const quat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+  const br = Boolean(sim.zeners?.[part.id]?.breakdown);
+  return (
+    <group
+      onClick={(ev) => {
+        ev.stopPropagation();
+        useLab.getState().select(part.id);
+      }}
+    >
+      <BentBoardLead pin={a} body={body} />
+      <BentBoardLead pin={k} body={body} />
+      <group position={body} quaternion={quat}>
+        <mesh>
+          <cylinderGeometry args={[0.07, 0.07, bodyLength, 16]} />
+          <meshStandardMaterial color={selected ? "#60a5fa" : "#0f172a"} roughness={0.35} />
+        </mesh>
+        {/* Zener cathode band + angled mark */}
+        <mesh position={[0, half - 0.05, 0]}>
+          <cylinderGeometry args={[0.078, 0.078, 0.05, 12]} />
+          <meshStandardMaterial color="#e2e8f0" metalness={0.7} roughness={0.25} />
+        </mesh>
+        <mesh position={[0, half - 0.02, 0.06]} rotation={[0.4, 0, 0]}>
+          <boxGeometry args={[0.04, 0.01, 0.03]} />
+          <meshStandardMaterial color="#f8fafc" />
+        </mesh>
+        <mesh position={[0, 0.02, 0.08]}>
+          <sphereGeometry args={[0.014, 10, 10]} />
+          <meshStandardMaterial
+            color={br ? "#f59e0b" : "#334155"}
+            emissive={br ? "#d97706" : "#000"}
+            emissiveIntensity={br ? 1.1 : 0}
+          />
+        </mesh>
+      </group>
+    </group>
+  );
+}
+
+export function LdrMesh({
+  part,
+  selected,
+  sim,
+}: {
+  part: PlacedPart;
+  selected: boolean;
+  sim: SimResult;
+}) {
+  // GL5528-style: ~5mm round epoxy disc, radial leads, visible zigzag CdS track
+  const a = part.pins.a ? vec(part.pins.a) : null;
+  const b = part.pins.b ? vec(part.pins.b) : null;
+  if (!a || !b) return null;
+  const dir = b.clone().sub(a);
+  dir.y = 0;
+  if (dir.length() < 0.001) return null;
+  dir.normalize();
+  const body = a.clone().lerp(b, 0.5);
+  body.y = BOARD.height + 0.12;
+  const light = sim.ldrs?.[part.id]?.lightLevel ?? part.props.lightLevel ?? 0.5;
+  return (
+    <group
+      onClick={(ev) => {
+        ev.stopPropagation();
+        useLab.getState().select(part.id);
+      }}
+    >
+      <BentBoardLead pin={a} body={body} color="#b9c0c8" />
+      <BentBoardLead pin={b} body={body} color="#b9c0c8" />
+      <group position={body}>
+        {/* Epoxy disc (Φ≈5mm → ~0.2 world units) */}
+        <mesh rotation={[-Math.PI / 2, 0, 0]}>
+          <cylinderGeometry args={[0.1, 0.1, 0.04, 24]} />
+          <meshStandardMaterial color={selected ? "#60a5fa" : "#f5f0e6"} roughness={0.45} />
+        </mesh>
+        {/* Inner ceramic / CdS area */}
+        <mesh position={[0, 0.022, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <cylinderGeometry args={[0.075, 0.075, 0.008, 20]} />
+          <meshStandardMaterial
+            color="#c4a574"
+            emissive="#fbbf24"
+            emissiveIntensity={0.15 + light * 0.55}
+            roughness={0.5}
+          />
+        </mesh>
+        {/* Zigzag track suggestion */}
+        <mesh position={[0, 0.028, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <torusGeometry args={[0.04, 0.006, 6, 16]} />
+          <meshStandardMaterial color="#5c4033" roughness={0.6} />
+        </mesh>
+        <Html position={[0, 0.1, 0]} center distanceFactor={6} style={{ pointerEvents: "none", fontSize: 8, color: "#a16207", fontWeight: 700 }}>
+          LDR
+        </Html>
+      </group>
+    </group>
+  );
+}
+
+export function ThermistorMesh({
+  part,
+  selected,
+  sim,
+}: {
+  part: PlacedPart;
+  selected: boolean;
+  sim: SimResult;
+}) {
+  // NTC glass-bead / epoxy droplet on two thin axial leads
+  const a = part.pins.a ? vec(part.pins.a) : null;
+  const b = part.pins.b ? vec(part.pins.b) : null;
+  if (!a || !b) return null;
+  const body = a.clone().lerp(b, 0.5);
+  body.y = BOARD.height + 0.12;
+  const t = sim.thermistors?.[part.id]?.temperatureC ?? part.props.temperatureC ?? 25;
+  return (
+    <group
+      onClick={(ev) => {
+        ev.stopPropagation();
+        useLab.getState().select(part.id);
+      }}
+    >
+      <BentBoardLead pin={a} body={body} color="#b9c0c8" radius={0.01} />
+      <BentBoardLead pin={b} body={body} color="#b9c0c8" radius={0.01} />
+      <group position={body}>
+        <mesh scale={[1, 0.75, 1]}>
+          <sphereGeometry args={[0.055, 16, 16]} />
+          <meshStandardMaterial
+            color={selected ? "#60a5fa" : "#44403c"}
+            roughness={0.25}
+            metalness={0.05}
+            transparent
+            opacity={0.85}
+          />
+        </mesh>
+        <mesh position={[0, 0, 0]} scale={[0.7, 0.5, 0.7]}>
+          <sphereGeometry args={[0.04, 12, 12]} />
+          <meshStandardMaterial color="#1c1917" roughness={0.4} />
+        </mesh>
+        <Html position={[0, 0.1, 0]} center distanceFactor={6} style={{ pointerEvents: "none", fontSize: 8, color: "#fb923c", fontWeight: 700 }}>
+          NTC {Math.round(t)}°
+        </Html>
+      </group>
+    </group>
+  );
+}
+
+export function FuseMesh({
+  part,
+  selected,
+  sim,
+}: {
+  part: PlacedPart;
+  selected: boolean;
+  sim: SimResult;
+}) {
+  // Cartridge fuse: glass cylinder, metal end-caps, visible element wire
+  const a = part.pins.a ? vec(part.pins.a) : null;
+  const b = part.pins.b ? vec(part.pins.b) : null;
+  if (!a || !b) return null;
+  const dir = b.clone().sub(a);
+  dir.y = 0;
+  if (dir.length() < 0.001) return null;
+  dir.normalize();
+  const body = a.clone().lerp(b, 0.5);
+  body.y = BOARD.height + 0.14;
+  const bodyLength = Math.min(0.42, Math.max(0.28, dir.length() * 0.55));
+  const half = bodyLength / 2;
+  const quat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+  const blown = Boolean(sim.fuses?.[part.id]?.blown || part.props.fuseBlown);
+  return (
+    <group
+      onClick={(ev) => {
+        ev.stopPropagation();
+        useLab.getState().select(part.id);
+      }}
+    >
+      <BentBoardLead pin={a} body={body} color="#cbd5e1" />
+      <BentBoardLead pin={b} body={body} color="#cbd5e1" />
+      <group position={body} quaternion={quat}>
+        {/* Glass tube */}
+        <mesh>
+          <cylinderGeometry args={[0.055, 0.055, bodyLength * 0.72, 16]} />
+          <meshStandardMaterial
+            color={blown ? "#7f1d1d" : selected ? "#bfdbfe" : "#e2e8f0"}
+            transparent
+            opacity={0.55}
+            roughness={0.1}
+            metalness={0.05}
+          />
+        </mesh>
+        {/* End caps */}
+        <mesh position={[0, half * 0.78, 0]}>
+          <cylinderGeometry args={[0.06, 0.06, 0.05, 12]} />
+          <meshStandardMaterial color="#a8a29e" metalness={0.85} roughness={0.25} />
+        </mesh>
+        <mesh position={[0, -half * 0.78, 0]}>
+          <cylinderGeometry args={[0.06, 0.06, 0.05, 12]} />
+          <meshStandardMaterial color="#a8a29e" metalness={0.85} roughness={0.25} />
+        </mesh>
+        {/* Fuse element */}
+        <mesh>
+          <cylinderGeometry args={[0.006, 0.006, bodyLength * 0.55, 6]} />
+          <meshStandardMaterial color={blown ? "#450a0a" : "#78716c"} />
+        </mesh>
+        <Html position={[0, 0.1, 0]} center distanceFactor={6} style={{ pointerEvents: "none", fontSize: 8, color: blown ? "#f87171" : "#94a3b8", fontWeight: 700 }}>
+          {blown ? "BLOWN" : "FUSE"}
+        </Html>
+      </group>
+    </group>
+  );
+}
+
+export function RgbLedMesh({
+  part,
+  selected,
+  sim,
+}: {
+  part: PlacedPart;
+  selected: boolean;
+  sim: SimResult;
+}) {
+  // 5mm 4-pin common-cathode RGB: clear dome, flange base, four leads (K typically longest)
+  const pins = ["r", "g", "b", "k"].map((p) => (part.pins[p] ? vec(part.pins[p]!) : null));
+  const present = pins.filter(Boolean) as THREE.Vector3[];
+  if (present.length < 2) return null;
+  const body = present.reduce((acc, v) => acc.add(v.clone()), new THREE.Vector3()).multiplyScalar(1 / present.length);
+  body.y = BOARD.height + 0.14;
+  const st = sim.rgbLeds?.[part.id];
+  const br = st?.brightnessR ?? 0;
+  const bg = st?.brightnessG ?? 0;
+  const bb = st?.brightnessB ?? 0;
+  const mix = new THREE.Color(
+    Math.max(br, 0.05),
+    Math.max(bg, 0.05),
+    Math.max(bb, 0.05),
+  );
+  const lit = br + bg + bb > 0.05;
+  return (
+    <group
+      onClick={(ev) => {
+        ev.stopPropagation();
+        useLab.getState().select(part.id);
+      }}
+    >
+      {pins.map((p, i) =>
+        p ? (
+          <BentBoardLead
+            key={i}
+            pin={p}
+            body={body}
+            color={["#f87171", "#4ade80", "#60a5fa", "#94a3b8"][i]}
+            radius={i === 3 ? 0.014 : 0.011}
+          />
+        ) : null,
+      )}
+      <group position={body}>
+        {/* Clear dome */}
+        <mesh position={[0, 0.04, 0]}>
+          <sphereGeometry args={[0.085, 20, 16, 0, Math.PI * 2, 0, Math.PI / 2]} />
+          <meshStandardMaterial
+            color={lit ? mix : selected ? "#93c5fd" : "#e2e8f0"}
+            emissive={lit ? mix : "#000000"}
+            emissiveIntensity={lit ? 1.5 : 0}
+            transparent
+            opacity={lit ? 0.85 : 0.55}
+            roughness={0.15}
+          />
+        </mesh>
+        {/* Flange / base */}
+        <mesh position={[0, -0.01, 0]}>
+          <cylinderGeometry args={[0.09, 0.09, 0.025, 16]} />
+          <meshStandardMaterial color="#cbd5e1" roughness={0.4} />
+        </mesh>
+        <mesh position={[0, -0.04, 0]}>
+          <cylinderGeometry args={[0.04, 0.045, 0.05, 10]} />
+          <meshStandardMaterial color="#64748b" />
+        </mesh>
+        <Html position={[0, 0.14, 0]} center distanceFactor={6} style={{ pointerEvents: "none", fontSize: 8, color: "#e2e8f0", fontWeight: 700 }}>
+          RGB
+        </Html>
+      </group>
+    </group>
+  );
+}
+
+export function SevenSegmentMesh({
+  part,
+  selected,
+  sim,
+}: {
+  part: PlacedPart;
+  selected: boolean;
+  sim: SimResult;
+}) {
+  const com = part.pins.com ? vec(part.pins.com) : null;
+  const segs = ["a", "b", "c", "d", "e", "f", "g"].map((s) => (part.pins[s] ? vec(part.pins[s]!) : null));
+  const anchors = [com, ...segs].filter(Boolean) as THREE.Vector3[];
+  if (anchors.length < 2) return null;
+  const body = anchors.reduce((acc, v) => acc.add(v.clone()), new THREE.Vector3()).multiplyScalar(1 / anchors.length);
+  body.y = BOARD.height + 0.22;
+  const lit = sim.sevenSegments?.[part.id]?.segments ?? Array(7).fill(false);
+  const segMats = (on: boolean) => (
+    <meshStandardMaterial
+      color={on ? "#ef4444" : "#1e293b"}
+      emissive={on ? "#dc2626" : "#000"}
+      emissiveIntensity={on ? 1.3 : 0}
+    />
+  );
+  return (
+    <group
+      onClick={(ev) => {
+        ev.stopPropagation();
+        useLab.getState().select(part.id);
+      }}
+    >
+      {anchors.map((p, i) => (
+        <BentBoardLead key={i} pin={p} body={body} color="#64748b" radius={0.01} />
+      ))}
+      <group position={body}>
+        <mesh>
+          <boxGeometry args={[0.32, 0.08, 0.48]} />
+          <meshStandardMaterial color={selected ? "#1d4ed8" : "#0f172a"} roughness={0.4} />
+        </mesh>
+        {/* segments a b c d e f g as thin boxes */}
+        <mesh position={[0, 0.05, -0.16]}>{/* a */}
+          <boxGeometry args={[0.16, 0.02, 0.03]} />
+          {segMats(Boolean(lit[0]))}
+        </mesh>
+        <mesh position={[0.09, 0.05, -0.08]} rotation={[0, 0, Math.PI / 2]}>
+          <boxGeometry args={[0.12, 0.02, 0.03]} />
+          {segMats(Boolean(lit[1]))}
+        </mesh>
+        <mesh position={[0.09, 0.05, 0.08]} rotation={[0, 0, Math.PI / 2]}>
+          <boxGeometry args={[0.12, 0.02, 0.03]} />
+          {segMats(Boolean(lit[2]))}
+        </mesh>
+        <mesh position={[0, 0.05, 0.16]}>
+          <boxGeometry args={[0.16, 0.02, 0.03]} />
+          {segMats(Boolean(lit[3]))}
+        </mesh>
+        <mesh position={[-0.09, 0.05, 0.08]} rotation={[0, 0, Math.PI / 2]}>
+          <boxGeometry args={[0.12, 0.02, 0.03]} />
+          {segMats(Boolean(lit[4]))}
+        </mesh>
+        <mesh position={[-0.09, 0.05, -0.08]} rotation={[0, 0, Math.PI / 2]}>
+          <boxGeometry args={[0.12, 0.02, 0.03]} />
+          {segMats(Boolean(lit[5]))}
+        </mesh>
+        <mesh position={[0, 0.05, 0]}>
+          <boxGeometry args={[0.16, 0.02, 0.03]} />
+          {segMats(Boolean(lit[6]))}
+        </mesh>
+        <Html position={[0, 0.14, 0]} center distanceFactor={6} style={{ pointerEvents: "none", fontSize: 8, color: "#94a3b8", fontWeight: 700 }}>
+          7-SEG
+        </Html>
+      </group>
+    </group>
+  );
+}
+
+/**
+ * Generic DIP-8 package straddling the breadboard centre channel. Pins are
+ * given in package order (1…8): pins 1-4 on the near row, 5-8 returning on
+ * the far row, exactly like the DIP-14 logic ICs.
+ */
+function Dip8Package({
+  part,
+  pinOrder,
+  selected,
+  label,
+  sublabel,
+  led,
+}: {
+  part: PlacedPart;
+  pinOrder: string[];
+  selected: boolean;
+  label: string;
+  sublabel?: string;
+  led?: { on: boolean; color: string };
+}) {
+  const pins = pinOrder.map((p) => (part.pins[p] ? vec(part.pins[p]!) : null));
+  if (pins.some((p) => !p)) return null;
+  const pkg = pins as THREE.Vector3[];
+  const center = pkg[0].clone().add(pkg[3]).multiplyScalar(0.5);
+  center.z = (pkg[0].z + pkg[7].z) / 2;
+  center.y = BOARD.height + 0.15;
+  const along = pkg[3].clone().sub(pkg[0]);
+  const length = Math.max(0.5, along.length() + 0.3);
+  const angle = Math.atan2(-along.z, along.x);
+  const across = Math.max(0.3, Math.abs(pkg[0].z - pkg[7].z) - 0.12);
+  const bodyEdge = across / 2;
+  const pinMaterial = <meshStandardMaterial color="#cbd5e1" metalness={0.8} roughness={0.25} />;
+  return (
+    <group
+      onClick={(ev) => {
+        ev.stopPropagation();
+        useLab.getState().select(part.id);
+      }}
+    >
+      {pkg.map((pin, index) => (
+        <group key={`pin-${index}`}>
+          <mesh position={[pin.x, BOARD.height + 0.01, pin.z]}>
+            <cylinderGeometry args={[0.014, 0.014, 0.32, 6]} />
+            {pinMaterial}
+          </mesh>
+          <mesh
+            position={[
+              pin.x,
+              BOARD.height + 0.09,
+              (pin.z + center.z + (pin.z < center.z ? -bodyEdge : bodyEdge)) / 2,
+            ]}
+            rotation={[Math.PI / 2, 0, 0]}
+          >
+            <cylinderGeometry args={[0.014, 0.014, Math.max(0.04, Math.abs(pin.z - center.z) - bodyEdge + 0.08), 6]} />
+            {pinMaterial}
+          </mesh>
+        </group>
+      ))}
+      <group position={center} rotation={[0, angle, 0]}>
+        <mesh>
+          <boxGeometry args={[length, 0.3, across]} />
+          <meshStandardMaterial color={selected ? "#1d4ed8" : "#0c1220"} roughness={0.4} />
+        </mesh>
+        <lineSegments>
+          <edgesGeometry args={[new THREE.BoxGeometry(length, 0.3, across)]} />
+          <lineBasicMaterial color={selected ? "#60a5fa" : "#64748b"} />
+        </lineSegments>
+        {/* Pin-1 notch */}
+        <mesh position={[-length / 2 + 0.08, 0.155, 0]}>
+          <torusGeometry args={[0.06, 0.02, 8, 16, Math.PI]} />
+          <meshStandardMaterial color="#020617" />
+        </mesh>
+        {led && (
+          <mesh position={[length / 2 - 0.1, 0.16, across / 2 - 0.08]}>
+            <sphereGeometry args={[0.03, 10, 10]} />
+            <meshStandardMaterial
+              color={led.on ? led.color : "#334155"}
+              emissive={led.on ? led.color : "#000"}
+              emissiveIntensity={led.on ? 1.4 : 0}
+            />
+          </mesh>
+        )}
+      </group>
+      <Html
+        position={[center.x, center.y + 0.16, center.z]}
+        center
+        distanceFactor={7}
+        style={{
+          pointerEvents: "none",
+          color: "#e2e8f0",
+          fontFamily: "IBM Plex Mono, monospace",
+          fontSize: "8px",
+          fontWeight: 700,
+          whiteSpace: "nowrap",
+          textAlign: "center",
+          lineHeight: 1.35,
+        }}
+      >
+        <div>{label}</div>
+        {sublabel && <div style={{ fontSize: "6px", color: "#94a3b8" }}>{sublabel}</div>}
+      </Html>
+    </group>
+  );
+}
+
+export function Timer555Mesh({
+  part,
+  selected,
+  sim,
+}: {
+  part: PlacedPart;
+  selected: boolean;
+  sim: SimResult;
+}) {
+  // NE555 DIP-8: 1 GND, 2 TRIG, 3 OUT, 4 RESET, 5 CONT, 6 THRES, 7 DISCH, 8 VCC
+  const st = sim.timer555s?.[part.id];
+  const sub = st?.powered
+    ? `OUT ${st.output ? "HIGH" : "LOW"}${st.mode === "astable" && st.frequencyHz ? ` · ${st.frequencyHz < 10 ? st.frequencyHz.toFixed(2) : st.frequencyHz.toFixed(0)} Hz` : ""}`
+    : "8 VCC · 1 GND";
+  return (
+    <Dip8Package
+      part={part}
+      pinOrder={["gnd", "trig", "out", "reset", "cont", "thres", "disch", "vcc"]}
+      selected={selected}
+      label="NE555"
+      sublabel={sub}
+      led={{ on: Boolean(st?.powered && st.output), color: "#22c55e" }}
+    />
+  );
+}
+
+export function OpampMesh({
+  part,
+  selected,
+  sim,
+}: {
+  part: PlacedPart;
+  selected: boolean;
+  sim: SimResult;
+}) {
+  // 741-style single op-amp DIP-8: 2 IN−, 3 IN+, 4 V−, 6 OUT, 7 V+
+  const st = sim.opamps?.[part.id];
+  const sub = st?.powered ? `OUT ${st.output.toFixed(2)} V` : "7 V+ · 4 V−";
+  return (
+    <Dip8Package
+      part={part}
+      pinOrder={["nc1", "inn", "inp", "vee", "nc5", "out", "vcc", "nc8"]}
+      selected={selected}
+      label="OP-AMP"
+      sublabel={sub}
+      led={{ on: Boolean(st?.powered), color: "#22c55e" }}
+    />
+  );
+}
+
+export function ServoMesh({
+  part,
+  selected,
+  sim,
+}: {
+  part: PlacedPart;
+  selected: boolean;
+  sim: SimResult;
+}) {
+  // TowerPro SG90-ish: ~22.8 × 12.2 × 28.5 mm blue body, mounting ears, top spline + single horn
+  const vcc = part.pins.vcc ? vec(part.pins.vcc) : null;
+  const gnd = part.pins.gnd ? vec(part.pins.gnd) : null;
+  const sig = part.pins.sig ? vec(part.pins.sig) : null;
+  const pins = [vcc, gnd, sig].filter(Boolean) as THREE.Vector3[];
+  if (pins.length < 2) return null;
+  const body = pins.reduce((acc, v) => acc.add(v.clone()), new THREE.Vector3()).multiplyScalar(1 / pins.length);
+  body.y = BOARD.height + 0.18;
+  const powered = Boolean(sim.servos?.[part.id]?.powered);
+  const angle = ((sim.servos?.[part.id]?.angle ?? part.props.servoAngle ?? 90) * Math.PI) / 180;
+  const blue = selected ? "#3b82f6" : "#1d4ed8";
+  return (
+    <group
+      onClick={(ev) => {
+        ev.stopPropagation();
+        useLab.getState().select(part.id);
+      }}
+    >
+      {pins.map((p, i) => (
+        <BentBoardLead key={i} pin={p} body={body} color={["#ef4444", "#292524", "#fbbf24"][i] || "#94a3b8"} />
+      ))}
+      <group position={body}>
+        {/* Main case */}
+        <mesh>
+          <boxGeometry args={[0.46, 0.24, 0.24]} />
+          <meshStandardMaterial color={blue} roughness={0.4} />
+        </mesh>
+        {/* Mounting ears */}
+        <mesh position={[-0.28, 0.02, 0]}>
+          <boxGeometry args={[0.1, 0.04, 0.2]} />
+          <meshStandardMaterial color={blue} roughness={0.4} />
+        </mesh>
+        <mesh position={[0.28, 0.02, 0]}>
+          <boxGeometry args={[0.1, 0.04, 0.2]} />
+          <meshStandardMaterial color={blue} roughness={0.4} />
+        </mesh>
+        {/* Top gearbox bulge */}
+        <mesh position={[0.08, 0.14, 0]}>
+          <cylinderGeometry args={[0.09, 0.09, 0.08, 20]} />
+          <meshStandardMaterial color="#1e3a8a" roughness={0.35} />
+        </mesh>
+        {/* Output shaft */}
+        <mesh position={[0.08, 0.2, 0]}>
+          <cylinderGeometry args={[0.03, 0.03, 0.04, 12]} />
+          <meshStandardMaterial color="#e2e8f0" metalness={0.4} />
+        </mesh>
+        {/* Single-arm horn */}
+        <group position={[0.08, 0.23, 0]} rotation={[0, angle - Math.PI / 2, 0]}>
+          <mesh position={[0.09, 0, 0]}>
+            <boxGeometry args={[0.18, 0.02, 0.05]} />
+            <meshStandardMaterial color="#f1f5f9" />
+          </mesh>
+          <mesh>
+            <cylinderGeometry args={[0.035, 0.035, 0.025, 12]} />
+            <meshStandardMaterial color="#cbd5e1" />
+          </mesh>
+        </group>
+        <mesh position={[-0.16, 0.1, 0.1]}>
+          <sphereGeometry args={[0.014, 8, 8]} />
+          <meshStandardMaterial color={powered ? "#22c55e" : "#334155"} emissive={powered ? "#16a34a" : "#000"} emissiveIntensity={powered ? 1 : 0} />
+        </mesh>
+        <Html position={[0, 0.28, 0]} center distanceFactor={5.5} style={{ pointerEvents: "none", fontSize: 8, color: "#e2e8f0", fontWeight: 700 }}>
+          SG90
+        </Html>
+      </group>
+    </group>
+  );
+}
+
+export function OptocouplerMesh({
+  part,
+  selected,
+  sim,
+}: {
+  part: PlacedPart;
+  selected: boolean;
+  sim: SimResult;
+}) {
+  // PC817-style 4-pin DIP (~6.5×4.6×3.5 mm body)
+  const pins = ["la", "lk", "c", "e"]
+    .map((p) => (part.pins[p] ? vec(part.pins[p]!) : null))
+    .filter(Boolean) as THREE.Vector3[];
+  if (pins.length < 2) return null;
+  const body = pins.reduce((acc, v) => acc.add(v.clone()), new THREE.Vector3()).multiplyScalar(1 / pins.length);
+  body.y = BOARD.height + 0.14;
+  const ledOn = Boolean(sim.optocouplers?.[part.id]?.ledOn);
+  return (
+    <group
+      onClick={(ev) => {
+        ev.stopPropagation();
+        useLab.getState().select(part.id);
+      }}
+    >
+      {pins.map((p, i) => (
+        <BentBoardLead key={i} pin={p} body={body} color="#b9c0c8" radius={0.01} />
+      ))}
+      <group position={body}>
+        <mesh>
+          <boxGeometry args={[0.32, 0.09, 0.22]} />
+          <meshStandardMaterial color={selected ? "#2563eb" : "#0f172a"} roughness={0.4} />
+        </mesh>
+        {/* Pin-1 notch */}
+        <mesh position={[-0.13, 0.05, 0]} rotation={[Math.PI / 2, 0, 0]}>
+          <cylinderGeometry args={[0.025, 0.025, 0.1, 10]} />
+          <meshStandardMaterial color="#020617" />
+        </mesh>
+        <mesh position={[-0.08, 0.06, 0]}>
+          <sphereGeometry args={[0.02, 10, 10]} />
+          <meshStandardMaterial
+            color={ledOn ? "#f87171" : "#334155"}
+            emissive={ledOn ? "#ef4444" : "#000"}
+            emissiveIntensity={ledOn ? 1.2 : 0}
+          />
+        </mesh>
+        <Html position={[0, 0.12, 0]} center distanceFactor={5.5} style={{ pointerEvents: "none", fontSize: 8, color: "#94a3b8", fontWeight: 700 }}>
+          PC817
+        </Html>
+      </group>
+    </group>
+  );
+}
+
+export function RegulatorMesh({
+  part,
+  selected,
+  sim,
+}: {
+  part: PlacedPart;
+  selected: boolean;
+  sim: SimResult;
+}) {
+  // LM7805 TO-220: black molded body + vertical metal heatsink tab with mounting hole; pins IN GND OUT
+  const inn = part.pins.in ? vec(part.pins.in) : null;
+  const gnd = part.pins.gnd ? vec(part.pins.gnd) : null;
+  const out = part.pins.out ? vec(part.pins.out) : null;
+  const pins = [inn, gnd, out].filter(Boolean) as THREE.Vector3[];
+  if (pins.length < 2) return null;
+  const body = pins.reduce((acc, v) => acc.add(v.clone()), new THREE.Vector3()).multiplyScalar(1 / pins.length);
+  body.y = BOARD.height + 0.18;
+  const powered = Boolean(sim.regulators?.[part.id]?.powered);
+  const vout = sim.regulators?.[part.id]?.vout ?? 0;
+  return (
+    <group
+      onClick={(ev) => {
+        ev.stopPropagation();
+        useLab.getState().select(part.id);
+      }}
+    >
+      {pins.map((p, i) => (
+        <BentBoardLead key={i} pin={p} body={body} color="#b9c0c8" />
+      ))}
+      <group position={body}>
+        {/* Plastic body */}
+        <mesh position={[0, 0.06, 0.02]}>
+          <boxGeometry args={[0.28, 0.14, 0.12]} />
+          <meshStandardMaterial color={selected ? "#3b82f6" : "#0f172a"} roughness={0.4} />
+        </mesh>
+        {/* Metal tab standing up behind body */}
+        <mesh position={[0, 0.16, -0.02]}>
+          <boxGeometry args={[0.28, 0.22, 0.025]} />
+          <meshStandardMaterial color="#9ca3af" metalness={0.85} roughness={0.22} />
+        </mesh>
+        {/* Mounting hole in tab */}
+        <mesh position={[0, 0.22, -0.02]} rotation={[Math.PI / 2, 0, 0]}>
+          <cylinderGeometry args={[0.035, 0.035, 0.03, 12]} />
+          <meshStandardMaterial color="#1e293b" />
+        </mesh>
+        <mesh position={[0.1, 0.04, 0.08]}>
+          <sphereGeometry args={[0.012, 8, 8]} />
+          <meshStandardMaterial
+            color={powered ? "#22c55e" : "#334155"}
+            emissive={powered ? "#16a34a" : "#000"}
+            emissiveIntensity={powered ? 1.1 : 0}
+          />
+        </mesh>
+        <Html position={[0, 0.3, 0]} center distanceFactor={5.5} style={{ pointerEvents: "none", fontSize: 8, color: "#e2e8f0", fontWeight: 700 }}>
+          {vout > 0 ? `7805 ${vout.toFixed(1)}V` : "7805"}
+        </Html>
+      </group>
+    </group>
+  );
+}
+
+
 export function PartSwitch({
   part,
   selected,
@@ -8629,6 +9489,30 @@ export function PartSwitch({
       return (
         <TransistorMesh part={part} selected={selected} sim={sim} />
       );
+    case "mosfet":
+      return <MosfetMesh part={part} selected={selected} sim={sim} />;
+    case "zener":
+      return <ZenerMesh part={part} selected={selected} sim={sim} />;
+    case "ldr":
+      return <LdrMesh part={part} selected={selected} sim={sim} />;
+    case "thermistor":
+      return <ThermistorMesh part={part} selected={selected} sim={sim} />;
+    case "fuse":
+      return <FuseMesh part={part} selected={selected} sim={sim} />;
+    case "rgb-led":
+      return <RgbLedMesh part={part} selected={selected} sim={sim} />;
+    case "servo":
+      return <ServoMesh part={part} selected={selected} sim={sim} />;
+    case "seven-segment":
+      return <SevenSegmentMesh part={part} selected={selected} sim={sim} />;
+    case "timer555":
+      return <Timer555Mesh part={part} selected={selected} sim={sim} />;
+    case "opamp":
+      return <OpampMesh part={part} selected={selected} sim={sim} />;
+    case "optocoupler":
+      return <OptocouplerMesh part={part} selected={selected} sim={sim} />;
+    case "regulator":
+      return <RegulatorMesh part={part} selected={selected} sim={sim} />;
     case "thyristor":
       return (
         <ThyristorMesh part={part} selected={selected} sim={sim} />
@@ -8695,8 +9579,33 @@ export function PartSwitch({
       return <LogicGateMesh part={part} selected={selected} sim={sim} />;
     case "pot":
       return <PotMesh part={part} selected={selected} />;
-    default:
-      return null;
+    default: {
+      // Fallback so unknown/new parts still appear on the board
+      const pinVals = Object.values(part.pins).filter(Boolean) as string[];
+      if (pinVals.length === 0) return null;
+      const pts = pinVals.map((id) => vec(id as any));
+      const body = pts.reduce((a, p) => a.add(p.clone()), new THREE.Vector3()).multiplyScalar(1 / pts.length);
+      body.y = BOARD.height + 0.16;
+      return (
+        <group
+          onClick={(ev) => {
+            ev.stopPropagation();
+            useLab.getState().select(part.id);
+          }}
+        >
+          {pts.map((p, i) => (
+            <BentBoardLead key={i} pin={p} body={body} />
+          ))}
+          <mesh position={body}>
+            <boxGeometry args={[0.28, 0.12, 0.2]} />
+            <meshStandardMaterial color={selected ? "#3b82f6" : "#334155"} roughness={0.45} />
+          </mesh>
+          <Html position={[body.x, body.y + 0.12, body.z]} center distanceFactor={6} style={{ pointerEvents: "none", fontSize: 8, color: "#e2e8f0", fontWeight: 700 }}>
+            {part.kind}
+          </Html>
+        </group>
+      );
+    }
   }
 }
 
@@ -8830,14 +9739,14 @@ export function BreadboardBody() {
     if (!wellRef.current || !rimRef.current) return;
 
     // Terminal strip top ≈ BOARD.height + 0.07 — wells recess into it
-    const stripTop = BOARD.height + 0.07;
+    const stripTop = BOARD.height + 0.08;
     const wellDepth = 0.055;
 
     holes.forEach((id, i) => {
       const [x, , z] = holePosition(id);
 
       // Dark cylindrical cavity (mostly below the strip surface)
-      dummy.position.set(x, stripTop - wellDepth / 2 + 0.002, z);
+      dummy.position.set(x, stripTop - wellDepth / 2 + 0.003, z);
       dummy.rotation.set(0, 0, 0);
       dummy.scale.set(1, 1, 1);
       dummy.updateMatrix();
@@ -8876,20 +9785,32 @@ export function BreadboardBody() {
     <group key={boardId}>
       <mesh position={[0, BOARD.y, 0]} receiveShadow castShadow>
         <boxGeometry args={[w, BOARD.height, d]} />
-        <meshStandardMaterial color="#f4f1ea" roughness={0.7} />
+        <meshStandardMaterial
+          color="#ece7dc"
+          roughness={0.82}
+          metalness={0}
+        />
       </mesh>
       {/* Raised terminal strips and recessed channels, matching a real solderless board. */}
       {terminalCenters.map((z) => (
         <mesh key={`terminal-strip-${z}`} position={[0, BOARD.height + 0.035, z]} receiveShadow>
           <boxGeometry args={[Math.max(0.4, w - 0.22), 0.07, terminalDepth]} />
-          <meshStandardMaterial color="#eeeae2" roughness={0.82} />
+          <meshStandardMaterial
+            color="#e6e1d6"
+            roughness={0.86}
+            metalness={0}
+          />
         </mesh>
       ))}
       {BOARD.hasRails &&
         railCenters.map((z, index) => (
           <mesh key={`rail-channel-${z}`} position={[0, BOARD.height + 0.025, z]} receiveShadow>
             <boxGeometry args={[railLen, 0.05, 0.19]} />
-            <meshStandardMaterial color="#e9e5dc" roughness={0.82} />
+            <meshStandardMaterial
+              color="#4b515c"
+              roughness={0.38}
+              metalness={0.72}
+            />
           </mesh>
         ))}
       {BOARD.hasRails &&

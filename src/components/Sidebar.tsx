@@ -13,6 +13,9 @@ import {
   Settings,
   Atom,
   Map,
+  Info,
+  Terminal,
+  Binary,
 } from "lucide-react";
 import { useProjects } from "../store/projects";
 import favicon from "../../favicon.png";
@@ -25,6 +28,9 @@ const nav = [
   { to: "/library", label: "Library", icon: Library },
   { to: "/components", label: "Components", icon: Cpu },
   { to: "/my-components", label: "My Components", icon: Cpu },
+  { to: "/about-components", label: "About Components", icon: Info },
+  { to: "/matlab", label: "MATLAB Tutorial", icon: Terminal },
+  { to: "/python", label: "Python Tutorial", icon: Binary },
   { to: "/learn", label: "Learn", icon: GraduationCap },
   { to: "/concepts", label: "Concepts", icon: Atom },
   { to: "/builtin-flashcards", label: "Flashcards", icon: Book },
