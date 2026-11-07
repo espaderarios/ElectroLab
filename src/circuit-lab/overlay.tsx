@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+
+/** Keep the original functional inspector, but dock it into the studio sidebar.
+ * Standalone CircuitLab still renders the inspector in its own viewport. */
+function dockInspector(node: ReactNode, host: Element | null): ReactNode {
+  return host ? createPortal(node, host) : node;
+}
 
 import {
   ArrowLeft,
@@ -1049,7 +1056,9 @@ export function LabOverlay({ showPalette = true, embedded = false }: { showPalet
   // - otherwise sit on the right edge
   const rightInspectorOpen =
     Boolean(selected || selectedWire) && !monitorOpen && dismissedInspectorId !== selectedId;
-  const probePanelRight = monitorOpen || rightInspectorOpen ? 370 : 16;
+  const inspectorHost = typeof document !== "undefined" ? document.getElementById("electrolab-studio-inspector") : null;
+  // Inspector is in the dedicated studio rail; it no longer occupies the canvas.
+  const probePanelRight = monitorOpen ? 370 : inspectorHost ? 16 : rightInspectorOpen ? 370 : 16;
 
   const pinOrder = PIN_ORDER[tool] ?? [];
 
@@ -2825,7 +2834,7 @@ export function LabOverlay({ showPalette = true, embedded = false }: { showPalet
       {wiringGuideOpen && <WiringGuidePanel onClose={() => setWiringGuideOpen(false)} left={showPalette?276:16} />}
 
       {/* RIGHT INSPECTOR: functional component properties */}
-{rightInspectorOpen && (
+{rightInspectorOpen && dockInspector(
   <aside
     key={selectedId}
     className="lab-component-inspector"
@@ -3720,7 +3729,7 @@ export function LabOverlay({ showPalette = true, embedded = false }: { showPalet
           </button>
           </>
            )}
-        </aside>
+        </aside>, inspectorHost
       )}
 
       {(selected || selectedWire) && !monitorOpen && !rightInspectorOpen && (

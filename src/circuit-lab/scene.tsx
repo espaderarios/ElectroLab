@@ -1,4 +1,6 @@
 import { WORKBENCH_PALETTE } from "./workbench-palette";
+import { GRAPHICS_QUALITY, type GraphicsQuality } from "./graphics-quality";
+import { StudioEnvironment } from "./studio-environment";
 import { ContactShadows, Grid, OrbitControls, Html } from "@react-three/drei";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
@@ -750,7 +752,8 @@ function MovablePart({
   );
 }
 
-export function LabScene({ performanceMode = true }: { performanceMode?: boolean }) {
+export function LabScene({ performanceMode = true, quality = "low" }: { performanceMode?: boolean; quality?: GraphicsQuality }) {
+  const graphics = GRAPHICS_QUALITY[quality];
   const parts = useLab((s) => s.parts);
   const wires = useLab((s) => s.wires);
   const selectedId = useLab((s) => s.selectedId);
@@ -779,21 +782,26 @@ export function LabScene({ performanceMode = true }: { performanceMode?: boolean
     <>
       <color attach="background" args={[WORKBENCH_PALETTE.background]} />
       <fog attach="fog" args={[WORKBENCH_PALETTE.background, 14, 36]} />
-      <hemisphereLight args={["#9db4d0", "#1a1f28", 0.55]} />
-      <ambientLight intensity={0.28} />
+      <StudioEnvironment quality={quality} />
+      <hemisphereLight args={["#d8e7f4", "#293442", performanceMode ? 0.68 : 0.76]} />
+      <ambientLight intensity={performanceMode ? 0.34 : 0.28} />
       <directionalLight
         position={[6, 10, 4]}
-        intensity={1.35}
+        intensity={graphics.lightIntensity}
         castShadow={!performanceMode}
-        shadow-mapSize-width={1024}
-        shadow-mapSize-height={1024}
+        shadow-mapSize-width={graphics.shadowResolution}
+        shadow-mapSize-height={graphics.shadowResolution}
+        shadow-bias={-0.00008}
+        shadow-normalBias={0.025}
         shadow-camera-far={24}
-        shadow-camera-left={-8}
-        shadow-camera-right={8}
-        shadow-camera-top={8}
-        shadow-camera-bottom={-8}
+        shadow-camera-left={-Math.max(8, BOARD.width / 2 + 2)}
+        shadow-camera-right={Math.max(8, BOARD.width / 2 + 2)}
+        shadow-camera-top={Math.max(8, BOARD.depth / 2 + 2)}
+        shadow-camera-bottom={-Math.max(8, BOARD.depth / 2 + 2)}
       />
-      <directionalLight position={[-4, 6, -3]} intensity={0.25} />
+      <directionalLight position={[-4, 6, -3]} intensity={0.5} color="#b9ceee" />
+      <directionalLight position={[-3, 7, 7]} intensity={0.32} color="#e0f2fe" />
+      <pointLight position={[1, 7, -6]} color="#f2d9c9" intensity={0.28} distance={26} decay={2} />
 
       <mesh
         rotation={[-Math.PI / 2, 0, 0]}
@@ -806,7 +814,7 @@ export function LabScene({ performanceMode = true }: { performanceMode?: boolean
         }}
       >
         <planeGeometry args={[40, 40]} />
-        <meshStandardMaterial color={WORKBENCH_PALETTE.floor} roughness={0.95} metalness={0.01} />
+        <meshStandardMaterial color={WORKBENCH_PALETTE.floor} roughness={0.78} metalness={0.12} />
       </mesh>
       <Grid
         position={[0, 0.001, 0]}
@@ -853,7 +861,7 @@ export function LabScene({ performanceMode = true }: { performanceMode?: boolean
       <HoverMarker />
       <PreviewWire />
       <SuggestedWirePreview />
-      {!performanceMode && <ContactShadows position={[0, 0, 0]} opacity={0.4} scale={18} blur={2.2} far={3} resolution={256} frames={1} />}
+      {!performanceMode && <ContactShadows position={[0, 0, 0]} opacity={graphics.contactOpacity} scale={18} blur={quality === "ultra" ? 2.6 : 2.2} far={3} resolution={graphics.contactShadowResolution} frames={1} />}
       <CameraRig />
       <group visible={false}>
         {getAllHoles().slice(0, 1).map((id) => (

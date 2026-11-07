@@ -36,6 +36,7 @@ import { mcuBoardOrigin, mcuPinLocal, mcuTerminalId, terminalPosition } from "@/
 import { wireRoute3DPoints, type RoutedWire } from "@/circuit/wire-routing";
 import * as simulationModule from "@/circuit/simulate";
 import { BreadboardSilkscreen, PrintedMark } from "./realistic-details";
+import { ArduinoPcbFinish } from "./pcb-finish";
 
 /**
  * Floating 3D component annotations are contextual, not part of the physical
@@ -556,6 +557,23 @@ function CurrentFlow({
 }
 
 
+/** Metal ferrule and polymer shoulder at each real jumper endpoint. These sit
+ * at the connection coordinate, so moving the Arduino cannot detach a plug. */
+function WireEndConnector({ position, color, jumper }: {
+  position: THREE.Vector3; color: string; jumper: boolean;
+}) {
+  return <group position={[position.x, position.y, position.z]} raycast={() => null}>
+    <mesh position={[0, 0.013, 0]} castShadow={false}>
+      <cylinderGeometry args={[0.015, 0.012, 0.064, 10]} />
+      <meshStandardMaterial color="#c9b492" metalness={0.94} roughness={0.26} />
+    </mesh>
+    {jumper && <mesh position={[0, 0.078, 0]} castShadow={false}>
+      <cylinderGeometry args={[0.043, 0.038, 0.091, 10]} />
+      <meshPhysicalMaterial color={color} metalness={0.02} roughness={0.42} clearcoat={0.4} clearcoatRoughness={0.35} />
+    </mesh>}
+  </group>;
+}
+
 export function JumperWire({
   wire,
   route,
@@ -608,6 +626,11 @@ export function JumperWire({
         jumper={route.style === "jumper"}
         dimmed={dimmed && !highlighted}
       />
+      {/* Actual wire-end contacts rather than color tubes ending abruptly. */}
+      {!dimmed && !route.blocked && <>
+        <WireEndConnector position={a} color={visibleColor} jumper={route.style === "jumper"} />
+        <WireEndConnector position={b} color={visibleColor} jumper={route.style === "jumper"} />
+      </>}
       {flowing && !dimmed && (
         <CurrentFlow
           a={a}
@@ -5267,8 +5290,9 @@ export function McuMesh({
 
   const origin = new THREE.Vector3(...mcuBoardOrigin(part));
 
-  const pcb = selected ? "#1167a5" : "#087f49";
-  const pcbDark = selected ? "#0d527f" : "#056338";
+  // Uno R3 boards use blue solder mask, not the generic green PCB tint.
+  const pcb = selected ? "#146bba" : "#12669d";
+  const pcbDark = selected ? "#104778" : "#08456f";
 
   const black = "#111418";
   const dark = "#20252a";
@@ -5540,24 +5564,22 @@ export function McuMesh({
           <meshBasicMaterial transparent opacity={0} depthWrite={false} />
         </mesh>
         {/* Female header body */}
-        <mesh castShadow>
+        <mesh castShadow position={[0, 0.04, 0]}>
           <boxGeometry
             args={[
-              0.082,
-              0.12,
-              0.082,
+              0.086,
+              0.18,
+              0.086,
             ]}
           />
-          <meshStandardMaterial
-            roughness={0.3}
-          />
+          <meshPhysicalMaterial color="#101318" roughness={0.74} metalness={0.02} clearcoat={0.06} />
         </mesh>
 
         {/* Gold contact */}
         <mesh
           position={[
             0,
-            0.065,
+            0.079,
             0,
           ]}
         >
@@ -5709,10 +5731,14 @@ export function McuMesh({
           />
           <meshStandardMaterial
             color={pcb}
-            roughness={0.42}
-            metalness={0.04}
+            roughness={0.57}
+            metalness={0.06}
           />
         </mesh>
+
+        {/* Printed copper-under-mask routes and crisp industrial silkscreen.
+            Decorative, not electrically conductive or raycastable. */}
+        <ArduinoPcbFinish width={W} depth={D} thickness={T} />
 
         {/* PCB lower edge */}
         <mesh
@@ -7045,11 +7071,13 @@ export function LcdMesh({
   // Draw characters onto a canvas so they sit ON the glass (not floating Html).
   const screenMap = useMemo(() => {
     const canvas = document.createElement("canvas");
-    canvas.width = 256;
-    canvas.height = 64;
+    canvas.width = 1024;
+    canvas.height = 256;
     const ctx = canvas.getContext("2d");
     if (!ctx) return null;
 
+    // High-resolution canvas keeps LCD lettering legible in angled 3D views.
+    ctx.scale(4, 4);
     ctx.fillStyle = powered ? "#0a3328" : "#020617";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -7070,10 +7098,10 @@ export function LcdMesh({
       ctx.stroke();
 
       ctx.fillStyle = "#a7f3d0";
-      ctx.font = "bold 18px 'IBM Plex Mono', ui-monospace, monospace";
+      ctx.font = "700 20px 'IBM Plex Mono', ui-monospace, monospace";
       ctx.textBaseline = "middle";
-      ctx.shadowColor = "rgba(52, 211, 153, 0.55)";
-      ctx.shadowBlur = 4;
+      ctx.shadowColor = "rgba(52, 211, 153, 0.25)";
+      ctx.shadowBlur = 1;
       ctx.fillText(line1, 10, 18);
       ctx.fillText(line2, 10, 46);
       ctx.shadowBlur = 0;
@@ -7081,7 +7109,10 @@ export function LcdMesh({
 
     const tex = new THREE.CanvasTexture(canvas);
     tex.colorSpace = THREE.SRGBColorSpace;
-    tex.anisotropy = 4;
+    tex.anisotropy = 16;
+    tex.minFilter = THREE.LinearMipmapLinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+    tex.generateMipmaps = true;
     tex.needsUpdate = true;
     return tex;
   }, [line1, line2, powered]);
@@ -7228,36 +7259,54 @@ export function OledMesh({
   // bounds and remains inside the glass from every camera perspective.
   const screenMap = useMemo(() => {
     if (typeof document === "undefined") return null;
+    // Render at 8x native SSD1306 resolution (1024x512): small lettering
+    // stays sharp after WebGL downsamples the display onto its 3D glass.
     const canvas = document.createElement("canvas");
-    canvas.width = 512;
-    canvas.height = 256;
+    canvas.width = 1024;
+    canvas.height = 512;
     const ctx = canvas.getContext("2d");
     if (!ctx) return null;
-    ctx.fillStyle = "#010b18";
+    ctx.imageSmoothingEnabled = true;
+    ctx.fillStyle = "#000c17";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     if (powered) {
-      // Physical SSD1306 uses 128×64; a 4× canvas keeps 3D text crisp.
       ctx.save();
+      // Logical drawing coordinates (512 x 256), twice the CSS-independent
+      // pixel density of the previous texture. Never draw outside the glass.
+      ctx.scale(2, 2);
       ctx.beginPath();
-      ctx.rect(8, 8, 496, 240);
+      ctx.rect(12, 12, 488, 232);
       ctx.clip();
-      ctx.fillStyle = "#83e4ff";
-      ctx.shadowColor = "#029cfe";
-      ctx.shadowBlur = 5;
-      ctx.font = "600 27px 'IBM Plex Mono', monospace";
+      const lines = (text || "").replace(/\r/g, "").split("\n").slice(0, 8)
+        .map((line) => line.slice(0, 16));
+      const count = Math.max(1, lines.length);
+      // Short titles (e.g. ElectroLab / I2C OLED) use much larger text;
+      // an eight-line sketch still fits the full 128x64 character grid.
+      const lineHeight = Math.min(68, Math.floor(224 / count));
+      let fontSize = Math.min(count <= 2 ? 59 : 48, Math.floor(lineHeight * 0.83));
       ctx.textAlign = "left";
-      ctx.textBaseline = "top";
-      const lines = (text || "").replace(/\r/g, "").split("\n").slice(0, 8);
+      ctx.textBaseline = "middle";
+      ctx.fillStyle = "#b7f8ff";
+      // Strong unblurred glyphs render more legibly at shallow camera angles.
+      // Keep all 16 columns in bounds even for a fully populated line.
+      do {
+        ctx.font = `700 ${fontSize}px ui-monospace, 'IBM Plex Mono', Consolas, monospace`;
+        if (lines.every((line) => ctx.measureText(line).width <= 464)) break;
+        fontSize -= 1;
+      } while (fontSize > 15);
+      const usedHeight = count * lineHeight;
+      const firstBaseline = (256 - usedHeight) / 2 + lineHeight / 2;
       lines.forEach((line, row) => {
-        // 8 rows × 16 standard 8×8-character cells. Longer lines truncate
-        // instead of extending outside the 3D display.
-        ctx.fillText(line.slice(0, 16), 14, 12 + row * 30, 484);
+        ctx.fillText(line, 22, firstBaseline + row * lineHeight, 464);
       });
       ctx.restore();
     }
     const texture = new THREE.CanvasTexture(canvas);
     texture.colorSpace = THREE.SRGBColorSpace;
-    texture.anisotropy = 4;
+    texture.anisotropy = 16;
+    texture.minFilter = THREE.LinearMipmapLinearFilter;
+    texture.magFilter = THREE.LinearFilter;
+    texture.generateMipmaps = true;
     texture.needsUpdate = true;
     return texture;
   }, [powered, text]);
@@ -9189,6 +9238,15 @@ export function SevenSegmentMesh({
           <boxGeometry args={[0.92, 0.008, 1.27]} />
           <meshPhysicalMaterial color="#1b0808" roughness={0.28} metalness={0.08} clearcoat={0.65} clearcoatRoughness={0.25} />
         </mesh>
+        {/* Thin raised glass-retaining rim, with soft specular edge highlights. */}
+        {[-0.48, 0.48].map((x) => <mesh key={`bezel-x-${x}`} position={[x, 0.125, 0]} raycast={() => null}>
+          <boxGeometry args={[0.018, 0.012, 1.29]} />
+          <meshPhysicalMaterial color="#43464b" metalness={0.2} roughness={0.27} clearcoat={0.8} />
+        </mesh>)}
+        {[-0.65, 0.65].map((z) => <mesh key={`bezel-z-${z}`} position={[0, 0.125, z]} raycast={() => null}>
+          <boxGeometry args={[0.96, 0.012, 0.018]} />
+          <meshPhysicalMaterial color="#43464b" metalness={0.2} roughness={0.27} clearcoat={0.8} />
+        </mesh>)}
         {/* The seven light-pipes are sloped at the ends, not rectangular labels. */}
         {SEGMENT_BAR_LOCS.map((segment) => {
           const active = on(segment.name);
@@ -9940,6 +9998,7 @@ export function PowerSupply() {
 export function BreadboardBody() {
   const wellRef = useRef<THREE.InstancedMesh>(null);
   const rimRef = useRef<THREE.InstancedMesh>(null);
+  const contactRef = useRef<THREE.InstancedMesh>(null);
   const dummy = useMemo(() => new THREE.Object3D(), []);
   const clickHole = useLab((s) => s.clickHole);
   const setHover = useLab((s) => s.setHover);
@@ -9947,7 +10006,7 @@ export function BreadboardBody() {
   const boardId = useLab((s) => s.boardId);
   const holes = useMemo(() => getAllHoles(), [boardId]);
   useLayoutEffect(() => {
-    if (!wellRef.current || !rimRef.current) return;
+    if (!wellRef.current || !rimRef.current || !contactRef.current) return;
 
     // Terminal strip top ≈ BOARD.height + 0.07 — wells recess into it
     const stripTop = BOARD.height + 0.08;
@@ -9968,12 +10027,21 @@ export function BreadboardBody() {
       dummy.rotation.set(-Math.PI / 2, 0, 0);
       dummy.updateMatrix();
       rimRef.current!.setMatrixAt(i, dummy.matrix);
+
+      // Two narrow metallic leaves just below the molded plastic opening.
+      // The actual hole remains a selectable volume, not a raised peg.
+      dummy.position.set(x, stripTop - 0.009, z);
+      dummy.rotation.set(-Math.PI / 2, 0, 0);
+      dummy.updateMatrix();
+      contactRef.current!.setMatrixAt(i, dummy.matrix);
     });
 
     wellRef.current.instanceMatrix.needsUpdate = true;
     wellRef.current.count = holes.length;
     rimRef.current.instanceMatrix.needsUpdate = true;
     rimRef.current.count = holes.length;
+    contactRef.current.instanceMatrix.needsUpdate = true;
+    contactRef.current.count = holes.length;
   }, [dummy, holes]);
 
   const w = BOARD.width;
@@ -10029,10 +10097,10 @@ export function BreadboardBody() {
           <mesh key={`rail-channel-${z}`} position={[0, BOARD.height + 0.025, z]} receiveShadow>
             <boxGeometry args={[railLen, 0.05, 0.19]} />
             <meshPhysicalMaterial
-              color="#626b78"
-              roughness={0.28}
-              metalness={0.78}
-              clearcoat={0.12}
+              color="#ebe8e1"
+              roughness={0.82}
+              metalness={0.015}
+              clearcoat={0.1}
             />
           </mesh>
         ))}
@@ -10164,7 +10232,18 @@ export function BreadboardBody() {
         raycast={() => {}}
       >
         <ringGeometry args={[0.028, 0.038, 16]} />
-        <meshStandardMaterial color="#3f4654" roughness={0.45} metalness={0.55} />
+        <meshStandardMaterial color="#5f6265" roughness={0.82} metalness={0.08} />
+      </instancedMesh>
+      {/* Socket springs are set below the black cavities. One instanced draw
+          call for the entire board; still interactive via the well mesh. */}
+      <instancedMesh
+        key={`contacts-${boardId}-${holes.length}`}
+        ref={contactRef}
+        args={[undefined, undefined, holes.length]}
+        raycast={() => null}
+      >
+        <ringGeometry args={[0.014, 0.019, 10]} />
+        <meshStandardMaterial color="#b7a88b" roughness={0.35} metalness={0.88} side={THREE.DoubleSide} />
       </instancedMesh>
       {/* Small end caps make the long board read as a manufactured assembly. */}
       <mesh position={[-w / 2 + 0.08, BOARD.y + 0.015, 0]} receiveShadow>

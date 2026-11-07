@@ -1,20 +1,26 @@
 /** Editor-integrated power + diagnostics dock. No hidden electrical wiring. */
 import { useEffect, useMemo, useState } from 'react';
-import { Activity, Cable, ChevronDown, ChevronUp, Lightbulb, Monitor, Power, Table2, Move, Gauge } from 'lucide-react';
+import { Activity, Cable, ChevronDown, ChevronUp, Lightbulb, Monitor, Table2, Move, Gauge, Code2, Save, Play } from 'lucide-react';
 import { useLab } from '@/store/lab';
 import { getDisplayWiringGuides, displayPinLabel } from '@/circuit/display-guides';
 import type { PlacedPart } from '@/circuit/types';
+import { SimulationConsole } from './simulation-console';
+import { GRAPHICS_QUALITY, type GraphicsQuality } from './graphics-quality';
 
-type Tab = 'monitor' | 'guide' | 'truth';
+type Tab = 'monitor' | 'guide' | 'truth' | 'code';
 
 type Props = {
   projectId?: string;
+  openArduinoCodeRequest?: number;
+  openMonitorRequest?: number;
   is3D: boolean;
   partDragEnabled: boolean;
   setPartDragEnabled: (enabled: boolean) => void;
   onStartWiring: () => void;
   performanceMode: boolean;
   setPerformanceMode: (enabled: boolean) => void;
+  graphicsQuality?: GraphicsQuality;
+  onGraphicsQualityChange?: (quality: GraphicsQuality) => void;
 };
 
 const isAdder = (projectId?: string) => projectId === 'half-adder' || projectId === 'full-adder';
@@ -47,10 +53,16 @@ const DOCK_STORAGE_KEY = 'electrolab-workbench-dock-expanded-v1';
 
 export function WorkbenchDock(props: Props) {
   const [expanded, setExpanded] = useState(() => {
-    try { return window.localStorage.getItem(DOCK_STORAGE_KEY) === 'true'; }
+    try { const stored=window.localStorage.getItem(DOCK_STORAGE_KEY);return stored===null ? Boolean(props.projectId?.startsWith('arduino-')) : stored==='true'; }
     catch { return false; }
   });
-  const powerOn = useLab(s => s.powerOn);
+  // Code and Simulation shortcuts expand the dock automatically.
+  useEffect(() => {
+    if ((props.openArduinoCodeRequest ?? 0) > 0) setExpanded(true);
+  }, [props.openArduinoCodeRequest]);
+  useEffect(() => {
+    if ((props.openMonitorRequest ?? 0) > 0) setExpanded(true);
+  }, [props.openMonitorRequest]);
 
   useEffect(() => {
     try { window.localStorage.setItem(DOCK_STORAGE_KEY, String(expanded)); } catch { /* private browsing */ }
@@ -76,18 +88,22 @@ export function WorkbenchDock(props: Props) {
       <button type="button" className="editor-dock-handle" aria-label={expanded ? 'Hide bottom workbench controls' : 'Show bottom workbench controls'}
         aria-expanded={expanded} title="Toggle bottom controls (Alt+B)" onClick={() => setExpanded(value => !value)}>
         {expanded ? <ChevronDown size={17}/> : <ChevronUp size={17}/>}
-        <span>{expanded ? 'Hide bottom controls' : 'Show power & monitor'}</span>
-        {!expanded && <span className={`editor-dock-power-status ${powerOn ? 'on' : ''}`}>Power {powerOn ? 'ON' : 'OFF'}</span>}
+        <span>{expanded ? 'Hide bottom controls' : 'Show monitor & code'}</span>
       </button>
     </div>
   </section>;
 }
 
-function WorkbenchDockContent({projectId, is3D, partDragEnabled, setPartDragEnabled, onStartWiring, performanceMode, setPerformanceMode}: Props) {
-  const [tab, setTab] = useState<Tab>('monitor');
+function WorkbenchDockContent({projectId, openArduinoCodeRequest, openMonitorRequest, is3D, partDragEnabled, setPartDragEnabled, onStartWiring, performanceMode, setPerformanceMode, graphicsQuality = "low", onGraphicsQualityChange}: Props) {
+  const [tab, setTab] = useState<Tab>(() => (openArduinoCodeRequest ?? 0) > 0 || Boolean(projectId?.startsWith('arduino-')) ? 'code' : 'monitor');
+  useEffect(() => {
+    if ((openArduinoCodeRequest ?? 0) > 0) setTab('code');
+  }, [openArduinoCodeRequest]);
+  useEffect(() => {if ((openMonitorRequest ?? 0) > 0) setTab('monitor');},[openMonitorRequest]);
   const [selectedGuide, setSelectedGuide] = useState(0);
   const parts = useLab(s => s.parts);
   const wires = useLab(s => s.wires);
+  const selectedId = useLab(s => s.selectedId);
   const sim = useLab(s => s.sim);
   const powerOn = useLab(s => s.powerOn);
   const voltage = useLab(s => s.psuVoltage);
@@ -102,32 +118,45 @@ function WorkbenchDockContent({projectId, is3D, partDragEnabled, setPartDragEnab
     return Number(Boolean(match?.props.closed));
   };
   const a = switchState('A'), b = switchState('B'), cin = fullAdder ? switchState('Cin') : 0;
+  const mcus = parts.filter(part => part.kind === 'mcu');
   const segments = Object.values(sim.sevenSegments ?? {});
   const activeOutputs = leds.filter(p => /sum|carry/i.test(p.props.label ?? ''));
   const outputLed = (name: 'sum' | 'carry') => activeOutputs.find(p => (p.props.label ?? '').toLowerCase().includes(name));
   const showWarnings = Boolean(sim.shortCircuit || sim.error || sim.warnings?.length);
 
   return <>
-    <div className="editor-bench-power" role="group" aria-label="Power supply controls">
-      <div className="editor-power-actions">
-        <button type="button" className={`editor-power-button on ${powerOn ? 'is-on' : ''}`} aria-pressed={powerOn} onClick={() => {if(!useLab.getState().powerOn) useLab.getState().togglePower();}}><Power size={17}/> Power On</button>
-        <button type="button" className={`editor-power-button off ${!powerOn ? 'is-off' : ''}`} aria-pressed={!powerOn} onClick={() => {if(useLab.getState().powerOn) useLab.getState().togglePower();}}><Power size={17}/> Power Off</button>
+    <div className={`editor-diagnostics ${tab === 'code' ? 'editor-diagnostics-code' : ''}`}>
+      <div className="editor-diagnostics-toolbar">
+      <div className="editor-diagnostics-tabs" role="tablist" aria-label="Circuit information">
+        <button type="button" role="tab" aria-selected={tab==='monitor'} className={tab === 'monitor' ? 'active' : ''} onClick={() => {setTab('monitor');useLab.getState().setGuideTarget(null);}}><Monitor size={16}/> Monitor</button>
+        <button type="button" role="tab" aria-selected={tab==='guide'} className={tab === 'guide' ? 'active' : ''} onClick={() => setTab('guide')}><Cable size={16}/> Wiring Guide</button>
+        <button type="button" role="tab" aria-selected={tab==='truth'} className={tab === 'truth' ? 'active' : ''} onClick={() => {setTab('truth');useLab.getState().setGuideTarget(null);}}><Table2 size={16}/> Truth Table</button>
+        {mcus.length > 0 && <button type="button" role="tab" aria-selected={tab==='code'} className={tab === 'code' ? 'active' : ''} onClick={() => {setTab('code');useLab.getState().setGuideTarget(null);}} title="Edit and run the Arduino sketch"><Code2 size={16}/> Arduino Code</button>}
       </div>
-      <div className="editor-power-separator"/>
+      <div className="editor-bench-power editor-dock-instruments" role="group" aria-label="Workbench voltage and graphics settings">
       <label className="editor-power-voltage" title="Bench power supply voltage"><span>V</span><input type="number" min={0} max={24} step={0.1} aria-label="Power supply voltage" value={voltage} onChange={e => useLab.getState().setVoltage(Number(e.target.value) || 0)}/><span className="editor-power-unit">V</span></label>
       <div className="editor-power-current" title="Current drawn from simulated power supply"><Activity size={16}/><span>I = {formatCurrent(sim.supplyCurrent)}</span></div>
       {showWarnings && <span className="editor-power-warning" title={sim.error || sim.warnings?.[0] || 'Simulation warning'}>Check wiring</span>}
       <div className="editor-bench-spacer"/>
       <button type="button" className={`editor-quality-switch ${performanceMode ? 'active' : ''}`} disabled={!is3D} aria-pressed={performanceMode} aria-label="Fast 3D mode" title={performanceMode ? 'Fast 3D is enabled: reduced rendering cost. Click for detailed rendering.' : 'Detailed rendering is enabled. Click for faster 3D.'} onClick={() => setPerformanceMode(!performanceMode)}><Gauge size={16}/> <span>{performanceMode ? 'Fast 3D' : 'Detail 3D'}</span></button>
+      <label className="editor-graphics-quality" title="Graphics quality: detail, reflections, shadows and resolution">
+        <span>Quality</span>
+        <select aria-label="3D graphics quality" value={graphicsQuality} disabled={!is3D}
+          onChange={(event) => {
+            const value = event.target.value as GraphicsQuality;
+            if (onGraphicsQualityChange) onGraphicsQualityChange(value);
+            else setPerformanceMode(value === 'low');
+          }}>
+          {(Object.keys(GRAPHICS_QUALITY) as GraphicsQuality[]).map((level) =>
+            <option key={level} value={level}>{GRAPHICS_QUALITY[level].label}</option>)}
+        </select>
+      </label>
       <button type="button" className={`editor-bench-drag ${partDragEnabled ? 'active':''}`} aria-pressed={partDragEnabled} disabled={!is3D} onClick={() => setPartDragEnabled(!partDragEnabled)} title="Drag placed parts directly in 3D"><Move size={16}/><span>3D Drag</span><span className="editor-mini-switch" aria-hidden="true"/></button>
-    </div>
-    <div className="editor-diagnostics">
-      <div className="editor-diagnostics-tabs" role="tablist" aria-label="Circuit information">
-        <button type="button" role="tab" aria-selected={tab==='monitor'} className={tab === 'monitor' ? 'active' : ''} onClick={() => {setTab('monitor');useLab.getState().setGuideTarget(null);}}><Monitor size={16}/> Monitor</button>
-        <button type="button" role="tab" aria-selected={tab==='guide'} className={tab === 'guide' ? 'active' : ''} onClick={() => setTab('guide')}><Cable size={16}/> Wiring Guide</button>
-        <button type="button" role="tab" aria-selected={tab==='truth'} className={tab === 'truth' ? 'active' : ''} onClick={() => {setTab('truth');useLab.getState().setGuideTarget(null);}}><Table2 size={16}/> Truth Table</button>
+      </div>
       </div>
       <div className="editor-diagnostics-body" role="tabpanel">
+        {tab === 'code' && <div className="editor-studio-code-split"><ArduinoCodePanel mcus={mcus} selectedId={selectedId} sim={sim.mcus ?? {}} powerOn={powerOn}/><SimulationConsole fullAdder={fullAdder}/></div>}
+
         {tab === 'monitor' && <div className="editor-monitor-grid">
           <section className="editor-monitor-section">
             <h3>Outputs {adder && <span>({fullAdder ? 'Full Adder' : 'Half Adder'})</span>}</h3>
@@ -158,4 +187,77 @@ function WorkbenchDockContent({projectId, is3D, partDragEnabled, setPartDragEnab
       </div>
     </div>
   </>;
+}
+
+
+/** A clearly discoverable Arduino sketch editor. The existing MCU store is the
+ * single source of truth; Apply commits once rather than adding an Undo entry
+ * for each character typed in the textarea. */
+function ArduinoCodePanel({mcus, selectedId, sim, powerOn}: {
+  mcus: PlacedPart[];
+  selectedId: string | null;
+  sim: NonNullable<ReturnType<typeof useLab.getState>['sim']['mcus']>;
+  powerOn: boolean;
+}) {
+  const [preferredId, setPreferredId] = useState('');
+  const selectedMcu = mcus.find(part => part.id === selectedId);
+  const mcu = selectedMcu ?? mcus.find(part => part.id === preferredId) ?? mcus[0];
+  const savedCode = mcu?.props.code ?? '';
+  const draftKey = mcu ? `electrolab-arduino-draft:${mcu.id}` : '';
+  const [draftCode, setDraftCode] = useState(savedCode);
+  const [status, setStatus] = useState('');
+
+  useEffect(() => {
+    let existingDraft: string | null = null;
+    try { if (draftKey) existingDraft = window.sessionStorage.getItem(draftKey); } catch { /* disabled browser storage */ }
+    setDraftCode(existingDraft ?? savedCode);
+    setStatus(existingDraft !== null && existingDraft !== savedCode ? 'Recovered unsaved sketch draft.' : '');
+  }, [draftKey, savedCode]);
+
+  if (!mcu) return <div className="editor-arduino-empty">Add an Arduino Uno to edit its sketch.</div>;
+
+  const dirty = draftCode !== savedCode;
+  const commit = () => {
+    if (!dirty) return;
+    useLab.getState().setMcuCode(mcu.id, draftCode);
+    try { window.sessionStorage.removeItem(draftKey); } catch { /* disabled browser storage */ }
+    setStatus('Sketch saved to the simulated Arduino.');
+  };
+  const run = () => {
+    if (dirty) {
+      useLab.getState().setMcuCode(mcu.id, draftCode);
+      try { window.sessionStorage.removeItem(draftKey); } catch { /* disabled browser storage */ }
+    }
+    const lab = useLab.getState();
+    if (!lab.powerOn) lab.togglePower();
+    useLab.getState().runNow();
+    setStatus('Sketch applied; simulator refreshed.');
+  };
+  const runtime = sim[mcu.id];
+
+  return <section className="editor-arduino-code-panel" aria-label="Arduino sketch editor">
+    <div className="editor-arduino-code-toolbar">
+      <div className="editor-arduino-code-heading"><Code2 size={17}/><div><strong>Arduino sketch</strong><span>Sketch editor · simulation, not a USB upload</span></div></div>
+      {mcus.length > 1 ? <label className="editor-arduino-mcu-picker">Board <select aria-label="Choose Arduino" value={mcu.id} onChange={event => {setPreferredId(event.target.value);useLab.getState().select(event.target.value);}}>{mcus.map(part => <option value={part.id} key={part.id}>{part.props.label ?? part.id}</option>)}</select></label> : <span className="editor-arduino-mcu-name">{mcu.props.label ?? 'Arduino Uno'}</span>}
+      <div className="editor-arduino-code-actions">
+        <span className={`editor-arduino-draft-status ${dirty ? 'unsaved' : ''}`}>{dirty ? 'Unsaved changes' : 'Saved'}</span>
+        <button type="button" disabled={!dirty} onClick={commit} title="Save the sketch to this circuit"><Save size={14}/> Save code</button>
+        <button type="button" className="editor-arduino-run" onClick={run} title="Apply the sketch and run it in the simulator"><Play size={14}/> Apply & Run</button>
+      </div>
+    </div>
+    <label className="editor-arduino-editor-label" htmlFor={`arduino-sketch-${mcu.id}`}>Edit sketch (Arduino-style C++)</label>
+    <textarea id={`arduino-sketch-${mcu.id}`} className="editor-arduino-code-textarea" aria-label="Arduino sketch code editor" spellCheck={false} autoCapitalize="off" autoCorrect="off" value={draftCode} onChange={event => {
+      const nextCode = event.target.value;
+      setDraftCode(nextCode);
+      setStatus('');
+      try {
+        if (nextCode === savedCode) window.sessionStorage.removeItem(draftKey);
+        else window.sessionStorage.setItem(draftKey, nextCode);
+      } catch { /* disabled browser storage */ }
+    }} onKeyDown={event => {if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {event.preventDefault();commit();}}}/>
+    <div className="editor-arduino-code-footer" aria-live="polite">
+      <span>{status || (runtime?.error ? `Sketch error: ${runtime.error}` : powerOn && runtime?.powered ? 'Arduino powered · sketch simulation active' : 'Connect 5V and GND, then Apply & Run to simulate.')}</span>
+      <span>Supports common pinMode, digitalWrite, digitalRead, analogRead and LCD calls. Serial Monitor output and full Arduino compilation are not yet supported.</span>
+    </div>
+  </section>;
 }

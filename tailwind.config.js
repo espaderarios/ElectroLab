@@ -16,10 +16,13 @@ const ion = {
   400:'#28dfff', 500:'#00c9ee', 600:'#009cbd', 700:'#087b95',
   800:'#0b516a', 900:'#092e43', 950:'#05202f',
 };
+// One consistent navy family for UI utility classes, including legacy
+// `purple-*`/`violet-*` Tailwind classes used in older ElectroLab views.
+// Semantic resistor band and LED colors are defined separately in circuit data.
 const cobalt = {
-  50:'#eef4ff', 100:'#e0edff', 200:'#bfd8ff', 300:'#93baff',
-  400:'#6799ff', 500:'#4377fb', 600:'#2c5ce0', 700:'#2447b0',
-  800:'#1e387f', 900:'#162958', 950:'#0a1637',
+  50:'#f1f7fe', 100:'#e4f0fb', 200:'#c9e0f6', 300:'#9bc5ef',
+  400:'#72a9dd', 500:'#427ebd', 600:'#2a639f', 700:'#1d4d85',
+  800:'#173c6b', 900:'#102d53', 950:'#091b37',
 };
 
 export default {

@@ -17,7 +17,7 @@ for (const name of ['src/circuit-lab/workbench-dock.tsx','src/pages/CircuitEdito
 }
 assert.match(dock,/editor-dock-handle-row/,'real bottom-edge handle is required');
 assert.match(dock,/Hide bottom controls/);
-assert.match(dock,/Show power & monitor/);
+assert.match(dock,/Show monitor & code/);
 assert.match(dock,/aria-expanded=\{expanded\}/,'expansion must be accessible');
 assert.match(dock,/expanded && <div id="editor-workbench-controls"><WorkbenchDockContent/,'heavy diagnostic content must unmount when hidden');
 assert.match(dock,/localStorage\.setItem\(DOCK_STORAGE_KEY/,'dock state must persist');

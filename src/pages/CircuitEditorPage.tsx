@@ -1,3 +1,4 @@
+import { type GraphicsQuality, isGraphicsQuality } from '@/circuit-lab/graphics-quality';
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   ChevronLeft,
@@ -34,6 +35,9 @@ import {
   Monitor,
   Info,
   CheckCircle2,
+  Code2,
+  Activity,
+  X,
 } from 'lucide-react'
 
 import HelpModal from '../components/HelpModal'
@@ -52,6 +56,7 @@ import {
 import type { HoleId } from '../circuit/types'
 import * as THREE from 'three'
 import { WorkbenchDock } from '../circuit-lab/workbench-dock'
+import { StudioProperties } from '../circuit-lab/studio-properties'
 
 const CircuitLab = lazy(() =>
   import('../circuit-lab/index').then((m) => ({ default: m.CircuitLab })),
@@ -1069,6 +1074,20 @@ type PaletteSection = { title: string; items: PaletteItem[] }
 
 const PALETTE: PaletteSection[] = [
   {
+    title: 'Microcontrollers',
+    items: [
+      { id: 'mcu', label: 'Arduino Uno', symbol: <McuSymbol />, tool: 'mcu', keywords: 'Arduino Uno R3 ATmega328P microcontroller' },
+    ],
+  },
+  {
+    title: 'Output Devices',
+    items: [
+      { id: 'seven-segment', label: '7-Segment', symbol: '8.', tool: 'seven-segment' },
+      { id: 'lcd', label: 'LCD 16×2', symbol: <LcdSymbol />, tool: 'lcd', keywords: 'HD44780 character display' },
+      { id: 'oled', label: 'OLED', symbol: <OledSymbol />, tool: 'oled', keywords: 'SSD1306 I2C 128x64' },
+    ],
+  },
+  {
     title: 'Sources',
     items: [
       { id: 'vdc', label: 'VDC', symbol: '⎓', tool: 'psu-positive' },
@@ -1149,15 +1168,6 @@ const PALETTE: PaletteSection[] = [
     ],
   },
   {
-    title: 'Displays & Controllers',
-    items: [
-      { id: 'lcd', label: 'LCD 16×2', symbol: <LcdSymbol />, tool: 'lcd', keywords: 'HD44780 character display' },
-      { id: 'oled', label: 'OLED', symbol: <OledSymbol />, tool: 'oled', keywords: 'SSD1306 I2C 128x64' },
-      { id: 'seven-segment', label: '7-Segment', symbol: '8.', tool: 'seven-segment' },
-      { id: 'mcu', label: 'Arduino / MCU', symbol: <McuSymbol />, tool: 'mcu', keywords: 'Uno R3 ATmega328P microcontroller' },
-    ],
-  },
-  {
     title: 'Logic ICs',
     items: [
       { id: 'not', label: 'NOT IC', symbol: <GateSymbol label="NOT" />, tool: 'not', keywords: '74HC04 hex inverter' },
@@ -1190,12 +1200,29 @@ export function CircuitEditorPage() {
   const [use3D, setUse3D] = useState(true)
   // Fast rendering is on by default. Users can switch to detailed shadows from the dock.
   const [performanceMode, setPerformanceMode] = useState(() => {
-    try { return window.localStorage.getItem('electrolab-3d-fast-mode-v1') !== 'false' }
+    try {
+      const quality = window.localStorage.getItem('electrolab-graphics-quality-v1');
+      if (isGraphicsQuality(quality)) return quality === 'low';
+      return window.localStorage.getItem('electrolab-3d-fast-mode-v1') !== 'false';
+    }
     catch { return true }
   })
   useEffect(() => {
     try { window.localStorage.setItem('electrolab-3d-fast-mode-v1', String(performanceMode)) } catch { /* private browsing */ }
   }, [performanceMode])
+  const [graphicsQuality, setGraphicsQuality] = useState<GraphicsQuality>(() => {
+    try {
+      const stored = window.localStorage.getItem('electrolab-graphics-quality-v1');
+      return isGraphicsQuality(stored) ? stored : (window.localStorage.getItem('electrolab-3d-fast-mode-v1') === 'false' ? 'high' : 'low');
+    } catch { return 'low'; }
+  });
+  const changeGraphicsQuality = (quality: GraphicsQuality) => {
+    setGraphicsQuality(quality);
+    setPerformanceMode(quality === 'low');
+  };
+  useEffect(() => {
+    try { window.localStorage.setItem('electrolab-graphics-quality-v1', graphicsQuality); } catch { /* private browsing */ }
+  }, [graphicsQuality]);
   const [helpOpen, setHelpOpen] = useState(false)
   const boardPreset = useLab((state) => state.boardId)
   const setBoard = useLab((state) => state.setBoard)
@@ -1250,6 +1277,10 @@ export function CircuitEditorPage() {
 
     skipSaveRef.current = true
     loadCircuit(project.circuit)
+    // Open Arduino demos with their actual board selected so the docked
+    // Properties panel immediately shows its editable headers and pins.
+    const firstArduino = project.circuit.parts.find(part => part.kind === 'mcu')
+    if (firstArduino) useLab.getState().select(firstArduino.id)
     activeIdRef.current = id
     setActiveProjectId(id)
     touchProject(id)
@@ -1291,6 +1322,9 @@ export function CircuitEditorPage() {
   const [sidebarTab, setSidebarTab] = useState<'parts' | 'circuits' | 'examples'>('parts')
   const workspaceRef = useRef<HTMLDivElement | null>(null)
   const [paletteOpen, setPaletteOpen] = useState(true)
+  const [openArduinoCodeRequest, setOpenArduinoCodeRequest] = useState(0)
+  const [openMonitorRequest, setOpenMonitorRequest] = useState(0)
+  const [propertiesOpen, setPropertiesOpen] = useState(true)
   const [category, setCategory] = useState('All')
   const [showTips, setShowTips] = useState(false)
   const [showShortcuts, setShowShortcuts] = useState(false)
@@ -1748,6 +1782,7 @@ export function CircuitEditorPage() {
             <button type="button" aria-pressed={use3D} className={use3D ? 'active' : ''} onClick={() => setUse3D(true)}>3D</button>
             <button type="button" aria-pressed={!use3D} className={!use3D ? 'active' : ''} onClick={() => setUse3D(false)}>2D</button>
           </div>
+          {parts.some(part => part.kind === 'mcu') && <button type="button" className="editor-arduino-code-shortcut" title="Open Arduino sketch editor" aria-label="Open Arduino Code editor" onClick={() => setOpenArduinoCodeRequest(request => request + 1)}><Code2 size={17}/><span>Arduino Code</span></button>}
           <button type="button" className="editor-main-action" onClick={handleRunSimulation} title="Run and view the simulation report"><Play size={17}/> <span className="hidden sm:inline">Run &amp; Results</span><span className="sm:hidden">Run</span></button>
           <div className="editor-more-wrap" ref={moreMenuRef}>
             <button type="button" className="editor-icon-btn editor-more-trigger" aria-label="More project actions" title="More actions" aria-expanded={showMore} onClick={() => setShowMore(v=>!v)}><ChevronDown size={18}/></button>
@@ -1782,11 +1817,14 @@ export function CircuitEditorPage() {
           <button type="button" className="editor-icon-btn editor-header-action" title="Simulator help" aria-label="Simulator help" onClick={() => setHelpOpen(true)}><HelpCircle size={19}/></button>
         </div>
         <div className="editor-actions px-3 lg:px-5 pb-2" role="toolbar" aria-label="Editing tools">
-          <div className="editor-workspace-tabs" role="tablist" aria-label="Workspace panel">
-            <button type="button" role="tab" aria-selected={sidebarTab==='parts'} className={sidebarTab==='parts'?'active':''} onClick={() => {setUse3D(true);setSidebarTab('parts');setPaletteOpen(true);}}><CircuitBoard size={17}/> Parts</button>
-            <button type="button" role="tab" aria-selected={sidebarTab==='circuits'} className={sidebarTab==='circuits'?'active':''} onClick={() => {setUse3D(true);setSidebarTab('circuits');setPaletteOpen(true);}}><BookOpen size={17}/> Circuits</button>
-            <button type="button" role="tab" aria-selected={sidebarTab==='examples'} className={sidebarTab==='examples'?'active':''} onClick={() => {setUse3D(true);setSidebarTab('examples');setPaletteOpen(true);}}><LayoutGrid size={17}/> Examples</button>
+          <div className="editor-studio-modes" role="group" aria-label="Simulator workspace modes">
+            <button type="button" className={activeTool === 'select' ? 'active':''} aria-pressed={activeTool==='select'} onClick={() => toggleToolbarTool('select')}><MousePointer2 size={16}/> Design</button>
+            <button type="button" className={activeTool === 'wire' ? 'active':''} aria-pressed={activeTool==='wire'} onClick={() => toggleToolbarTool('wire')}><Cable size={16}/> Wiring</button>
+            <button type="button" disabled={!parts.some(p=>p.kind==='mcu')} onClick={() => setOpenArduinoCodeRequest(request => request + 1)}><Code2 size={16}/> Code</button>
+            <button type="button" onClick={() => setOpenMonitorRequest(request => request + 1)}><Activity size={16}/> Simulate</button>
           </div>
+          <span className="editor-toolbar-divider"/>
+          <button type="button" className="editor-studio-run" onClick={() => {const lab=useLab.getState();if(!lab.powerOn)lab.togglePower();lab.runNow();setOpenMonitorRequest(request=>request+1)}}><Play size={15}/> Run</button>
           <button type="button" className="editor-icon-btn editor-palette-toggle" onClick={() => setPaletteOpen(v=>!v)} aria-pressed={paletteOpen} aria-label={paletteOpen ? 'Hide components' : 'Show components'} title={paletteOpen ? 'Hide component library' : 'Show component library'}>{paletteOpen?<PanelLeftClose size={16}/>:<PanelLeftOpen size={16}/>}</button>
           <span className="editor-toolbar-divider"/>
           <EditorToolButton label="Select" shortcut="V" icon={<MousePointer2 size={19}/>} disabled={!use3D} active={activeTool === 'select' && !moveMode} onClick={() => toggleToolbarTool('select')}/>
@@ -1811,6 +1849,12 @@ export function CircuitEditorPage() {
 
       <div className="flex-1 flex overflow-hidden min-h-0 editor-body-layout">
         {paletteOpen && use3D && <aside className="editor-sidebar w-[210px] lg:w-[260px] border-r border-[#2a4666] bg-[#091b35] flex flex-col flex-shrink-0" aria-label="Component library">
+          <div className="editor-studio-sidebar-heading"><CircuitBoard size={18}/><strong>Components</strong><button type="button" aria-label="Collapse components" title="Collapse components" onClick={()=>setPaletteOpen(false)}><X size={17}/></button></div>
+          <div className="editor-workspace-tabs" role="tablist" aria-label="Workspace panel">
+            <button type="button" role="tab" aria-selected={sidebarTab==='parts'} className={sidebarTab==='parts'?'active':''} onClick={() => {setUse3D(true);setSidebarTab('parts');setPaletteOpen(true);}}><CircuitBoard size={17}/> Parts</button>
+            <button type="button" role="tab" aria-selected={sidebarTab==='circuits'} className={sidebarTab==='circuits'?'active':''} onClick={() => {setUse3D(true);setSidebarTab('circuits');setPaletteOpen(true);}}><BookOpen size={17}/> Circuits</button>
+            <button type="button" role="tab" aria-selected={sidebarTab==='examples'} className={sidebarTab==='examples'?'active':''} onClick={() => {setUse3D(true);setSidebarTab('examples');setPaletteOpen(true);}}><LayoutGrid size={17}/> Examples</button>
+          </div>
           {sidebarTab === 'parts' && <>
           <div className="editor-palette-heading">
             <div className="flex justify-between items-center mb-2">
@@ -1901,7 +1945,7 @@ export function CircuitEditorPage() {
                 }
               >
                 <div className="absolute inset-0">
-                  <CircuitLab performanceMode={performanceMode} />
+                  <CircuitLab performanceMode={performanceMode} quality={graphicsQuality} />
                 </div>
               </Suspense>
             </LabErrorBoundary>
@@ -1915,8 +1959,9 @@ export function CircuitEditorPage() {
             </div>
           )}
         </main>
-        <WorkbenchDock projectId={projectId} is3D={use3D} partDragEnabled={partDragEnabled} setPartDragEnabled={setPartDragEnabled} performanceMode={performanceMode} setPerformanceMode={setPerformanceMode} onStartWiring={() => {setUse3D(true);setSidebarTab('parts');setPaletteOpen(true);}}/>
+        <WorkbenchDock projectId={projectId} openArduinoCodeRequest={openArduinoCodeRequest} openMonitorRequest={openMonitorRequest} is3D={use3D} partDragEnabled={partDragEnabled} setPartDragEnabled={setPartDragEnabled} performanceMode={performanceMode} setPerformanceMode={(enabled) => changeGraphicsQuality(enabled ? "low" : "high")} graphicsQuality={graphicsQuality} onGraphicsQualityChange={changeGraphicsQuality} onStartWiring={() => {setUse3D(true);setSidebarTab('parts');setPaletteOpen(true);}}/>
         </div>
+        {use3D && <StudioProperties open={propertiesOpen} onToggle={()=>setPropertiesOpen(value=>!value)}/>}
       </div>
 
       <HelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />

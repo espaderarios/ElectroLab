@@ -2,6 +2,7 @@ import { useEffect, useState, type ComponentType } from "react";
 import { useLab } from "@/store/lab";
 import { nextToggleableTool } from "@/circuit/editor-toolbar-state";
 import { LabOverlay } from "./overlay";
+import type { GraphicsQuality } from "./graphics-quality";
 
 declare global {
   interface Window {
@@ -97,8 +98,8 @@ function MobileUnavailableNotice() {
   );
 }
 
-export function CircuitLab({ performanceMode = true }: { performanceMode?: boolean }) {
-  const [Canvas, setCanvas] = useState<ComponentType<{ performanceMode: boolean }> | null>(null);
+export function CircuitLab({ performanceMode = true, quality = "low" }: { performanceMode?: boolean; quality?: GraphicsQuality }) {
+  const [Canvas, setCanvas] = useState<ComponentType<{ performanceMode: boolean; quality?: GraphicsQuality }> | null>(null);
   const [mobile, setMobile] = useState(false);
 
   useEffect(() => {
@@ -170,7 +171,7 @@ export function CircuitLab({ performanceMode = true }: { performanceMode?: boole
       ) : (
         <>
           {Canvas ? (
-            <Canvas performanceMode={performanceMode} />
+            <Canvas performanceMode={performanceMode} quality={quality} />
           ) : (
             <div className="flex h-full items-center justify-center text-sm text-paper/70">
               Opening the bench…

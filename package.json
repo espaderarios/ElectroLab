@@ -27,7 +27,12 @@
     "test:wire-sidebar": "node tests/wire-sidebar.cjs",
     "test:hover-labels": "node tests/hover-only-labels.cjs",
     "test:workbench-theme": "node tests/gray-workbench-theme.cjs",
-    "test:extended-adder": "node tests/extended-full-adder.cjs"
+    "test:extended-adder": "node tests/extended-full-adder.cjs",
+    "test:arduino-code": "node tests/arduino-code-panel.cjs",
+    "test:studio-workspace": "node tests/studio-workspace.cjs",
+    "test:realism": "node tests/realistic-rendering.cjs",
+    "test:clean-dock-screen": "node tests/clean-dock-screen.cjs",
+    "test:navy-theme": "node tests/navy-blue-theme.cjs"
   },
   "dependencies": {
     "react": "^18.3.1",

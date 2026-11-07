@@ -1,0 +1,44 @@
+/* Studio layout source-level regression: functional panels, no inert toolbar buttons. */
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const path=require('node:path');
+const ts=require('typescript');
+const postcss=require('postcss');
+const root=path.resolve(__dirname,'..');
+const read=f=>fs.readFileSync(path.join(root,f),'utf8');
+const page=read('src/pages/CircuitEditorPage.tsx');
+const dock=read('src/circuit-lab/workbench-dock.tsx');
+const properties=read('src/circuit-lab/studio-properties.tsx');
+const overlay=read('src/circuit-lab/overlay.tsx');
+const consoleText=read('src/circuit-lab/simulation-console.tsx');
+const css=read('src/index.css');
+for(const f of ['src/pages/CircuitEditorPage.tsx','src/circuit-lab/workbench-dock.tsx','src/circuit-lab/studio-properties.tsx','src/circuit-lab/simulation-console.tsx','src/circuit-lab/overlay.tsx']) {
+ const sf=ts.createSourceFile(f,read(f),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
+ assert.equal(sf.parseDiagnostics.length,0,`${f} parses without errors`);
+}
+postcss.parse(css);
+assert.match(page,/className="editor-studio-modes"/);
+assert.match(page,/className="editor-studio-run"/);
+assert.match(page,/lab\.powerOn\)lab\.togglePower\(\);lab\.runNow\(\)/,'Run must actually run the simulation');
+assert.match(page,/aria-label="Component library"/);
+assert.match(page,/<StudioProperties open=\{propertiesOpen\}/);
+assert.match(page,/openMonitorRequest=\{openMonitorRequest\}/);
+assert.match(overlay,/createPortal/);
+assert.match(overlay,/dockInspector\(/);
+assert.match(overlay,/getElementById\("electrolab-studio-inspector"\)/);
+assert.match(properties,/id="electrolab-studio-inspector"/);
+assert.match(properties,/setWireStyle\(style\)/);
+assert.match(properties,/setWireColor\(color\)/);
+assert.match(properties,/setTool\('wire'\)/);
+assert.match(properties,/togglePower\(\)/);
+assert.match(dock,/editor-studio-code-split/);
+assert.match(dock,/<SimulationConsole fullAdder=\{fullAdder\}/);
+assert.match(consoleText,/role="log"/);
+assert.match(consoleText,/Serial\.print.*not yet emulated/);
+assert.match(consoleText,/setRows\(/);
+assert.match(css,/\.editor-studio-properties/);
+assert.match(css,/\.editor-properties-scroll \.lab-component-inspector/);
+assert.match(css,/\.editor-studio-code-split/);
+assert.match(css,/\.editor-console-log/);
+assert.match(css,/@media\(max-width:1030px\)/);
+console.log('Studio: functional 3-column workspace, original inspector portal, wired modes, Arduino code and honest live event console: PASS');
