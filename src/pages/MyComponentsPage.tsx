@@ -646,7 +646,7 @@ export function  MyComponentsPage() {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search components used in your projects..."
-            className="w-full bg-[#111827] border border-[#1e293b] rounded-lg pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="w-full bg-[var(--app-surface)] border border-[var(--app-border)] rounded-lg pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
         </div>
       </div>
@@ -678,7 +678,7 @@ export function  MyComponentsPage() {
           </div>
 
           {filtered.length === 0 ? (
-            <div className="bg-[#111827] border border-dashed border-[#1e293b] rounded-xl p-10 text-center">
+            <div className="bg-[var(--app-surface)] border border-dashed border-[var(--app-border)] rounded-xl p-10 text-center">
               <div className="text-sm font-medium text-slate-300">No project components found</div>
               <div className="text-xs text-slate-500 mt-1">
                 Add components to a project in the circuit editor and they will appear here automatically.
@@ -689,7 +689,7 @@ export function  MyComponentsPage() {
               {filtered.map((c) => (
                 <div
                   key={c.key}
-                  className="bg-[#111827] border border-[#1e293b] rounded-xl p-4 hover:border-blue-500/40 transition group"
+                  className="bg-[var(--app-surface)] border border-[var(--app-border)] rounded-xl p-4 hover:border-blue-500/40 transition group"
                 >
                   <div className="h-20 bg-sky-900 rounded-lg mb-3 flex items-center justify-center text-xl font-mono text-slate-50 group-hover:text-slate-200 transition">
                     {c.symbol}

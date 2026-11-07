@@ -722,7 +722,7 @@ export function ComponentLibrary() {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search components by name, type, or description..."
-            className="w-full bg-[#111827] border border-[#1e293b] rounded-lg pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="w-full bg-[var(--app-surface)] border border-[var(--app-border)] rounded-lg pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
         </div>
       </div>
@@ -759,7 +759,7 @@ export function ComponentLibrary() {
             {list.map((c) => (
               <div
                 key={c.name}
-                className="bg-[#111827] border border-[#1e293b] rounded-xl p-4 hover:border-blue-500/40 transition group"
+                className="bg-[var(--app-surface)] border border-[var(--app-border)] rounded-xl p-4 hover:border-blue-500/40 transition group"
               >
                 <div className="h-20 bg-sky-950 rounded-lg mb-3 flex items-center justify-center text-xl font-mono text-white group-hover:text-slate-200 transition">
                   {c.symbol}

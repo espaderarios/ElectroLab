@@ -57,7 +57,7 @@ function ToggleRow({ label, checked, onChange }: {
 
       <span
         className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
-          checked ? "bg-blue-900" : "bg-[var(--app-border)]"
+          checked ? "bg-cyan-500" : "bg-[var(--app-border)]"
         }`}
       >
         <span
@@ -77,7 +77,7 @@ export function Sidebar() {
   return (
     <aside className="w-56 flex-shrink-0 bg-[var(--app-sidebar)] border-r border-[var(--app-border)] flex flex-col h-full transition-colors duration-200">
       <div className="px-4 py-5 flex items-center gap-2.5">
-        <div className="w-8 h-8 rounded-lg overflow-hidden flex items-center justify-center shadow-lg shadow-blue-600/30">
+        <div className="w-8 h-8 rounded-lg overflow-hidden flex items-center justify-center shadow-lg shadow-cyan-500/20">
           <img
             src={favicon}
             alt="ElectroLab"
@@ -85,7 +85,7 @@ export function Sidebar() {
           />
         </div>
         <span className="font-semibold text-lg tracking-tight text-[var(--app-heading)]">
-          ElectroLab
+          Electro<span className="text-cyan-400">Lab</span>
         </span>
       </div>
 
@@ -98,7 +98,7 @@ export function Sidebar() {
             className={({ isActive }) =>
               `w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                 isActive
-                  ? "bg-blue-600/20 text-blue-500 dark:text-blue-400"
+                  ? "bg-cyan-500/10 text-[var(--app-heading)] border-l-2 border-cyan-400 shadow-[inset_0_0_20px_rgba(0,185,255,0.06)]"
                   : "text-[var(--app-muted)] hover:bg-[var(--app-hover)] hover:text-[var(--app-text)]"
               }`
             }
@@ -114,7 +114,7 @@ export function Sidebar() {
           to="/settings"
           className="flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-[var(--app-hover)] cursor-pointer transition-colors"
         >
-          <div className="w-8 h-8 rounded-full bg-blue-600/30 flex items-center justify-center text-xs font-bold text-blue-500 dark:text-blue-300">
+          <div className="w-8 h-8 rounded-full bg-cyan-500/15 flex items-center justify-center text-xs font-bold text-[var(--app-heading)]">
             EE
           </div>
           <div className="flex-1 min-w-0">

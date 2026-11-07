@@ -1,0 +1,205 @@
+/* ElectroLab neon PCB opening sequence — short, skippable, reduced-motion safe. */
+.el-intro {
+  position: fixed;
+  inset: 0;
+  z-index: 50000;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  isolation: isolate;
+  background: #020b20;
+  color: #e7f7ff;
+  font-family: Inter, system-ui, sans-serif;
+  opacity: 1;
+  transition: opacity 570ms cubic-bezier(.33,.1,.15,1);
+}
+.el-intro--leaving { opacity: 0; pointer-events: none; }
+.el-intro__board {
+  position: absolute;
+  inset: -3%;
+  background-size: cover;
+  background-position: center;
+  animation: el-board-arrive 5.3s ease-out both;
+}
+.el-intro__veil {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 40% 42% at 50% 50%, rgba(1, 8, 25, .46), rgba(1, 11, 33, .09) 85%, transparent),
+    linear-gradient(180deg, rgba(0, 6, 23, .43), rgba(1, 12, 42, .12) 38%, rgba(0, 6, 23, .48));
+}
+.el-intro__signals { position: absolute; inset: 0; width: 100%; height: 100%; opacity: .93; }
+.el-intro__signal {
+  stroke-dasharray: 0.075 0.925;
+  stroke-dasharray: 100 1600;
+  stroke-dashoffset: 1700;
+  filter: drop-shadow(0 0 7px rgba(39, 231, 255, .95));
+  animation-name: el-trace-pulse;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+.el-intro__halo {
+  position: absolute;
+  width: min(58vw, 650px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(14, 155, 255, .29), rgba(12, 125, 255, .13) 27%, transparent 70%);
+  filter: blur(22px);
+  animation: el-halo 3.2s ease-in-out infinite alternate;
+}
+.el-intro__center {
+  position: relative;
+  z-index: 1;
+  width: min(92vw, 570px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  animation: el-center-in 1.35s cubic-bezier(.2,.85,.1,1) both;
+}
+.el-intro__microtext {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: #a7edff;
+  letter-spacing: .28em;
+  text-shadow: 0 0 22px rgba(25, 199, 255, .7);
+  font-size: clamp(.55rem, .85vw, .7rem);
+  font-weight: 700;
+  margin-bottom: 17px;
+}
+.el-intro__microtext svg { color: #47eeff; filter: drop-shadow(0 0 8px rgba(47, 220, 255, .7)); }
+.el-intro__chip {
+  position: relative;
+  width: 100%;
+  min-height: 208px;
+  display: grid;
+  place-items: center;
+  padding: clamp(15px, 4vw, 32px);
+  overflow: hidden;
+  isolation: isolate;
+  background: linear-gradient(148deg, rgba(13, 48, 94, .94), rgba(1, 13, 38, .97) 35%, rgba(3, 21, 51, .96) 80%, rgba(18, 69, 116, .92));
+  border: 1px solid rgba(119, 218, 255, .7);
+  border-radius: 23px;
+  box-shadow:
+    0 0 0 1px rgba(2, 28, 60, .65),
+    0 0 60px rgba(0, 175, 255, .3),
+    0 28px 85px rgba(0, 3, 24, .8),
+    inset 0 1px 0 rgba(210, 244, 255, .23),
+    inset 0 -14px 28px rgba(1, 8, 28, .62);
+  backdrop-filter: blur(11px);
+}
+.el-intro__chip::before {
+  content: "";
+  position: absolute;
+  inset: 8px;
+  border: 1px solid rgba(67, 175, 245, .22);
+  border-radius: 16px;
+  pointer-events: none;
+}
+.el-intro__chip-gloss {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(125deg, rgba(190, 239, 255, .13), transparent 36%, transparent 73%, rgba(39, 181, 242, .14));
+}
+.el-intro__logo {
+  position: relative;
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+  filter: drop-shadow(0 0 14px rgba(13, 167, 255, .3));
+  animation: el-logo-light 2.6s ease-out both;
+}
+.el-intro__tagline {
+  margin-top: 19px;
+  font-size: clamp(.63rem, 1.1vw, .76rem);
+  letter-spacing: clamp(.15em, .4vw, .38em);
+  font-weight: 700;
+  color: #e1f6ff;
+  text-align: center;
+  text-shadow: 0 2px 14px rgba(0, 12, 40, .8);
+}
+.el-intro__tagline span { color: #46ebff; margin: 0 .3em; }
+.el-intro__progress {
+  overflow: hidden;
+  width: min(70vw, 250px);
+  height: 3px;
+  margin-top: 25px;
+  border-radius: 4px;
+  background: rgba(175, 225, 255, .25);
+  box-shadow: 0 0 12px rgba(0, 145, 255, .16);
+}
+.el-intro__progress-bar {
+  display: block;
+  height: 100%;
+  width: 100%;
+  transform: scaleX(0);
+  transform-origin: left center;
+  background: linear-gradient(90deg, #0b91ff, #3bffff 75%, #ddffff);
+  box-shadow: 0 0 15px #2be9ff;
+  animation: el-load 3.85s cubic-bezier(.14,.15,.22,1) forwards;
+}
+.el-intro__status {
+  margin-top: 11px;
+  color: #b5d7f2;
+  font-size: .64rem;
+  letter-spacing: .22em;
+  font-weight: 600;
+  text-align: center;
+}
+.el-intro__skip {
+  position: absolute;
+  z-index: 2;
+  right: max(21px, env(safe-area-inset-right));
+  bottom: max(23px, env(safe-area-inset-bottom));
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 15px;
+  border-radius: 999px;
+  border: 1px solid rgba(99, 206, 255, .45);
+  background: rgba(4, 21, 53, .77);
+  color: #e8faff;
+  font-size: .8rem;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  transition: border-color .18s ease, background .18s ease, transform .18s ease;
+}
+.el-intro__skip:hover {
+  background: rgba(9, 80, 133, .9);
+  border-color: #4cecff;
+  transform: translateY(-2px);
+}
+.el-intro__skip:focus-visible { outline: 2px solid #3effff; outline-offset: 4px; }
+.el-intro__corner {
+  position: absolute;
+  width: 48px;
+  height: 48px;
+  opacity: .6;
+  pointer-events: none;
+}
+.el-intro__corner--tl { top: 22px; left: 22px; border-top: 1px solid #50ddff; border-left: 1px solid #50ddff; }
+.el-intro__corner--tr { top: 22px; right: 22px; border-top: 1px solid #50ddff; border-right: 1px solid #50ddff; }
+.el-intro__corner--bl { bottom: 22px; left: 22px; border-bottom: 1px solid #50ddff; border-left: 1px solid #50ddff; }
+.el-intro__corner--br { bottom: 22px; right: 22px; border-bottom: 1px solid #50ddff; border-right: 1px solid #50ddff; }
+@keyframes el-board-arrive { from { transform: scale(1.11); filter: brightness(.63) saturate(.82); } to { transform: scale(1.01); filter: brightness(1) saturate(1.12); } }
+@keyframes el-trace-pulse { to { stroke-dashoffset: -1700; } }
+@keyframes el-halo { from { transform: scale(.87); opacity: .5; } to { transform: scale(1.12); opacity: .9; } }
+@keyframes el-center-in { from { transform: translateY(25px) scale(.93); opacity: 0; filter: blur(9px); } to { transform: translateY(0) scale(1); opacity: 1; filter: blur(0); } }
+@keyframes el-logo-light { from { filter: brightness(.3) drop-shadow(0 0 0 transparent); } to { filter: brightness(1.08) drop-shadow(0 0 14px rgba(0, 187, 255, .35)); } }
+@keyframes el-load { to { transform: scaleX(1); } }
+@media (max-width: 600px) {
+  .el-intro__center { width: min(87vw, 470px); }
+  .el-intro__chip { border-radius: 18px; min-height: 135px; }
+  .el-intro__microtext { letter-spacing: .12em; }
+  .el-intro__board { background-position: center; }
+  .el-intro__status { font-size: .56rem; }
+  .el-intro__corner { width: 25px; height: 25px; }
+  .el-intro__corner--tl { top: 13px; left: 13px; }
+  .el-intro__corner--tr { top: 13px; right: 13px; }
+  .el-intro__corner--bl { bottom: 13px; left: 13px; }
+  .el-intro__corner--br { bottom: 13px; right: 13px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .el-intro *, .el-intro::before, .el-intro::after { animation: none !important; transition: none !important; }
+}

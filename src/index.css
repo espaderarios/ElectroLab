@@ -2,33 +2,55 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ElectroLab Neon Circuit — #030919 · #071a38 · #0d3c80 · #0b91ff · #2be9ff · #c3d7eb */
 :root {
-  --app-bg: #0a0f1a;
-  --app-sidebar: #0f172a;
-  --app-surface: #111827;
-  --app-surface-2: #0f172a;
-  --app-control: #0b1321;
-  --app-border: #1e293b;
-  --app-text: #e2e8f0;
-  --app-heading: #f8fafc;
-  --app-muted: #94a3b8;
-  --app-hover: rgba(51, 65, 85, 0.55);
-  --app-grid: rgba(59, 130, 246, 0.04);
+  --dusty-ink: #051127;
+  --dusty-steel: #2be9ff;
+  --dusty-muted: #8ea8c7;
+  --dusty-mist: #a8bfda;
+  --dusty-powder: #c3d7eb;
+  --dusty-stone: #e4f3ff;
+  --app-bg: #050f22;
+  --app-sidebar: #091a34;
+  --app-surface: #0d203d;
+  --app-surface-2: #132c4b;
+  --app-control: #0b203b;
+  --app-border: #284766;
+  --app-text: #dceafd;
+  --app-heading: #f4faff;
+  --app-muted: #9eb8d7;
+  --app-link: #66e3ff;
+  --app-primary: #27d9ff;
+  --app-primary-foreground: #03172c;
+  --app-hover: rgba(43, 201, 255, .12);
+  --app-grid: rgba(25, 134, 234, .10);
+  --app-shadow: rgba(0, 5, 24, .40);
+  --metal-light: #c3d7eb;
+  --neon-blue: #0b91ff;
+  --neon-cyan: #2be9ff;
+  color-scheme: dark;
 }
 
+/* Light mode keeps the same blue/cyan identity without sacrificing readability. */
 html.light {
-  --app-bg: #f8fafc;
-  --app-sidebar: #ffffff;
+  --app-bg: #edf5fc;
+  --app-sidebar: #f8fbff;
   --app-surface: #ffffff;
-  --app-surface-2: #f1f5f9;
-  --app-control: #f8fafc;
-  --app-border: #dbe3ee;
-  --app-text: #334155;
-  --app-heading: #0f172a;
-  --app-muted: #64748b;
-  --app-hover: rgba(226, 232, 240, 0.85);
-  --app-grid: rgba(37, 99, 235, 0.07);
+  --app-surface-2: #e2effa;
+  --app-control: #f3f9ff;
+  --app-border: #bacde2;
+  --app-text: #15314c;
+  --app-heading: #071c37;
+  --app-muted: #496783;
+  --app-link: #006a9d;
+  --app-primary: #007fbe;
+  --app-primary-foreground: #ffffff;
+  --app-hover: rgba(0, 145, 220, .10);
+  --app-grid: rgba(11, 110, 185, .095);
+  --app-shadow: rgba(4, 28, 59, .10);
+  color-scheme: light;
 }
+
 
 html,
 body,
@@ -53,17 +75,17 @@ body,
   overflow: hidden;
   padding: 32px 36px;
   margin-bottom: 24px;
-  border: 1px solid color-mix(in srgb, #2563eb 35%, var(--app-border));
+  border: 1px solid color-mix(in srgb, var(--dusty-steel) 45%, var(--app-border));
   border-radius: 20px;
   background:
-    radial-gradient(circle at 82% 35%, rgba(45, 212, 191, 0.18), transparent 25%),
-    linear-gradient(115deg, #172554 0%, #1e3a8a 55%, #155e75 100%);
-  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.18);
+    radial-gradient(circle at 87% 24%, rgba(55, 231, 255, 0.23), transparent 34%),
+    linear-gradient(115deg, #06132d 0%, #093d7d 56%, #0879c9 100%);
+  box-shadow: 0 16px 36px var(--app-shadow);
 }
 
 .dashboard-eyebrow,
 .dashboard-panel-kicker {
-  color: #93c5fd;
+  color: #8ddfff;
   font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 0.12em;
@@ -81,8 +103,8 @@ body,
   width: 7px;
   height: 7px;
   border-radius: 999px;
-  background: #5eead4;
-  box-shadow: 0 0 0 4px rgba(94, 234, 212, 0.14);
+  background: #2be9ff;
+  box-shadow: 0 0 0 4px rgba(43, 233, 255, 0.23);
 }
 
 .dashboard-title {
@@ -94,7 +116,7 @@ body,
 
 .dashboard-subtitle {
   margin-top: 6px;
-  color: rgba(219, 234, 254, 0.76);
+  color: #d8eaff;
   font-size: 0.95rem;
 }
 
@@ -123,17 +145,17 @@ body,
   gap: 8px;
   border-radius: 10px;
   padding: 10px 16px;
-  background: #fff;
-  color: #1d4ed8;
+  background: linear-gradient(135deg, #4af0ff, #0b91ff);
+  color: #03162e;
   font-size: 0.875rem;
   font-weight: 700;
-  box-shadow: 0 8px 18px rgba(7, 26, 74, 0.2);
+  box-shadow: 0 8px 18px rgba(24, 36, 52, 0.22);
   transition: transform 160ms ease, box-shadow 160ms ease;
 }
 
 .dashboard-primary-action:hover {
   transform: translateY(-2px);
-  box-shadow: 0 12px 22px rgba(7, 26, 74, 0.28);
+  box-shadow: 0 12px 22px rgba(24, 36, 52, 0.28);
 }
 
 .dashboard-stat-card,
@@ -141,7 +163,7 @@ body,
   border: 1px solid var(--app-border);
   border-radius: 15px;
   background: var(--app-surface);
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+  box-shadow: 0 8px 24px var(--app-shadow);
 }
 
 .dashboard-stat-card {
@@ -152,8 +174,8 @@ body,
 }
 
 .dashboard-stat-card:hover {
-  border-color: #60a5fa;
-  box-shadow: 0 12px 26px rgba(37, 99, 235, 0.12);
+  border-color: var(--dusty-steel);
+  box-shadow: 0 12px 26px rgba(15, 173, 255, 0.20);
   transform: translateY(-2px);
 }
 
@@ -170,7 +192,7 @@ body,
 }
 
 .dashboard-panel-kicker {
-  color: #3b82f6;
+  color: var(--app-link);
   font-size: 0.62rem;
 }
 
@@ -191,13 +213,13 @@ body,
 }
 
 .dashboard-link {
-  color: #3b82f6;
+  color: var(--app-link);
   font-size: 0.72rem;
   font-weight: 600;
 }
 
 .dashboard-link:hover {
-  color: #60a5fa;
+  color: var(--app-heading);
 }
 
 .dashboard-list-row,
@@ -231,7 +253,7 @@ body,
 }
 
 .dashboard-action:hover {
-  border-color: #60a5fa;
+  border-color: var(--dusty-steel);
   background: var(--app-hover);
 }
 
@@ -395,14 +417,14 @@ html.light .theme-surface .bg-slate-800\/60 {
    controls the surrounding ElectroLab product UI, not the 3D electronics bench. */
 .ece-circuit-lab {
   isolation: isolate;
-  --lab-surface: #0d1524;
-  --lab-surface-2: #101a2b;
-  --lab-border: rgba(148, 163, 184, 0.13);
-  --lab-border-strong: rgba(148, 163, 184, 0.2);
+  --lab-surface: #07182e;
+  --lab-surface-2: #0c2240;
+  --lab-border: rgba(76, 169, 231, 0.17);
+  --lab-border-strong: rgba(76, 169, 231, 0.27);
   --lab-text: #f8fafc;
   --lab-muted: #8190a7;
-  --lab-blue: #2563eb;
-  --lab-blue-soft: rgba(37, 99, 235, 0.13);
+  --lab-blue: #0b91ff;
+  --lab-blue-soft: rgba(11, 145, 255, .15);
   background:
     radial-gradient(circle at 50% 45%, rgba(30, 64, 175, 0.055), transparent 42%),
     #070d18 !important;
@@ -411,7 +433,7 @@ html.light .theme-surface .bg-slate-800\/60 {
 .ece-circuit-lab aside.lab-side-panel {
   backdrop-filter: blur(18px) saturate(125%);
   -webkit-backdrop-filter: blur(18px) saturate(125%);
-  background: rgba(8, 15, 28, 0.86) !important;
+  background: rgba(4, 16, 36, 0.9) !important;
   border-color: rgba(148, 163, 184, 0.14) !important;
   box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.025);
   scrollbar-width: thin;
@@ -463,14 +485,14 @@ html.light .theme-surface .bg-slate-800\/60 {
 .ece-circuit-lab .lab-title-card {
   min-width: 218px;
   border-radius: 13px !important;
-  background: rgba(9, 17, 30, 0.96) !important;
+  background: rgba(5, 21, 43, 0.96) !important;
   border: 1px solid var(--lab-border-strong) !important;
   box-shadow: 0 14px 35px rgba(0, 0, 0, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.025);
 }
 .ece-circuit-lab .lab-power-cluster {
   border-radius: 14px !important;
   padding: 7px !important;
-  background: rgba(9, 17, 30, 0.96) !important;
+  background: rgba(5, 21, 43, 0.96) !important;
   border: 1px solid var(--lab-border-strong) !important;
   box-shadow: 0 14px 35px rgba(0, 0, 0, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.025);
 }
@@ -485,14 +507,14 @@ html.light .theme-surface .bg-slate-800\/60 {
   display: flex;
   align-items: center;
   border-radius: 9px !important;
-  background: #121c2c !important;
+  background: #112a46 !important;
   border: 1px solid rgba(255, 255, 255, 0.04);
 }
 .ece-circuit-lab aside.lab-side-panel {
   top: 108px !important;
   bottom: 18px !important;
   border-radius: 16px !important;
-  background: rgba(10, 18, 31, 0.97) !important;
+  background: rgba(5, 19, 38, 0.97) !important;
   border: 1px solid var(--lab-border) !important;
   box-shadow: 0 22px 55px rgba(0, 0, 0, 0.30), inset 0 1px 0 rgba(255, 255, 255, 0.025);
   backdrop-filter: blur(16px) saturate(115%);
@@ -501,18 +523,18 @@ html.light .theme-surface .bg-slate-800\/60 {
 .ece-circuit-lab aside.lab-components-panel button {
   border-radius: 10px !important;
   border-color: rgba(148, 163, 184, 0.10) !important;
-  background: #111a29 !important;
+  background: #0d263f !important;
   min-height: 58px !important;
 }
 .ece-circuit-lab aside.lab-components-panel button:hover {
-  background: #162235 !important;
+  background: #103352 !important;
   border-color: rgba(96, 165, 250, 0.28) !important;
 }
 .ece-circuit-lab input,
 .ece-circuit-lab select,
 .ece-circuit-lab textarea {
   border-radius: 9px !important;
-  background: #0b1321 !important;
+  background: #091e35 !important;
   border-color: rgba(148, 163, 184, 0.13) !important;
   color: #e5edf8 !important;
 }
@@ -521,7 +543,7 @@ html.light .theme-surface .bg-slate-800\/60 {
 .ece-circuit-lab textarea:focus {
   outline: none;
   border-color: rgba(59, 130, 246, 0.55) !important;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.10);
+  box-shadow: 0 0 0 3px rgba(11, 145, 255, 0.13);
 }
 .ece-circuit-lab aside.lab-output-panel > div > div:nth-child(2) {
   border-radius: 11px !important;
@@ -531,7 +553,7 @@ html.light .theme-surface .bg-slate-800\/60 {
 }
 .ece-circuit-lab aside.lab-output-panel textarea {
   border-radius: 10px !important;
-  background: #09111f !important;
+  background: #061a30 !important;
 }
 .ece-circuit-lab .lab-instructions {
   right: 438px !important;
@@ -539,7 +561,7 @@ html.light .theme-surface .bg-slate-800\/60 {
   max-width: 300px !important;
   border-radius: 12px !important;
   padding: 12px 14px !important;
-  background: rgba(9, 17, 30, 0.96) !important;
+  background: rgba(5, 21, 43, 0.96) !important;
   border: 1px solid var(--lab-border-strong) !important;
   box-shadow: 0 14px 32px rgba(0, 0, 0, 0.28);
 }
@@ -547,7 +569,7 @@ html.light .theme-surface .bg-slate-800\/60 {
   right: 438px !important;
   top: 108px !important;
   border-radius: 13px !important;
-  background: rgba(9, 17, 30, 0.96) !important;
+  background: rgba(5, 21, 43, 0.96) !important;
   border-color: rgba(234, 179, 8, 0.30) !important;
   box-shadow: 0 16px 34px rgba(0, 0, 0, 0.28);
 }
@@ -612,4 +634,705 @@ html.light .theme-surface .bg-slate-800\/60 {
     max-height: 40vh;
     padding: 10px !important;
   }
+}
+
+/* Shared native controls and accessible interaction treatment. */
+.electrolab-app { accent-color: var(--app-primary); }
+.electrolab-app input:not([type="checkbox"]):not([type="radio"]),
+.electrolab-app textarea,
+.electrolab-app select {
+  color: var(--app-text);
+  caret-color: var(--app-text);
+}
+.electrolab-app input::placeholder,
+.electrolab-app textarea::placeholder { color: var(--app-muted); opacity: .85; }
+.electrolab-app select option { background: var(--app-surface); color: var(--app-text); }
+.electrolab-app :is(button, a, input, select, textarea):focus-visible {
+  outline: 2px solid var(--dusty-steel);
+  outline-offset: 2px;
+}
+.electrolab-app ::selection { background: #36dfff; color: #031427; }
+
+/* Dark-mode typography is the original site default. In light mode, the
+   legacy utility text colors must become dark enough to read on pale cards.
+   Restrict these adaptations to standard pages; the simulator / code editors
+   intentionally keep their isolated dark display surfaces. */
+html.light .themed-workspace .text-slate-100,
+html.light .themed-workspace .text-slate-200,
+html.light .themed-workspace .text-slate-300 { color: #183650; }
+html.light .themed-workspace .text-slate-400 { color: #406180; }
+html.light .themed-workspace .text-slate-500,
+html.light .themed-workspace .text-slate-600 { color: #496783; }
+html.light .themed-workspace .text-blue-300,
+html.light .themed-workspace .text-blue-400,
+html.light .themed-workspace .text-blue-500,
+html.light .themed-workspace .text-cyan-300,
+html.light .themed-workspace .text-cyan-400,
+html.light .themed-workspace .text-violet-300,
+html.light .themed-workspace .text-violet-400 { color: #006c9d; }
+html.light .themed-workspace .bg-slate-700,
+html.light .themed-workspace .bg-slate-800,
+html.light .themed-workspace .bg-slate-900 { background-color: var(--app-surface-2); }
+html.light .themed-workspace .border-slate-600,
+html.light .themed-workspace .border-slate-700,
+html.light .themed-workspace .border-slate-800 { border-color: var(--app-border); }
+
+/* Statuses retain semantic distinction in both modes. */
+html.light .themed-workspace .text-emerald-400 { color: #196A50; }
+html.light .themed-workspace .text-red-400 { color: #B42332; }
+html.light .themed-workspace .text-amber-400 { color: #855E15; }
+
+/* Helpful visual finishing touches; no effect on circuit simulation. */
+.themed-workspace .scrollbar-thin { scrollbar-color: var(--dusty-muted) transparent; scrollbar-width: thin; }
+.themed-workspace .dashboard-stat-card:hover,
+.themed-workspace .dashboard-action:hover { box-shadow: 0 12px 24px var(--app-shadow); }
+
+/* Neon + metallic visual finishing: shared product shell only. */
+.themed-workspace .dashboard-hero {
+  border-color: rgba(61, 203, 255, .47);
+  box-shadow: 0 22px 60px rgba(0, 30, 90, .32), inset 0 1px 0 rgba(208, 238, 255, .14);
+}
+.themed-workspace .dashboard-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: .32;
+  background-image:
+    linear-gradient(90deg, transparent 0 83%, rgba(58, 213, 255, .38) 83% 83.3%, transparent 83.3%),
+    repeating-linear-gradient(0deg, transparent 0 32px, rgba(14, 131, 232, .12) 33px 34px);
+  mask-image: linear-gradient(90deg, transparent 25%, black 90%);
+}
+.themed-workspace .dashboard-hero-orb {
+  border-color: rgba(74, 229, 255, .3);
+  box-shadow: 0 0 36px rgba(23, 164, 251, .11), inset 0 0 28px rgba(15, 163, 251, .1);
+}
+.themed-workspace .dashboard-primary-action {
+  background: linear-gradient(125deg, #5ceeff 0%, #0b9cff 100%);
+  color: #03162e;
+  border: 1px solid rgba(189, 249, 255, .5);
+  box-shadow: 0 8px 25px rgba(0, 171, 255, .23), inset 0 1px rgba(255,255,255,.25);
+}
+.themed-workspace .dashboard-primary-action:hover {
+  box-shadow: 0 10px 32px rgba(0, 171, 255, .35);
+}
+.themed-workspace .dashboard-stat-card,
+.themed-workspace .dashboard-panel {
+  box-shadow: 0 12px 38px var(--app-shadow), inset 0 1px 0 rgba(155, 210, 255, .045);
+}
+.themed-workspace .dashboard-stat-card:hover {
+  border-color: var(--neon-cyan);
+  box-shadow: 0 14px 38px rgba(0, 147, 235, .21);
+}
+.themed-workspace aside {
+  box-shadow: inset -1px 0 rgba(52, 173, 255, .07);
+}
+.themed-workspace :is(button,a,input,select,textarea):focus-visible,
+.electrolab-workspace :is(button,a,input,select,textarea):focus-visible {
+  outline-color: var(--neon-cyan);
+}
+.electrolab-workspace { background-color: #030b1b; }
+.ece-circuit-lab { --lab-blue: #0b91ff; --lab-blue-soft: rgba(11, 145, 255, .14); }
+.ece-circuit-lab .lab-tool-button.is-active {
+  background: #073d66 !important;
+  border-color: #2be9ff !important;
+  box-shadow: 0 0 18px rgba(43, 233, 255, .1);
+}
+html.light .themed-workspace .dashboard-stat-card,
+html.light .themed-workspace .dashboard-panel { box-shadow: 0 8px 24px var(--app-shadow); }
+@media (prefers-reduced-motion: reduce) {
+  .themed-workspace .dashboard-stat-card,
+  .themed-workspace .dashboard-primary-action,
+  .themed-workspace .dashboard-action { transition: none; }
+}
+
+/* 2026 Circuit workspace polish: high contrast, deliberate spacing and useful controls. */
+.projects-workspace {
+  background: radial-gradient(ellipse 72% 43% at 83% -18%, rgba(5, 132, 214, .10), transparent 76%), var(--app-bg);
+}
+.projects-workspace article { isolation: isolate; }
+.projects-workspace article > button:first-child { -webkit-tap-highlight-color: transparent; }
+.projects-workspace :is(button, input, select):focus-visible { outline: 2px solid #2be9ff; outline-offset: 2px; }
+
+.editor-workspace .editor-topbar {
+  background: linear-gradient(90deg, #07162c 0%, #0b1e38 100%);
+  border-color: rgba(69, 167, 236, .21);
+  box-shadow: 0 4px 20px rgba(0, 5, 18, .23);
+}
+.editor-workspace .editor-toolstrip {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(83, 169, 221, .25) transparent;
+  padding: 4px 2px;
+}
+.editor-workspace .editor-toolstrip > button {
+  flex-shrink: 0;
+  white-space: nowrap;
+  min-height: 42px;
+}
+.editor-workspace .editor-toolstrip > button:focus-visible {
+  outline: 2px solid #2be9ff;
+  outline-offset: 1px;
+}
+.editor-workspace .editor-sidebar {
+  background: #07182e;
+  border-color: rgba(69, 167, 236, .22);
+}
+.editor-workspace .editor-sidebar > div:first-child { background: #091d36; }
+.editor-workspace .editor-sidebar .scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: #326084 transparent;
+}
+.editor-workspace .editor-sidebar .scrollbar-thin button:hover {
+  color: #e8f6ff;
+}
+.editor-workspace .editor-board-stage { background: #282f39; }
+
+/* Lab overlays: avoid translucent inspector controls washing out on the board. */
+.ece-circuit-lab .lab-sim-toolbar { top: 12px !important; right: 12px !important; left: 12px !important; }
+.ece-circuit-lab .lab-sim-controls {
+  border: 1px solid rgba(56,189,248,.28) !important;
+  background: #071629 !important;
+  border-radius: 13px !important;
+  box-shadow: 0 12px 35px rgba(0,0,0,.38);
+  max-width: 100%;
+}
+.ece-circuit-lab .lab-sim-controls button { font-size: 12px !important; }
+.ece-circuit-lab .lab-component-inspector {
+  top: 75px !important;
+  right: 12px !important;
+  bottom: 12px !important;
+  width: clamp(292px, 26vw, 338px) !important;
+  border: 1px solid rgba(56,189,248,.28) !important;
+  background: #09192f !important;
+  box-shadow: -12px 15px 50px rgba(0,0,0,.4) !important;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: #396280 #09192f;
+}
+.ece-circuit-lab .lab-component-inspector label { color: #aec7df !important; }
+.ece-circuit-lab .lab-component-inspector input,
+.ece-circuit-lab .lab-component-inspector select,
+.ece-circuit-lab .lab-component-inspector textarea {
+  min-width: 0;
+  max-width: 100%;
+  background: #061329 !important;
+  border: 1px solid rgba(115, 170, 222, .24) !important;
+  color: #f0f9ff !important;
+}
+.ece-circuit-lab .lab-component-inspector input:focus,
+.ece-circuit-lab .lab-component-inspector select:focus,
+.ece-circuit-lab .lab-component-inspector textarea:focus { border-color: #2be9ff !important; }
+.ece-circuit-lab .lab-inspector-close {
+  position: sticky;
+  top: 0;
+  float: right;
+  z-index: 2;
+  margin: -6px -7px 0 7px;
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  color: #cbdef2;
+  background: #112c48;
+  border: 1px solid rgba(76, 170, 230, .22);
+}
+.ece-circuit-lab .lab-inspector-close:hover { background: #1a4764; color: white; }
+.ece-circuit-lab .lab-reopen-inspector {
+  position: absolute;
+  top: 78px;
+  right: 14px;
+  z-index: 90;
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 12px;
+  color: #d7edff;
+  background: #0b2540;
+  border: 1px solid rgba(56, 189, 248, .32);
+  border-radius: 11px;
+  box-shadow: 0 12px 30px #0006;
+  font-size: 12px;
+}
+.ece-circuit-lab .lab-reopen-inspector:hover { background: #12456a; }
+.ece-circuit-lab .lab-placement-tip {
+  left: 14px !important;
+  right: auto !important;
+  bottom: 12px !important;
+  max-width: min(300px, calc(100% - 28px)) !important;
+  padding: 11px 12px !important;
+  background: #0a203a !important;
+  border: 1px solid rgba(56, 189, 248, .3) !important;
+  box-shadow: 0 10px 28px #0008;
+}
+.ece-circuit-lab .lab-tip-toggle {
+  padding: 3px 7px;
+  border-radius: 7px;
+  border: 1px solid rgba(56,189,248,.35);
+  background: rgba(56,189,248,.10);
+  color: #93e7ff;
+  font-size: 10px;
+}
+@media (max-width: 1280px) {
+  .editor-workspace .editor-topbar { padding-inline: 10px; }
+  .editor-workspace .editor-sidebar { width: 216px; }
+  .ece-circuit-lab .lab-component-inspector { width: 300px !important; }
+}
+@media (max-width: 900px) {
+  .editor-workspace .editor-sidebar { width: 190px; }
+  .ece-circuit-lab .lab-sim-controls { gap: 4px !important; padding: 5px !important; }
+  .ece-circuit-lab .lab-sim-controls button { padding: 7px !important; }
+  .ece-circuit-lab .lab-component-inspector { width: 282px !important; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .projects-workspace article, .projects-workspace button { transition: none !important; }
+}
+
+/* 3D Circuit Lab: streamlined, accessible editing surfaces (November 2026). */
+.editor-workspace .editor-topbar { background: linear-gradient(110deg, #071a33, #081f3b); }
+.editor-workspace .editor-toolbar-main { border-bottom: 1px solid rgba(93,166,226,.10); min-height: 52px; }
+.editor-workspace .editor-icon-btn,
+.editor-workspace .editor-toolbar-action,
+.editor-workspace .editor-drag-toggle { min-height: 34px; border: 1px solid transparent; border-radius: 10px; display: inline-flex; gap: 6px; align-items: center; justify-content: center; padding: 7px 10px; color: #b7d0e7; background: transparent; font-weight: 600; font-size: 11px; white-space: nowrap; cursor: pointer; transition: background .15s, color .15s, border-color .15s; }
+.editor-workspace .editor-icon-btn:hover,
+.editor-workspace .editor-toolbar-action:hover:not(:disabled),
+.editor-workspace .editor-drag-toggle:hover { background: #163653; border-color: #315774; color: #f0faff; }
+.editor-workspace .editor-toolbar-action.active, .editor-workspace .editor-drag-toggle.active,
+.editor-workspace .editor-palette-toggle[aria-pressed="true"] { background: rgba(12,144,235,.18); border-color: rgba(34,211,238,.38); color: #7ae3ff; }
+.editor-workspace .editor-toolbar-action.danger:not(:disabled):hover { color:#fecaca; border-color:#9c3b50; background:rgba(127,29,29,.25); }
+.editor-workspace .editor-toolbar-action:disabled { cursor:not-allowed; opacity:.32; }
+.editor-workspace .editor-toolbar-divider { width:1px; height:22px; flex-shrink:0; background:rgba(128,184,227,.23); margin-inline:3px; }
+.editor-workspace .editor-actions { display:flex; align-items:center; gap:5px; overflow-x:auto; scrollbar-width:thin; scrollbar-color:#326084 transparent; }
+.editor-workspace .editor-actions > * { flex-shrink:0; }
+.editor-workspace .editor-main-action { display:inline-flex; align-items:center; justify-content:center; gap:8px; border:1px solid #42baf9; padding:9px 15px; background:linear-gradient(120deg,#087acf,#096aba); color:#fff; border-radius:10px; font-size:12px; font-weight:700; white-space:nowrap; }
+.editor-workspace .editor-main-action:hover { background:#0e98e7; }
+.editor-workspace .editor-view-switch { display:flex; background:#051429; border:1px solid #274865; border-radius:10px; padding:3px; gap:2px; }
+.editor-workspace .editor-view-switch button { padding:6px 12px; color:#96b3cd; font-size:12px; border-radius:7px; }
+.editor-workspace .editor-view-switch button.active { background:#20425e; color:#f0faff; }
+.editor-workspace .editor-more-wrap {position:relative; z-index:28;}
+.editor-workspace .editor-more-menu { position:absolute; right:0; top:calc(100% + 6px); width:228px; background:#0a2039; border:1px solid #315776; border-radius:12px; box-shadow:0 22px 45px #0008; padding:6px; }
+.editor-workspace .editor-more-menu button { display:flex; gap:10px; align-items:center; width:100%; text-align:left; color:#c7def3; padding:10px; font-size:12px; border-radius:8px; }
+.editor-workspace .editor-more-menu button:hover { background:#173c5a; color:white; }
+.editor-workspace .editor-more-menu button.destructive { color:#fca5a5; }
+.editor-workspace .editor-document-title { line-height:1.3; }
+.editor-workspace .editor-sidebar { background:#091c34; border-color:#2b4969; }
+.editor-workspace .editor-palette-heading { padding:13px 12px 9px; border-bottom:1px solid rgba(99,162,224,.2); }
+.editor-workspace .editor-palette-search { display:block; width:100%; background:#051428; border:1px solid #2b5273; color:#e5f5ff; padding:9px 9px 9px 35px; font-size:12px; border-radius:10px; outline:none; }
+.editor-workspace .editor-palette-search:focus { border-color:#2be9ff; box-shadow:0 0 0 2px #2be9ff25; }
+.editor-workspace .editor-quiet-link { color:#5fd7f9; font-size:11px; font-weight:600; cursor:pointer; }
+.editor-workspace .editor-quiet-link:hover { color:#d2f6ff; text-decoration:underline; }
+.editor-workspace .editor-tip-banner { font-size:11px; line-height:1.5; color:#c2dcee; padding:9px; border-radius:9px; background:#11314c; margin:8px 0; }
+.editor-workspace .editor-palette-filters { display:flex; gap:5px; margin:10px 0 8px; }
+.editor-workspace .editor-palette-filters button { flex:1; display:flex; align-items:center; gap:4px; justify-content:center; padding:7px 4px; border:1px solid #244767; background:#0d2742; color:#9dbed7; border-radius:8px; font-size:10px; font-weight:600; }
+.editor-workspace .editor-palette-filters button.active { border-color:#39c3ed; color:#dbf7ff; background:#13446a; }
+.editor-workspace .editor-category-select { display:block; width:100%; color:#d1e9fa; background:#0a223c; border:1px solid #2b4a69; border-radius:9px; padding:8px 10px; font-size:12px; outline:none; }
+.editor-workspace .editor-category-select:focus { border-color:#2be9ff; }
+.editor-workspace .editor-palette-scroll { padding:4px 10px; scrollbar-color:#325f7e transparent; scrollbar-width:thin; }
+.editor-workspace .editor-palette-section { margin:11px 0 15px; }
+.editor-workspace .editor-palette-section-title { display:flex; justify-content:space-between; align-items:center; color:#80a4c4; text-transform:uppercase; letter-spacing:.08em; font-size:10px; font-weight:700; margin:0 2px 8px; }
+.editor-workspace .editor-parts-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; }
+.editor-workspace .editor-part-tile { position:relative; min-width:0; min-height:91px; border-radius:10px; background:rgba(13,37,64,.85); border:1px solid rgba(96,152,201,.2); overflow:hidden; transition:border .16s, background .16s; }
+.editor-workspace .editor-part-tile:hover { border-color:#3a8ebd; background:#11334f; }
+.editor-workspace .editor-part-tile.active { border-color:#38d2f2; background:#104568; }
+.editor-workspace .editor-part-main { display:flex; width:100%; height:100%; padding:9px 3px 8px; min-height:90px; flex-direction:column; align-items:center; gap:7px; cursor:grab; touch-action:none; user-select:none; }
+.editor-workspace .editor-part-main:active { cursor:grabbing; }
+.editor-workspace .editor-part-symbol { display:flex; align-items:center; justify-content:center; color:#b7eaff; width:39px; height:38px; border-radius:9px; border:1px solid #2e5375; background:#061b31; font:700 11px ui-monospace,monospace; }
+.editor-workspace .editor-part-label { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; text-overflow:ellipsis; font-size:10px; line-height:1.2; text-align:center; color:#d1e5f6; overflow-wrap:anywhere; }
+.editor-workspace .editor-favorite { position:absolute; top:2px; right:2px; padding:5px; border-radius:6px; color:#6b8eaa; }
+.editor-workspace .editor-favorite:hover, .editor-workspace .editor-favorite.active {color:#f5d477; background:#2c3b44;}
+.editor-workspace .editor-board-choice { padding:10px 12px; border-top:1px solid #31516f; background:#0c233d; }
+.editor-workspace .editor-wire-controls { border-bottom:1px solid #31516f; padding:11px 12px; background:#0b2b45; }
+.editor-workspace .editor-wire-style { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:10px; }
+.editor-workspace .editor-wire-style button { font-size:11px; padding:7px; border:1px solid #315775; background:#092039; border-radius:8px; color:#b7d0e7; }
+.editor-workspace .editor-wire-style button.active {border-color:#2be9ff; color:white; background:#185274;}
+.editor-workspace .editor-wire-swatches { display:flex; flex-wrap:wrap; align-items:center; gap:7px; margin-bottom:10px; }
+.editor-workspace .editor-wire-swatches button { width:23px; height:23px; border-radius:50%; border:2px solid #173650; box-shadow:0 1px 3px #0008; }
+.editor-workspace .editor-wire-swatches button.active { outline:2px solid #f0faff; outline-offset:2px; }
+.editor-workspace .editor-shortcuts-backdrop {position:fixed; inset:0; display:grid; place-items:center; background:#010717b9; z-index:9999; padding:18px;}
+.editor-workspace .editor-shortcuts-dialog {width:min(390px,100%); max-height:90vh; overflow:auto; padding:20px; background:#10253b; border:1px solid #3c7291; border-radius:16px; box-shadow:0 22px 65px #0009;}
+.editor-workspace .editor-kbd {border:1px solid #41627a; padding:4px 9px; border-radius:6px; color:#dbf5ff; background:#0b192d; font:600 11px ui-monospace,monospace;}
+.editor-workspace :is(button,input,select):focus-visible { outline:2px solid #2be9ff; outline-offset:2px; }
+@media(max-width:1150px) { .editor-workspace .editor-palette-section .editor-parts-grid {grid-template-columns:repeat(2,minmax(0,1fr));} .editor-workspace .editor-palette-scroll {padding:4px 7px;} }
+@media(max-width:800px) { .editor-workspace .editor-document-title {display:none;} .editor-workspace .editor-toolbar-main {justify-content:space-between;} .editor-workspace .editor-actions {padding-inline:8px;} .editor-workspace .editor-sidebar {width:210px;} }
+@media(prefers-reduced-motion:reduce) { .editor-workspace .editor-icon-btn,.editor-workspace .editor-toolbar-action,.editor-workspace .editor-part-tile {transition:none;} }
+
+.editor-workspace .editor-stage-hud { max-width:300px; border:1px solid rgba(50,120,175,.3); background:rgba(4,17,34,.84); color:#b6d6eb; border-radius:11px; padding:8px 11px; box-shadow:0 5px 22px #0005; backdrop-filter:blur(10px); }
+.editor-workspace .editor-stage-hud-title {font-size:11px; color:#75dfff; font-weight:700;}
+.editor-workspace .editor-stage-hud-desc {font-size:10px; color:#a2bad0; margin-top:2px; line-height:1.4;}
+@media(max-width:700px){ .editor-workspace .editor-stage-hud { display:none; }}
+
+.editor-workspace .editor-drag-toggle:disabled { opacity:.32; cursor:not-allowed; }
+
+/* ElectroLab 3D Simulator — reference-inspired, responsive workbench (2026-11). */
+.editor-reference-ui {
+  --ed-bg:#031225; --ed-panel:#061a32; --ed-panel-2:#09233f;
+  --ed-border:#1b547a; --ed-neon:#15d8fa; --ed-blue:#0598eb;
+  --ed-muted:#8eb2ce; color:#e8f6ff;
+  background:radial-gradient(ellipse at 55% 20%,#092a45,#020c1b 75%);
+  font-family:Inter,ui-sans-serif,system-ui,sans-serif;
+  min-width:0;
+}
+.editor-reference-ui .editor-topbar {
+  background:linear-gradient(108deg,#03162a 0%,#051b35 54%,#031429 100%);
+  border-bottom:1px solid rgba(26,189,249,.38);
+  box-shadow:0 8px 38px rgba(0,0,0,.28); z-index:30;
+}
+.editor-reference-ui .editor-toolbar-main { min-height:62px; padding:6px 14px; border-bottom:1px solid rgba(44,133,188,.13); gap:10px; }
+.editor-reference-ui .editor-brand {display:flex;align-items:center;gap:11px; flex:0 0 auto; padding-right:19px; border-right:1px solid rgba(33,214,246,.55);}
+.editor-reference-ui .editor-brand-symbol {height:44px;width:44px;display:grid;place-items:center;color:#2ce1fc;border-radius:12px;border:1px solid #1c91b8;background:rgba(8,99,147,.13);box-shadow:inset 0 0 15px #0c8cd923;}
+.editor-reference-ui .editor-brand strong {display:block;font-size:21px;letter-spacing:-.05em;line-height:1.05;color:#f6fdff;font-weight:800;white-space:nowrap;}
+.editor-reference-ui .editor-brand strong span {color:#24d9f8;}
+.editor-reference-ui .editor-brand small {display:block;color:#9fc9e2;font-size:10px;margin-top:4px;white-space:nowrap;}
+.editor-reference-ui .editor-back-btn {border:1px solid transparent;color:#8bb8d5;margin-right:2px;}
+.editor-reference-ui .editor-document-title {min-width:0;}
+.editor-reference-ui .editor-project-name {font-size:clamp(15px,1.45vw,20px);font-weight:750;letter-spacing:-.035em;line-height:1.15;color:white;}
+.editor-reference-ui .editor-project-meta {font-size:10px;color:#95bad4;display:flex;align-items:center;gap:6px;margin-top:1px;white-space:nowrap;}
+.editor-reference-ui .editor-project-meta svg {color:#1ee5a1;}
+.editor-reference-ui .editor-view-switch {background:#061c34;border:1px solid #2a6692;border-radius:12px;padding:4px;min-width:110px;}
+.editor-reference-ui .editor-view-switch button {min-width:46px;padding:7px 8px;font-size:12px;font-weight:750;}
+.editor-reference-ui .editor-view-switch button.active {background:linear-gradient(125deg,#00b8f5,#0088d9);color:white;box-shadow:0 3px 14px rgba(0,191,255,.27);}
+.editor-reference-ui .editor-main-action {min-height:40px;padding:9px 14px;font-size:13px;border-color:#05c8ff;background:linear-gradient(110deg,#00acec,#006bbb);box-shadow:inset 0 1px 0 #8ae8ff88,0 0 18px #008aef22;}
+.editor-reference-ui .editor-main-action:hover {background:linear-gradient(110deg,#00c0ff,#0885dd);}
+.editor-reference-ui .editor-header-action {min-width:36px;height:38px;border:1px solid #255777;background:#071c35;color:#d1eeff;}
+.editor-reference-ui .editor-more-trigger {border:1px solid #194566;background:#06223b;min-width:36px;height:38px;}
+.editor-reference-ui .editor-more-menu {background:#061d37;border-color:#2784b8;}
+.editor-reference-ui .editor-actions {min-height:52px;padding:6px 12px;gap:4px;border-top:1px solid rgba(61,163,224,.14);background:#05182e;overflow-x:auto;}
+.editor-reference-ui .editor-workspace-tabs {display:flex;gap:2px;border:1px solid #246087;border-radius:11px;background:#09223e;padding:3px;flex-shrink:0;margin-right:6px;}
+.editor-reference-ui .editor-workspace-tabs button {color:#b8d7e9;font-size:11px;font-weight:700;padding:8px 10px;border-radius:8px;display:flex;gap:7px;align-items:center;white-space:nowrap;}
+.editor-reference-ui .editor-workspace-tabs button:hover {background:#164b6d;}
+.editor-reference-ui .editor-workspace-tabs button.active {background:linear-gradient(150deg,#007fad,#065586);color:white;box-shadow:inset 0 0 0 1px #1edaff,0 0 15px #009dfb3d;}
+.editor-reference-ui .editor-toolbar-action {height:36px;min-width:37px;padding:6px 8px;border:1px solid rgba(63,131,180,.23);background:#09203b;border-radius:9px;color:#b6d6ea;}
+.editor-reference-ui .editor-toolbar-action > span {display:none!important;}
+.editor-reference-ui .editor-toolbar-action.active {border-color:#11d6ff;box-shadow:inset 0 0 0 1px #0896c5,0 0 12px #00bafb24;background:#093c5d;color:#fff;}
+.editor-reference-ui .editor-toolbar-action.danger {color:#e7b0b0;}
+.editor-reference-ui .editor-toolbar-divider {margin-inline:5px;height:24px;background:#24608377;}
+.editor-reference-ui .editor-palette-toggle {height:36px;min-width:36px;border:1px solid #235174;}
+.editor-reference-ui .editor-bench-spacer {flex:1;min-width:5px;}
+.editor-reference-ui .editor-toolbar-hint {display:flex;align-items:center;gap:11px;border:1px solid #22618c;background:#08233e;padding:7px 12px;border-radius:10px;white-space:nowrap;color:#bcd9ec;min-width:195px;}
+.editor-reference-ui .editor-toolbar-hint > svg {color:#4acbff;flex-shrink:0;}
+.editor-reference-ui .editor-toolbar-hint strong {display:block;font-size:11px;line-height:1.2;}
+.editor-reference-ui .editor-toolbar-hint small {display:block;font-size:9px;color:#88afd0;margin-top:3px;}
+.editor-reference-ui .editor-body-layout {background:#030c1b;}
+.editor-reference-ui .editor-sidebar {width:310px!important;background:linear-gradient(170deg,#061e38,#06162b)!important;border:1px solid #12618b;border-left:0;border-top:0;box-shadow:10px 0 25px #0005;}
+.editor-reference-ui .editor-palette-heading {background:linear-gradient(#071d35,#071a32);padding:14px 13px 12px;}
+.editor-reference-ui .editor-palette-heading .font-semibold {font-size:15px;color:#fff;}
+.editor-reference-ui .editor-palette-heading .font-semibold > span {border:1px solid #215f80;border-radius:12px;background:#0e3656;color:#b7eaff;padding:2px 6px;font-weight:700;}
+.editor-reference-ui .editor-palette-search {font-size:12px;border-color:#245f82;padding-block:11px;background:#03172d;}
+.editor-reference-ui .editor-palette-filters {margin-block:12px 8px;}
+.editor-reference-ui .editor-palette-filters button {font-size:11px;padding-block:9px;}
+.editor-reference-ui .editor-palette-filters button.active {background:linear-gradient(125deg,#075d8a,#0a436b);color:#fff;border-color:#14d8ff;}
+.editor-reference-ui .editor-category-select {min-height:39px;font-size:12px;border-color:#256287;background:#082540;}
+.editor-reference-ui .editor-palette-scroll {padding:6px 12px;}
+.editor-reference-ui .editor-palette-section-title {font-size:11px;color:#aac9de;text-transform:none;letter-spacing:.025em;}
+.editor-reference-ui .editor-parts-grid {grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;}
+.editor-reference-ui .editor-part-tile {min-height:88px;border:1px solid #205577;background:linear-gradient(155deg,#0b2a48,#071d34);}
+.editor-reference-ui .editor-part-tile:hover {border-color:#14cafa;background:#0c3556;}
+.editor-reference-ui .editor-part-tile.active {border-color:#17e0ff;background:#064d79;}
+.editor-reference-ui .editor-part-main {min-height:88px;padding:8px 4px 6px;gap:6px;}
+.editor-reference-ui .editor-part-symbol {width:45px;height:41px;border-color:#236088;color:#d9f4ff;background:#09233e;}
+.editor-reference-ui .editor-part-label {font-size:11px;color:#e5f5ff;}
+.editor-reference-ui .editor-board-choice {border-top:1px solid #25779a;background:#092a46;padding:10px 14px;}
+.editor-reference-ui .editor-board-choice p {display:none;}
+.editor-reference-ui .editor-main-stack {background:#282f39;}
+.editor-reference-ui .editor-board-stage {background:radial-gradient(ellipse at 60% 44%,#323b47,#282f39 84%);min-height:190px;}
+.editor-reference-ui .editor-stage-hud {top:14px;left:15px;padding:8px 13px;border:1px solid #1e567f;background:rgba(4,21,40,.86);}
+.editor-reference-ui .editor-stage-hud-title {font-size:12px;color:#c6ecfb;}
+.editor-reference-ui .editor-stage-hud-desc {font-size:10px;color:#85b0d0;}
+.editor-reference-ui .editor-sidebar-list {display:grid;align-content:start;gap:9px;}
+.editor-reference-ui .editor-sidebar-list p {color:#8db4ce;font-size:11px;line-height:1.5;}
+.editor-reference-ui .editor-sidebar-section-heading {display:flex;align-items:center;justify-content:space-between;margin:12px 3px 0;gap:8px;color:white;font-size:14px;}
+.editor-reference-ui .editor-sidebar-section-heading span {color:#92bbd7;font-size:10px;white-space:nowrap;}
+.editor-reference-ui .editor-circuit-item,.editor-reference-ui .editor-example-item {width:100%;display:flex;align-items:center;gap:10px;text-align:left;padding:12px 10px;background:#092943;border:1px solid #215776;border-radius:10px;color:#e5f7ff;cursor:pointer;}
+.editor-reference-ui .editor-circuit-item:hover,.editor-reference-ui .editor-example-item:hover,.editor-reference-ui .editor-circuit-item.active,.editor-reference-ui .editor-example-item.active {background:#0b4263;border-color:#21d4ff;}
+.editor-reference-ui .editor-circuit-item > span:nth-child(2),.editor-reference-ui .editor-example-item > span {flex:1;min-width:0;}
+.editor-reference-ui .editor-circuit-item strong,.editor-reference-ui .editor-example-item strong {font-size:12px;display:block;}
+.editor-reference-ui .editor-circuit-item small,.editor-reference-ui .editor-example-item small {display:block;color:#89b5d2;font-size:10px;margin-top:4px;line-height:1.45;}
+.editor-reference-ui .editor-circuit-item-icon {width:35px;height:35px;border-radius:8px;display:grid;place-items:center;border:1px solid #31698e;color:#76dfff;}
+.editor-reference-ui .editor-item-chevron {transform:rotate(180deg);color:#78b4da;flex-shrink:0;}
+.editor-reference-ui .editor-example-item > svg:first-child {color:#52d6ef;flex-shrink:0;}
+.editor-reference-ui .editor-sidebar-empty {display:grid;gap:6px;place-items:center;padding:32px 10px;text-align:center;color:#9bc1dc;font-size:12px;}
+.editor-reference-ui .editor-sidebar-note {display:flex;align-items:flex-start;gap:8px;margin-top:9px;padding:10px;border:1px solid #245674;border-radius:10px;color:#a4c6dd;font-size:11px;line-height:1.5;}
+.editor-reference-ui .editor-sidebar-note svg {color:#42cafa;flex-shrink:0;}
+/* Power/status dock follows the supplied half-adder reference and never covers the canvas. */
+.editor-reference-ui .editor-bench-dock {flex:none;background:#031327;border-top:1px solid #16557c;padding:7px 12px 10px;min-height:0;}
+.editor-reference-ui .editor-bench-power {display:flex;align-items:center;gap:11px;min-height:50px;background:#092540;border:1px solid #1a5a82;border-radius:12px;padding:7px 12px;margin-bottom:7px;}
+.editor-reference-ui .editor-power-actions {display:flex;gap:7px;min-width:0;}
+.editor-reference-ui .editor-power-button {display:flex;align-items:center;justify-content:center;gap:8px;min-width:121px;border-radius:9px;padding:9px 12px;font-size:12px;font-weight:750;border:1px solid #2b5470;color:#bdd4e4;background:#1a354e;white-space:nowrap;}
+.editor-reference-ui .editor-power-button.on.is-on {background:linear-gradient(120deg,#04b644,#009936);border-color:#17eb85;color:white;box-shadow:0 0 13px #00cc5c31;}
+.editor-reference-ui .editor-power-button.off.is-off {background:linear-gradient(120deg,#314b65,#213850);color:#d4e6f4;border-color:#31587a;}
+.editor-reference-ui .editor-power-button:hover {filter:brightness(1.15);}
+.editor-reference-ui .editor-power-separator {width:1px;height:28px;background:#2d7097;margin:0 3px;}
+.editor-reference-ui .editor-power-voltage,.editor-reference-ui .editor-power-current {display:inline-flex;align-items:center;gap:10px;background:#071a33;color:#c1def3;border-radius:9px;border:1px solid #28577c;padding:5px 11px;font-size:12px;font-weight:650;white-space:nowrap;}
+.editor-reference-ui .editor-power-voltage input {color:#fff;background:transparent;width:55px;min-width:0;font:650 13px ui-monospace,monospace;border:0;outline:none;}
+.editor-reference-ui .editor-power-unit {color:#719ab8;}
+.editor-reference-ui .editor-power-current {font:650 12px ui-monospace,monospace;}
+.editor-reference-ui .editor-power-current svg {color:#5dcaf1;}
+.editor-reference-ui .editor-power-warning {font-size:11px;color:#ffd8aa;white-space:nowrap;}
+.editor-reference-ui .editor-bench-drag {display:flex;gap:10px;align-items:center;white-space:nowrap;background:transparent;color:#b7d9eb;font-size:12px;font-weight:700;padding:5px;}
+.editor-reference-ui .editor-bench-drag.active {color:#eafaff;}
+.editor-reference-ui .editor-mini-switch {height:22px;width:42px;background:#2f4e69;border-radius:20px;position:relative;border:1px solid #3d6787;}
+.editor-reference-ui .editor-mini-switch::before {content:'';position:absolute;width:16px;height:16px;background:white;border-radius:50%;top:2px;left:3px;transition:transform .16s;}
+.editor-reference-ui .editor-bench-drag.active .editor-mini-switch {background:#03a6e8;border-color:#3ad6ff;}
+.editor-reference-ui .editor-bench-drag.active .editor-mini-switch::before {transform:translateX(18px);}
+.editor-reference-ui .editor-diagnostics {border:1px solid #1f6791;border-radius:12px;background:linear-gradient(135deg,#061c35,#07192d);overflow:hidden;box-shadow:inset 0 1px 0 #ffffff0a;}
+.editor-reference-ui .editor-diagnostics-tabs {display:flex;align-items:center;gap:7px;border-bottom:1px solid #205d83;padding:4px 8px;min-height:39px;}
+.editor-reference-ui .editor-diagnostics-tabs button {display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:7px 13px;border:1px solid #2b5c7e;border-radius:8px;color:#c3dfef;background:#0b2c4b;font-weight:700;font-size:11px;}
+.editor-reference-ui .editor-diagnostics-tabs button:hover {border-color:#40b7ea;}
+.editor-reference-ui .editor-diagnostics-tabs button.active {border-color:#16d5ff;background:linear-gradient(110deg,#0a8cbf,#085c9e);color:white;box-shadow:inset 0 0 0 1px #24d9ff77;}
+.editor-reference-ui .editor-diagnostics-tabs .editor-diagnostics-collapse {border-color:transparent;background:transparent;min-width:35px;}
+.editor-reference-ui .editor-diagnostics-body {padding:10px 14px 12px;max-height:190px;overflow:auto;scrollbar-width:thin;}
+.editor-reference-ui .editor-monitor-grid {display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1.3fr);gap:16px;}
+.editor-reference-ui .editor-monitor-section {min-width:0;border-right:1px solid #245d83;padding-right:12px;}
+.editor-reference-ui .editor-monitor-section:last-child {border:0;padding:0;}
+.editor-reference-ui .editor-monitor-section h3 {margin:0 0 8px;font-size:12px;font-weight:750;color:#f4faff;}
+.editor-reference-ui .editor-monitor-section h3 span {color:#c0d9ed;}
+.editor-reference-ui .editor-output-pills,.editor-reference-ui .editor-input-pills {display:flex;align-items:center;flex-wrap:wrap;gap:9px;}
+.editor-reference-ui .editor-output-pill {border-radius:9px;border:1px solid #2c6082;background:#0a2845;display:flex;gap:9px;align-items:center;font-size:11px;font-weight:650;padding:7px 10px;color:#e2f2ff;}
+.editor-reference-ui .editor-output-led {width:22px;height:22px;border-radius:50%;border:2px solid #92a3af;background:radial-gradient(circle at 30% 25%,#556472,#283b49);box-shadow:inset 0 1px 4px #000a;flex-shrink:0;}
+.editor-reference-ui .editor-output-led.green-lit {border-color:#4df09a;background:radial-gradient(circle at 30% 25%,#b5ffc2,#1de354 70%);box-shadow:0 0 11px #2dff72bb;}
+.editor-reference-ui .editor-output-led.red-lit {border-color:#ff8585;background:radial-gradient(circle at 30% 25%,#ffa9a9,#fb3b50 70%);box-shadow:0 0 11px #ff4545b0;}
+.editor-reference-ui .editor-input-pill {display:flex;align-items:center;gap:10px;background:#102e4c;border:1px solid #275877;border-radius:8px;padding:6px 9px;font-weight:750;font-size:11px;color:#cbe7f8;cursor:pointer;}
+.editor-reference-ui .editor-input-pill input {position:absolute;width:1px;height:1px;opacity:0;}
+.editor-reference-ui .editor-toggle-visual {position:relative;width:36px;height:20px;border-radius:20px;background:#34506a;border:1px solid #63809a;}
+.editor-reference-ui .editor-toggle-visual::before {content:'';position:absolute;left:2px;top:2px;width:14px;height:14px;border-radius:50%;background:#f4faff;transition:transform .16s;}
+.editor-reference-ui .editor-input-pill input:checked + .editor-toggle-visual {background:#058fd8;border-color:#1bcbff;}
+.editor-reference-ui .editor-input-pill input:checked + .editor-toggle-visual::before {transform:translateX(16px);}
+.editor-reference-ui .editor-input-pill input:focus-visible + .editor-toggle-visual {outline:2px solid #64e4ff;outline-offset:2px;}
+.editor-reference-ui .editor-monitor-info {border:1px solid #1385bb!important;background:rgba(3,93,147,.22);padding:9px 11px!important;border-radius:9px;}
+.editor-reference-ui .editor-monitor-info h3 {color:#a2e8ff;margin-bottom:5px;}
+.editor-reference-ui .editor-monitor-info p,.editor-reference-ui .editor-diagnostics-empty {font-size:11px;line-height:1.45;color:#c9deee;margin:0;}
+.editor-reference-ui .editor-readouts {font-size:11px;color:#b5d3e9;}
+.editor-reference-ui .editor-readouts strong {color:#e5faff;}
+.editor-reference-ui .editor-guide-content {font-size:11px;color:#c3ddee;}
+.editor-reference-ui .editor-guide-header {display:flex;justify-content:space-between;gap:16px;margin-bottom:9px;}
+.editor-reference-ui .editor-guide-header span {color:#6ceabd;}
+.editor-reference-ui .editor-guide-links {display:flex;gap:7px;overflow:auto;padding-bottom:6px;}
+.editor-reference-ui .editor-guide-links button {min-width:160px;max-width:200px;padding:9px;border:1px solid #2a698d;border-radius:9px;background:#0c2844;text-align:left;color:#d0eaff;}
+.editor-reference-ui .editor-guide-links button.connected {border-color:#188e83;}
+.editor-reference-ui .editor-guide-links button span {font-size:10px;font-weight:700;display:block;}
+.editor-reference-ui .editor-guide-links button small {font-size:9px;color:#93b5ce;display:block;margin-top:5px;line-height:1.4;}
+.editor-reference-ui .editor-guide-note {color:#86aeca;margin:5px 0 0;font-size:10px;}
+.editor-reference-ui .editor-guide-select {display:inline-flex;gap:7px;align-items:center;margin-bottom:8px;}
+.editor-reference-ui .editor-guide-select select {background:#0e304d;border:1px solid #346d92;border-radius:6px;color:#e6f4ff;padding:4px;}
+.editor-reference-ui .editor-guide-empty {display:flex;align-items:center;gap:12px;color:#a8d3e8;font-size:11px;}
+.editor-reference-ui .editor-guide-empty strong {font-size:12px;}
+.editor-reference-ui .editor-guide-empty p {font-size:10px;margin-top:4px;line-height:1.4;}
+.editor-reference-ui .editor-guide-empty button {border:1px solid #0f9bcd;color:#d1f4ff;border-radius:8px;background:#105079;padding:8px 10px;white-space:nowrap;}
+.editor-reference-ui .editor-truth-wrap {display:flex;align-items:flex-start;gap:20px;}
+.editor-reference-ui .editor-truth-wrap > div {min-width:165px;max-width:300px;}
+.editor-reference-ui .editor-truth-wrap strong {font-size:12px;}
+.editor-reference-ui .editor-truth-wrap p {font-size:11px;color:#a6c7dd;margin-top:6px;line-height:1.5;}
+.editor-reference-ui .editor-truth-table {border-collapse:collapse;font:600 11px ui-monospace,monospace;text-align:center;min-width:270px;}
+.editor-reference-ui .editor-truth-table th {background:#0b3a5d;color:#b2eaff;padding:5px 15px;}
+.editor-reference-ui .editor-truth-table td {border-bottom:1px solid #204b6b;color:#d6e8f4;padding:4px 15px;}
+.editor-reference-ui .editor-truth-table tr.active td {color:#fff;background:#075b86;font-weight:800;}
+.editor-reference-ui .editor-bench-dock.collapsed .editor-diagnostics {min-height:0;}
+/* Full-width layouts keep the model large; smaller windows prioritize the canvas. */
+@media(max-width:1450px){
+  .editor-reference-ui .editor-brand {padding-right:12px;}
+  .editor-reference-ui .editor-brand strong {font-size:19px;}
+  .editor-reference-ui .editor-toolbar-hint {display:none;}
+  .editor-reference-ui .editor-sidebar {width:286px!important;}
+  .editor-reference-ui .editor-power-button {min-width:106px;}
+}
+@media(max-width:1050px){
+  .editor-reference-ui .editor-toolbar-main {gap:6px;padding:7px 10px;min-height:58px;}
+  .editor-reference-ui .editor-brand small {display:none;}
+  .editor-reference-ui .editor-brand strong {font-size:17px;}
+  .editor-reference-ui .editor-brand-symbol {height:34px;width:34px;}
+  .editor-reference-ui .editor-sidebar {width:240px!important;}
+  .editor-reference-ui .editor-parts-grid {grid-template-columns:repeat(2,minmax(0,1fr));}
+  .editor-reference-ui .editor-actions {padding-inline:7px;}
+  .editor-reference-ui .editor-workspace-tabs button {padding:7px 6px;gap:4px;}
+  .editor-reference-ui .editor-toolbar-action {min-width:34px;padding-inline:6px;}
+  .editor-reference-ui .editor-diagnostics-body {max-height:148px;}
+  .editor-reference-ui .editor-monitor-grid {gap:8px;}
+}
+@media(max-width:780px){
+  .editor-reference-ui .editor-brand {display:none;}
+  .editor-reference-ui .editor-project-name {font-size:14px;}
+  .editor-reference-ui .editor-header-action {display:none;}
+  .editor-reference-ui .editor-sidebar {width:210px!important;}
+  .editor-reference-ui .editor-palette-heading {padding:9px;}
+  .editor-reference-ui .editor-workspace-tabs button {font-size:0;min-width:33px;justify-content:center;}
+  .editor-reference-ui .editor-workspace-tabs button svg {width:17px;}
+  .editor-reference-ui .editor-power-actions {gap:4px;}
+  .editor-reference-ui .editor-power-button {min-width:auto;padding:8px 10px;font-size:0;}
+  .editor-reference-ui .editor-power-button svg {width:17px;}
+  .editor-reference-ui .editor-power-current {display:none;}
+  .editor-reference-ui .editor-bench-drag span:not(.editor-mini-switch){display:none;}
+  .editor-reference-ui .editor-monitor-grid {grid-template-columns:1fr;}
+  .editor-reference-ui .editor-monitor-section {border-right:0;border-bottom:1px solid #2a5b7d;padding-bottom:9px;}
+}
+@media(prefers-reduced-motion:reduce){.editor-reference-ui .editor-mini-switch::before,.editor-reference-ui .editor-toggle-visual::before{transition:none}}
+.editor-reference-ui .editor-settings-menu {right:0;top:calc(100% + 9px);width:250px;}
+.editor-reference-ui .editor-settings-heading {padding:9px 10px 7px;font-weight:750;font-size:12px;color:#b9ecff;}
+.editor-reference-ui .editor-bench-drag:disabled {opacity:.38;cursor:not-allowed;}
+
+/* Bottom-edge workbench drawer: collapse the entire power + diagnostics dock. */
+.editor-reference-ui .editor-bench-dock {padding-bottom:5px;}
+.editor-reference-ui .editor-bench-dock.collapsed {
+  padding:3px 12px 5px;
+  background:rgba(3,19,39,.96);
+  border-top:1px solid #13537b;
+}
+.editor-reference-ui .editor-dock-handle-row {
+  display:flex;align-items:center;justify-content:center;min-height:25px;
+}
+.editor-reference-ui .editor-dock-handle {
+  display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  min-height:26px;padding:4px 17px;border:1px solid #276b92;
+  background:linear-gradient(125deg,#092f51,#071f38);
+  color:#c9f1ff;border-radius:10px;font-size:11px;font-weight:750;
+  letter-spacing:.01em;cursor:pointer;
+}
+.editor-reference-ui .editor-dock-handle:hover,
+.editor-reference-ui .editor-dock-handle:focus-visible {
+  border-color:#28d9ff;color:#fff;background:#0c4166;
+}
+.editor-reference-ui .editor-dock-handle:focus-visible {outline:2px solid #27d7ff;outline-offset:2px;}
+.editor-reference-ui .editor-dock-power-status {font-size:10px;color:#a3bad0;border-left:1px solid #34647e;padding-left:9px;}
+.editor-reference-ui .editor-dock-power-status.on {color:#62ffb1;}
+.editor-reference-ui .editor-bench-dock.collapsed .editor-dock-handle {padding:5px 18px;min-width:240px;}
+.editor-reference-ui .editor-quality-switch {display:inline-flex;gap:7px;align-items:center;white-space:nowrap;padding:7px 10px;border:1px solid #28688a;border-radius:9px;background:#09243e;color:#bed7ea;font-size:11px;font-weight:750;}
+.editor-reference-ui .editor-quality-switch:hover {border-color:#3addff;color:#fff;}
+.editor-reference-ui .editor-quality-switch.active {color:#7cefd5;background:#093c43;border-color:#168d89;}
+.editor-reference-ui .editor-quality-switch:disabled {opacity:.35;cursor:not-allowed;}
+@media (max-width:1050px) {
+  .editor-reference-ui .editor-quality-switch span {display:none;}
+  .editor-reference-ui .editor-quality-switch {padding:8px;}
+}
+
+
+/* Compact workbench: maximize usable breadboard area without hiding controls.
+   Widths are viewport-sensitive; the circuit canvas retains the remaining space. */
+.editor-reference-ui .editor-sidebar {
+  width:268px!important;
+  min-width:0;
+}
+.editor-reference-ui .editor-palette-heading {padding:10px 10px 9px;}
+.editor-reference-ui .editor-palette-search {padding-top:9px;padding-bottom:9px;}
+.editor-reference-ui .editor-palette-filters {margin:8px 0 6px;gap:4px;}
+.editor-reference-ui .editor-palette-filters button {padding:7px 3px;font-size:10px;}
+.editor-reference-ui .editor-category-select {min-height:36px;}
+.editor-reference-ui .editor-palette-scroll {padding:5px 9px;}
+.editor-reference-ui .editor-palette-section {margin:9px 0 12px;}
+.editor-reference-ui .editor-parts-grid {gap:6px;}
+.editor-reference-ui .editor-part-tile {min-height:78px;}
+.editor-reference-ui .editor-part-main {min-height:78px;padding:6px 3px 5px;gap:5px;}
+.editor-reference-ui .editor-part-symbol {height:36px;width:40px;max-width:100%;}
+.editor-reference-ui .editor-part-label {
+  font-size:10px;
+  line-height:1.25;
+  max-width:100%;
+  overflow-wrap:anywhere;
+}
+.editor-reference-ui .editor-board-choice {padding:7px 10px;}
+.editor-reference-ui .editor-board-choice label {margin-bottom:3px;}
+.editor-reference-ui .editor-circuit-item,
+.editor-reference-ui .editor-example-item {padding:9px 8px;gap:8px;}
+.editor-reference-ui .editor-sidebar-list {gap:7px;}
+
+/* Smaller, scrollable power and diagnostics drawer. All tabs are still available. */
+.editor-reference-ui .editor-bench-dock.expanded {padding:5px 10px 4px;}
+.editor-reference-ui .editor-bench-power {
+  min-height:42px;
+  padding:5px 9px;
+  margin-bottom:5px;
+  gap:8px;
+  border-radius:10px;
+}
+.editor-reference-ui .editor-power-actions {gap:5px;}
+.editor-reference-ui .editor-power-button {min-width:97px;min-height:34px;padding:6px 8px;gap:5px;font-size:11px;border-radius:8px;}
+.editor-reference-ui .editor-power-button svg {width:15px;height:15px;}
+.editor-reference-ui .editor-power-separator {height:23px;margin:0 1px;}
+.editor-reference-ui .editor-power-voltage,
+.editor-reference-ui .editor-power-current {gap:6px;padding:4px 8px;font-size:11px;min-height:32px;}
+.editor-reference-ui .editor-power-voltage input {width:39px;font-size:12px;}
+.editor-reference-ui .editor-quality-switch {padding:5px 8px;}
+.editor-reference-ui .editor-bench-drag {gap:7px;padding:3px;font-size:11px;}
+.editor-reference-ui .editor-diagnostics-tabs {gap:5px;padding:3px 7px;min-height:35px;}
+.editor-reference-ui .editor-diagnostics-tabs button {gap:6px;padding:5px 10px;font-size:10px;min-height:29px;}
+.editor-reference-ui .editor-diagnostics-tabs button svg {width:15px;height:15px;}
+.editor-reference-ui .editor-diagnostics-body {padding:7px 11px 8px;max-height:132px;overflow:auto;}
+.editor-reference-ui .editor-monitor-grid {gap:10px;}
+.editor-reference-ui .editor-monitor-section {padding-right:9px;}
+.editor-reference-ui .editor-monitor-section h3 {margin-bottom:5px;font-size:11px;}
+.editor-reference-ui .editor-output-pills,
+.editor-reference-ui .editor-input-pills {gap:6px;}
+.editor-reference-ui .editor-output-pill {gap:7px;padding:5px 8px;font-size:10px;}
+.editor-reference-ui .editor-output-led {width:20px;height:20px;}
+.editor-reference-ui .editor-input-pill {gap:7px;padding:5px 7px;}
+.editor-reference-ui .editor-monitor-info {padding:7px 9px!important;}
+.editor-reference-ui .editor-monitor-info p {font-size:10px;line-height:1.4;}
+.editor-reference-ui .editor-guide-header {margin-bottom:5px;}
+.editor-reference-ui .editor-guide-links button {padding:7px;}
+.editor-reference-ui .editor-truth-table th {padding:4px 10px;}
+.editor-reference-ui .editor-truth-table td {padding:3px 10px;}
+.editor-reference-ui .editor-dock-handle-row {min-height:22px;}
+.editor-reference-ui .editor-dock-handle {min-height:25px;padding:3px 14px;}
+
+@media (max-width:1450px) {
+  .editor-reference-ui .editor-sidebar {width:248px!important;}
+  .editor-reference-ui .editor-power-button {min-width:88px;}
+}
+@media (max-width:1050px) {
+  .editor-reference-ui .editor-sidebar {width:222px!important;}
+  .editor-reference-ui .editor-parts-grid {grid-template-columns:repeat(2,minmax(0,1fr));}
+  .editor-reference-ui .editor-diagnostics-body {max-height:123px;}
+  .editor-reference-ui .editor-monitor-grid {gap:8px;}
+  .editor-reference-ui .editor-bench-power {gap:5px;}
+}
+@media (max-width:780px) {
+  .editor-reference-ui .editor-sidebar {width:202px!important;}
+  .editor-reference-ui .editor-palette-heading {padding:8px;}
+  .editor-reference-ui .editor-palette-scroll {padding-inline:7px;}
+  .editor-reference-ui .editor-power-button {min-width:0;min-height:33px;padding:6px;}
+  .editor-reference-ui .editor-power-voltage {padding:3px 6px;}
+  .editor-reference-ui .editor-diagnostics-body {max-height:140px;}
+  .editor-reference-ui .editor-monitor-section {padding-right:0;padding-bottom:7px;}
+}
+@media (max-width:600px) {
+  .editor-reference-ui .editor-sidebar {width:176px!important;}
+  .editor-reference-ui .editor-part-symbol {width:35px;height:33px;}
+  .editor-reference-ui .editor-part-label {font-size:9px;}
+  .editor-reference-ui .editor-power-current {display:none;}
+  .editor-reference-ui .editor-diagnostics-tabs {overflow-x:auto;}
+  .editor-reference-ui .editor-diagnostics-tabs button {white-space:nowrap;flex-shrink:0;}
+}
+
+/* ElectroLab: labels and instructions are contextual, never permanent clouds
+   covering the workbench. The placement help shrinks to a keyboard-accessible
+   ? icon and reveals the full instructions only on hover/focus. */
+.ece-circuit-lab .lab-placement-tip:not(:hover):not(:focus-within) {
+  box-sizing: border-box;
+  width: 36px !important;
+  height: 36px !important;
+  max-width: 36px !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  cursor: help;
+}
+.ece-circuit-lab .lab-placement-tip:not(:hover):not(:focus-within) > * {
+  visibility: hidden;
+}
+.ece-circuit-lab .lab-placement-tip:not(:hover):not(:focus-within)::before {
+  content: "?";
+  display: grid;
+  position: absolute;
+  inset: 0;
+  place-items: center;
+  color: #9be8ff;
+  font-size: 15px;
+  font-weight: 800;
+  visibility: visible;
+}
+.ece-circuit-lab .lab-placement-tip:focus-visible {
+  outline: 2px solid #22d3ee;
+  outline-offset: 2px;
 }

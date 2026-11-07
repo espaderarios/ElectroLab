@@ -432,7 +432,7 @@ export function GamesPage() {
           return (
             <div
               key={game.id}
-              className="bg-[#111827] border border-[#1e293b] rounded-xl p-5 flex flex-col"
+              className="bg-[var(--app-surface)] border border-[var(--app-border)] rounded-xl p-5 flex flex-col"
             >
               <div className="flex items-start gap-3">
                 <div

@@ -49,7 +49,7 @@ export function LearnPage() {
         {lessons.map((lesson) => (
           <div
             key={lesson.id}
-            className="bg-[#111827] border border-[#1e293b] rounded-xl p-4 flex flex-col"
+            className="bg-[var(--app-surface)] border border-[var(--app-border)] rounded-xl p-4 flex flex-col"
           >
             <div className="flex items-start gap-3">
               <div className="w-10 h-10 rounded-lg bg-blue-500/15 text-blue-400 flex items-center justify-center">

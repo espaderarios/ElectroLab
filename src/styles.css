@@ -3,11 +3,11 @@
 @tailwind utilities;
 
 :root {
-  --navy: #101d36;
-  --navy-deep: #07101e;
-  --paper: #e8eef8;
-  --accent: #5eead4;
-  --accent-fg: #062523;
+  --navy: #071a38;
+  --navy-deep: #030919;
+  --paper: #e4f3ff;
+  --accent: #2be9ff;
+  --accent-fg: #03162e;
   --ok: #16a34a;
   --danger: #dc2626;
 }
@@ -63,11 +63,43 @@ body[data-ece-sim-open="1"] {
   pointer-events: none;
   padding: 8px 12px;
   border-radius: 10px;
-  background: rgba(15, 39, 68, 0.92);
-  border: 1px solid #5eead4;
-  color: #e8eef8;
+  background: rgba(4, 18, 40, 0.96);
+  border: 1px solid #238dcb;
+  color: #e4f3ff;
   font-size: 12px;
   font-weight: 600;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
   transform: translate(-50%, -50%);
+}
+
+/* Circuit Lab — selection clarity and safe, explicit deletion. */
+.ece-circuit-lab .lab-inspector-delete {
+  width: 100%;
+  min-height: 42px;
+  margin-top: 18px;
+  padding: 10px 12px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid rgba(248,113,113,.48);
+  border-radius: 10px;
+  background: rgba(127,29,29,.16);
+  color: #fecaca;
+  font-weight: 700;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background .15s ease, border-color .15s ease;
+}
+.ece-circuit-lab .lab-inspector-delete:hover,
+.ece-circuit-lab .lab-inspector-delete:focus-visible {
+  background: rgba(185,28,28,.28);
+  border-color: #f87171;
+  outline-offset: 2px;
+}
+@media (max-width: 1100px) {
+  .ece-circuit-lab .lab-component-inspector {
+    width: min(308px, 35vw) !important;
+    right: 10px !important;
+  }
 }

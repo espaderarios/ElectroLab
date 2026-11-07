@@ -71,7 +71,7 @@ export function ReportsPage() {
         ].map((s) => (
           <div
             key={s.label}
-            className="bg-[#111827] border border-[#1e293b] rounded-xl p-4"
+            className="bg-[var(--app-surface)] border border-[var(--app-border)] rounded-xl p-4"
           >
             <div className="text-xs text-slate-500 uppercase">{s.label}</div>
             <div className="text-2xl font-bold mt-1">{s.value}</div>
@@ -79,7 +79,7 @@ export function ReportsPage() {
         ))}
       </div>
 
-      <div className="bg-[#111827] border border-[#1e293b] rounded-xl p-4">
+      <div className="bg-[var(--app-surface)] border border-[var(--app-border)] rounded-xl p-4">
         <div className="flex items-center gap-2 mb-3">
           <FileBarChart size={16} className="text-slate-400" />
           <h2 className="text-sm font-semibold">Projects</h2>

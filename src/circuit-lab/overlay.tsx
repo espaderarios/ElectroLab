@@ -24,6 +24,10 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { logicPinLabel, LOGIC_IC_PINOUTS } from "@/circuit/logic-ics";
+import { SEVEN_SEGMENT_PIN_NUMBERS } from "@/circuit/seven-segment";
+import { displayPinLabel } from "@/circuit/display-guides";
+import { WiringGuidePanel } from "./wiring-guide-panel";
 
 import {
   BOARD_PRESETS,
@@ -46,6 +50,7 @@ import {
   ZENER_MODELS,
   type ToolId,
   type WireColor,
+  type WireStyle,
   type MotorModelId,
 } from "@/circuit/types";
 
@@ -366,7 +371,7 @@ const PIN_ORDER: Partial<Record<ToolId, string[]>> = {
   thermistor: ["A", "B"],
   fuse: ["A", "B"],
   "rgb-led": ["R", "G", "B", "K · common"],
-  "seven-segment": ["a", "b", "c", "d", "e", "f", "g", "dp", "COM"],
+  "seven-segment": ["1 E", "2 D", "3 COM", "4 C", "5 DP", "6 B", "7 A", "8 COM", "9 F", "10 G"],
   timer555: ["1 · GND", "2 · TRIG", "3 · OUT", "4 · RESET", "5 · CONT", "6 · THRES", "7 · DISCH", "8 · VCC"],
   opamp: ["1 · NC", "2 · IN−", "3 · IN+", "4 · V−", "5 · NC", "6 · OUT", "7 · V+", "8 · NC"],
   servo: ["VCC", "GND", "SIG"],
@@ -374,39 +379,7 @@ const PIN_ORDER: Partial<Record<ToolId, string[]>> = {
   regulator: ["IN", "GND", "OUT"],
 };
 
-const QUAD_GATE_PIN_LABELS: Record<number, string> = {
-  1: "A1 input",
-  2: "B1 input",
-  3: "Y1 output",
-  4: "A2 input",
-  5: "B2 input",
-  6: "Y2 output",
-  7: "GND",
-  8: "Y3 output",
-  9: "A3 input",
-  10: "B3 input",
-  11: "Y4 output",
-  12: "A4 input",
-  13: "B4 input",
-  14: "VCC",
-};
 
-const INVERTER_GATE_PIN_LABELS: Record<number, string> = {
-  1: "A1 input",
-  2: "Y1 output",
-  3: "A2 input",
-  4: "Y2 output",
-  5: "A3 input",
-  6: "Y3 output",
-  7: "GND",
-  8: "Y4 output",
-  9: "A4 input",
-  10: "Y5 output",
-  11: "A5 input",
-  12: "Y6 output",
-  13: "A6 input",
-  14: "VCC",
-};
 
 /** Short placement guidance shown while a tool is active. */
 const PLACEMENT_HELP: Partial<
@@ -810,8 +783,59 @@ function resolveDropHole(
   return useLab.getState().hoverHole;
 }
 
-export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
+/** One consistent appearance selector for new and existing connections. */
+function WireStyleSelector({
+  value,
+  onChange,
+}: {
+  value: WireStyle;
+  onChange: (style: WireStyle) => void;
+}) {
+  return (
+    <div role="group" aria-label="Wire type" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 10 }}>
+      {([
+        { id: "solid", label: "Solid wire", hint: "Low, tidy route", icon: Minus },
+        { id: "jumper", label: "Jumper", hint: "Raised over parts", icon: Cable },
+      ] as const).map((item) => {
+        const Icon = item.icon;
+        return (
+          <button
+            key={item.id}
+            type="button"
+            aria-pressed={value === item.id}
+            onClick={() => onChange(item.id)}
+            style={{
+              border: value === item.id ? "1px solid #38bdf8" : "1px solid rgba(148,163,184,.2)",
+              background: value === item.id ? "rgba(14,165,233,.18)" : "rgba(148,163,184,.055)",
+              color: value === item.id ? "#e0f2fe" : "#cbd5e1",
+              borderRadius: 10,
+              minHeight: 66,
+              padding: "10px 9px",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "flex-start",
+              justifyContent: "center",
+              flexDirection: "column",
+              gap: 4,
+              textAlign: "left",
+            }}
+          >
+            <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, fontWeight: 750 }}>
+              <Icon size={14} /> {item.label}
+            </span>
+            <span style={{ fontSize: 10, opacity: 0.7 }}>{item.hint}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+export function LabOverlay({ showPalette = true, embedded = false }: { showPalette?: boolean; embedded?: boolean }) {
   const [monitorOpen, setMonitorOpen] = useState(false);
+  const [wiringGuideOpen, setWiringGuideOpen] = useState(false);
+  const [dismissedInspectorId, setDismissedInspectorId] = useState<string | null>(null);
+  const [placementExpanded, setPlacementExpanded] = useState(false);
   const [dragGhost, setDragGhost] = useState<{
     tool: ToolId;
     label: string;
@@ -824,14 +848,21 @@ export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
   const dragGhostStartRef = useRef({ x: 0, y: 0 });
 
   const tool = useLab((s) => s.tool);
+  const placementError = useLab((s) => s.placementError);
+  const dismissPlacementError = useLab((s) => s.dismissPlacementError);
 
   const setTool = useLab((s) => s.setTool);
+  const setGuideTarget = useLab((s) => s.setGuideTarget);
   const boardId = useLab((s) => s.boardId);
   const setBoard = useLab((s) => s.setBoard);
   const placePartAt = useLab((s) => s.placePartAt);
   const setHover = useLab((s) => s.setHover);
 
   const wireColor = useLab((s) => s.wireColor);
+  const wireStyle = useLab((s) => s.wireStyle);
+  const setWireStyle = useLab((s) => s.setWireStyle);
+  const showWireFlow = useLab((s) => s.showWireFlow);
+  const setShowWireFlow = useLab((s) => s.setShowWireFlow);
 
   const setWireColor = useLab(
     (s) => s.setWireColor
@@ -978,7 +1009,10 @@ export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
       ) ?? null
     : null;
 
-  const selectedGate = selected?.pins.vcc
+  const selectedLogicChip = Boolean(
+    selected && Object.prototype.hasOwnProperty.call(LOGIC_IC_PINOUTS, selected.kind),
+  );
+  const selectedGate = selectedLogicChip && selected
     ? sim.logicGates?.[selected.id]
     : undefined;
 
@@ -1014,11 +1048,8 @@ export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
   // - output monitor when it is open
   // - otherwise sit on the right edge
   const rightInspectorOpen =
-    Boolean(selected || selectedWire) && !monitorOpen;
-  const probePanelRight =
-    monitorOpen || rightInspectorOpen ? 370 : 16;
-  const instructionsRight =
-    monitorOpen || rightInspectorOpen ? 370 : 16;
+    Boolean(selected || selectedWire) && !monitorOpen && dismissedInspectorId !== selectedId;
+  const probePanelRight = monitorOpen || rightInspectorOpen ? 370 : 16;
 
   const pinOrder = PIN_ORDER[tool] ?? [];
 
@@ -1140,17 +1171,23 @@ export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
   // Close the monitor with Escape so it never gets in the way of the canvas.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setMonitorOpen(false);
+      if (event.key === "Escape") {
+        setMonitorOpen(false);
+        setWiringGuideOpen(false);
+        setGuideTarget(null);
+      }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [setGuideTarget]);
 
   return (
     <>
+      {!embedded && (<>
       {/* TOP BAR */}
 
       <div
+        className="lab-sim-toolbar"
         style={{
           position: "absolute",
           top: 16,
@@ -1167,6 +1204,7 @@ export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
         {/* SIMULATION STATUS */}
 
         <div
+          className="lab-sim-controls"
           style={{
             pointerEvents: "auto",
             display: "flex",
@@ -1206,7 +1244,18 @@ export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
 
           <button
             type="button"
+            onClick={() => {setWiringGuideOpen((open) => !open);setGuideTarget(null);}}
+            aria-pressed={wiringGuideOpen}
+            title="Show recommended Arduino/display wiring without adding any wires"
+            style={{display:'inline-flex',alignItems:'center',gap:6,padding:'9px 10px',borderRadius:9,border:wiringGuideOpen?'1px solid rgba(34,211,238,.65)':'1px solid rgba(96,165,250,.22)',background:wiringGuideOpen?'rgba(34,211,238,.15)':'rgba(255,255,255,.05)',color:'#dbeafe',fontSize:11,fontWeight:700,cursor:'pointer'}}
+          ><Cable size={15}/> Wiring guide</button>
+
+          <button
+            type="button"
             onClick={togglePower}
+            aria-pressed={powerOn}
+            aria-label={powerOn ? "Turn power off" : "Turn power on"}
+            title={powerOn ? "Disconnect simulated bench power" : "Energize the circuit with the selected voltage"}
             style={{
               border: 0,
               borderRadius: 9,
@@ -1228,8 +1277,8 @@ export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
             />
 
             {powerOn
-              ? "POWER ON"
-              : "POWER OFF"}
+              ? "Power ON"
+              : "Power OFF"}
           </button>
 
           <label
@@ -1287,6 +1336,7 @@ export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
           </div>
         </div>
       </div>
+      </>)}
 
       {showPalette && (
         <>
@@ -1753,15 +1803,11 @@ export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
                 "1px solid rgba(255,255,255,.1)",
             }}
           >
-            <div
-              style={{
-                fontSize: 11,
-                fontWeight: 700,
-                textTransform: "uppercase",
-                letterSpacing: 1.5,
-                opacity: 0.55,
-              }}
-            >
+            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1.2, color: "#cbd5e1" }}>
+              Wire type
+            </div>
+            <WireStyleSelector value={wireStyle} onChange={setWireStyle} />
+            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1.2, color: "#cbd5e1", marginTop: 14 }}>
               Wire color
             </div>
 
@@ -1795,6 +1841,13 @@ export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
                 />
               ))}
             </div>
+            <p style={{ fontSize: 10, lineHeight: 1.5, color: "#94a3b8", margin: "10px 0 0" }}>
+              Click two holes to connect them. Routes avoid crowded lanes automatically; jumpers rise over crossings.
+            </p>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, color: "#cbd5e1", fontSize: 11, cursor: "pointer" }}>
+              <input type="checkbox" checked={showWireFlow} onChange={(e) => setShowWireFlow(e.target.checked)} />
+              Animate current flow (optional)
+            </label>
           </div>
         )}
 
@@ -1974,7 +2027,7 @@ export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
               }}
             >
         <strong>
-          {selectedWire ? "Jumper Wire" : selected?.kind}
+          {selectedWire ? (selectedWire.style === "jumper" ? "Jumper wire" : "Solid wire") : selected?.kind}
         </strong>
 
               <div
@@ -2008,36 +2061,6 @@ export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
                 >
                   Placement
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setPartDragEnabled(!partDragEnabled)}
-                  style={{
-                    width: "100%",
-                    minHeight: 36,
-                    borderRadius: 9,
-                    border: partDragEnabled
-                      ? "1px solid #34d399"
-                      : "1px solid rgba(255,255,255,.12)",
-                    background: partDragEnabled
-                      ? "rgba(52,211,153,.16)"
-                      : "rgba(255,255,255,.05)",
-                    color: "#e2e8f0",
-                    fontSize: 11,
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    textAlign: "left",
-                    padding: "0 12px",
-                  }}
-                  title={
-                    partDragEnabled
-                      ? "Turn off drag-to-move (original click-to-select behavior)"
-                      : "Turn on long-press / drag to move parts on the board"
-                  }
-                >
-                  {partDragEnabled
-                    ? "Drag parts: ON — long-press to move"
-                    : "Drag parts: OFF — click to select only"}
-                </button>
                 <div style={{ display: "flex", gap: 8 }}>
                   <button
                     type="button"
@@ -2064,8 +2087,8 @@ export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
                     }}
                     title={
                       partDragEnabled
-                        ? "Long-press a component on the board to move it, or click this then click a hole"
-                        : "Enable “Drag parts” first"
+                        ? "Drag a component on the board to move it, or click here then click a hole"
+                        : "Enable 3D drag from the editor toolbar first"
                     }
                   >
                     {movingSelected ? "Drop on a hole…" : "Move on board"}
@@ -2171,7 +2194,9 @@ export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
                             letterSpacing: 0.6,
                           }}
                         >
-                          {pinName}
+                          {selected.kind === "seven-segment" && SEVEN_SEGMENT_PIN_NUMBERS[pinName]
+                            ? `Pin ${SEVEN_SEGMENT_PIN_NUMBERS[pinName]} · ${pinName.toUpperCase()}`
+                            : pinName}
                         </span>
                         <span
                           style={{
@@ -2797,26 +2822,39 @@ export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
         </>
       )}
 
+      {wiringGuideOpen && <WiringGuidePanel onClose={() => setWiringGuideOpen(false)} left={showPalette?276:16} />}
+
       {/* RIGHT INSPECTOR: functional component properties */}
-{(selected || selectedWire) && !monitorOpen && (
+{rightInspectorOpen && (
   <aside
+    key={selectedId}
+    className="lab-component-inspector"
     aria-label={selectedWire ? "Wire inspector" : "Component inspector"}
     style={{
       position: "absolute",
       top: 85,
       right: 16,
       bottom: 16,
-      width: 300,
+      width: 318,
       zIndex: 88,
       overflowY: "auto",
-      padding: 14,
-      borderRadius: 18,
-      background: "rgba(8,15,28,.97)",
-      border: "1px solid rgba(96,165,250,.16)",
+      padding: 18,
+      borderRadius: 16,
+      background: "#08172b",
+      border: "1px solid rgba(56,189,248,.24)",
       color: "white",
-      boxShadow: "0 24px 60px rgba(0,0,0,.42)",
+      boxShadow: "0 20px 54px rgba(0,0,0,.38)",
     }}
   >
+    <button
+      type="button"
+      aria-label="Close component inspector"
+      title="Hide inspector to view the whole breadboard"
+      onClick={() => setDismissedInspectorId(selectedId)}
+      className="lab-inspector-close"
+    >
+      <X size={16} />
+    </button>
 
     {/* =========================
         WIRE INSPECTOR
@@ -2851,7 +2889,7 @@ export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
                 fontWeight: 750,
               }}
             >
-              Jumper Wire
+              {selectedWire.style === "jumper" ? "Jumper wire" : "Solid wire"}
             </div>
 
             <div
@@ -2992,6 +3030,8 @@ export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
             Appearance
           </div>
 
+          <WireStyleSelector value={selectedWire.style === "jumper" ? "jumper" : "solid"} onChange={setWireStyle} />
+          <div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700, marginTop: 16 }}>INSULATION COLOR</div>
           <div
             style={{
               marginTop: 9,
@@ -3024,6 +3064,14 @@ export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
             ))}
           </div>
         </div>
+        <button
+          type="button"
+          onClick={deleteSelected}
+          className="lab-inspector-delete"
+          title="Delete selected wire (or press Delete)"
+        >
+          <Trash2 size={15} /> Delete wire
+        </button>
       </>
     ) : (
 
@@ -3395,7 +3443,8 @@ export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
             const st = sim.sevenSegments?.[selected!.id];
             return (
               <div style={NEW_PART_SECTION}>
-                <div style={NEW_PART_TITLE}>7-segment display</div>
+                <div style={NEW_PART_TITLE}>0.56″ 7-segment + decimal point</div>
+                <p style={{fontSize:10,color:'#94a3b8',lineHeight:1.5,marginBottom:8}}>8 independently driven LEDs (A–G + DP), 10 physical pins. Pin 3 and pin 8 are internally common. Use a current-limiting resistor for each segment.</p>
                 <label style={NEW_PART_LABEL}>COMMON PIN
                   <select value={selected!.props.sevenSegCommon ?? "cathode"} onChange={(e) => setSelectedProp("sevenSegCommon", e.target.value)} style={NEW_PART_SELECT}>
                     <option value="cathode">Common cathode (COM → GND)</option>
@@ -3404,6 +3453,7 @@ export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
                 </label>
                 <NewPartReadout items={[
                   ["Lit", (st?.segments ?? []).map((on, i) => (on ? "abcdefg"[i] : "")).join("") || "—"],
+                  ["Decimal point", st?.segments?.[7] ? "ON" : "off"],
                   ["Digit", st?.digit !== undefined ? String(st.digit) : "—"],
                 ]} />
               </div>
@@ -3618,6 +3668,12 @@ export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
 
           <div style={{ marginTop: 15, paddingTop: 13, borderTop: "1px solid rgba(255,255,255,.08)" }}>
             <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.3, textTransform: "uppercase", color: "#94a3b8" }}>Connections</div>
+            {selectedLogicChip && (
+              <div style={{ marginTop: 8, fontSize: 11, color: "#cbd5e1", lineHeight: 1.45 }}>
+                <strong>{LOGIC_IC_PINOUTS[selected!.kind as keyof typeof LOGIC_IC_PINOUTS].model}</strong>
+                {" · DIP-14 top view · pin 14 VCC, pin 7 GND"}
+              </div>
+            )}
             {selectedGate && (
               <div style={{ marginTop: 8, padding: "9px 10px", borderRadius: 8, background: selectedGate.powered ? "rgba(34,197,94,.1)" : "rgba(245,158,11,.1)", border: `1px solid ${selectedGate.powered ? "rgba(34,197,94,.28)" : "rgba(245,158,11,.28)"}`, color: selectedGate.powered ? "#86efac" : "#fbbf24", fontSize: 10, lineHeight: 1.45 }}>
                 <strong>{selectedGate.powered ? "Powered" : "Unpowered"}</strong>
@@ -3627,16 +3683,14 @@ export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
               </div>
             )}
             <div style={{ marginTop: 8, display: "grid", gap: 5 }}>
-              {selectedGate ? (
+              {selectedLogicChip ? (
                 Object.entries(selected!.pins)
                   .filter(([pin]) => /^p(?:[1-9]|1[0-4])$/.test(pin))
                   .sort(([a], [b]) => Number(a.slice(1)) - Number(b.slice(1)))
                   .map(([pin, hole]) => (
                     <div key={pin} style={{ display: "flex", justifyContent: "space-between", gap: 8, padding: "6px 8px", borderRadius: 7, background: "rgba(255,255,255,.035)", fontSize: 10 }}>
                       <span style={{ color: "#cbd5e1", fontWeight: 650 }}>
-                        {selected!.kind === "not"
-                          ? INVERTER_GATE_PIN_LABELS[Number(pin.slice(1))]
-                          : QUAD_GATE_PIN_LABELS[Number(pin.slice(1))]}
+                        {logicPinLabel(selected!.kind as keyof typeof LOGIC_IC_PINOUTS, Number(pin.slice(1)))}
                         {` (pin ${pin.slice(1)})`}
                       </span>
                       <span style={{ color: "#64748b", fontFamily: "ui-monospace,monospace" }}>{hole}</span>
@@ -3644,15 +3698,40 @@ export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
                   ))
               ) : Object.entries(selected!.pins).map(([pin, hole]) => (
                 <div key={pin} style={{ display: "flex", justifyContent: "space-between", gap: 8, padding: "6px 8px", borderRadius: 7, background: "rgba(255,255,255,.035)", fontSize: 10 }}>
-                  <span style={{ color: "#cbd5e1", fontWeight: 650 }}>{pin}</span>
-                  <span style={{ color: "#64748b", fontFamily: "ui-monospace,monospace" }}>{hole}</span>
+                  <span style={{ color: "#cbd5e1", fontWeight: 650 }}>{selected!.kind === "seven-segment" && SEVEN_SEGMENT_PIN_NUMBERS[pin] ? `Pin ${SEVEN_SEGMENT_PIN_NUMBERS[pin]} · ${pin.toUpperCase()}` : ["mcu", "lcd", "oled"].includes(selected!.kind) ? displayPinLabel(selected!.kind, pin) : pin}</span>
+                  {selected!.kind === "mcu" ? (
+                    <button type="button" onClick={() => {useLab.getState().setTool('wire');useLab.getState().clickHole(hole)}}
+                      title={`Start a wire at Arduino ${pin.toUpperCase()}`}
+                      style={{border:'1px solid #1d6688',background:'#082d48',color:'#67e8f9',fontSize:10,padding:'3px 7px',borderRadius:6,cursor:'pointer',whiteSpace:'nowrap'}}>
+                      <Cable size={12} style={{display:'inline',verticalAlign:'middle'}}/> Connect
+                    </button>
+                  ) : <span style={{ color: "#64748b", fontFamily: "ui-monospace,monospace" }}>{hole}</span>}
                 </div>
               ))}
             </div>
           </div>
+          <button
+            type="button"
+            onClick={deleteSelected}
+            className="lab-inspector-delete"
+            title="Delete selected component (or press Delete)"
+          >
+            <Trash2 size={15} /> Delete component
+          </button>
           </>
            )}
         </aside>
+      )}
+
+      {(selected || selectedWire) && !monitorOpen && !rightInspectorOpen && (
+        <button
+          type="button"
+          className="lab-reopen-inspector"
+          onClick={() => setDismissedInspectorId(null)}
+          title="Show selected component properties"
+        >
+          <Cpu size={15} /> Show inspector
+        </button>
       )}
 
       {/* OUTPUT MONITOR — hidden until requested */}
@@ -3819,7 +3898,7 @@ export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
           >
             {sim.lcdPowered
               ? "Live characters from the HD44780 driven by your sketch."
-              : "Power the supply and wire the LCD (auto-wired when you place MCU + LCD)."}
+              : "Power the supply and connect the LCD manually. Open Wiring guide to view recommended pin pairs."}
           </div>
         </div>
 
@@ -3883,7 +3962,7 @@ export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
           >
             {sim.oledPowered
               ? "SSD1306 text buffer from display.print / println in your sketch."
-              : "Place OLED + MCU (auto-wires VCC/GND/SDA/SCL). Use Adafruit_SSD1306-style calls."}
+              : "Connect OLED VCC/GND/SDA/SCL manually (see Wiring guide), then run an SSD1306-style Arduino sketch."}
           </div>
         </div>
 
@@ -4028,17 +4107,25 @@ export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
 
         const displaySteps = classicSteps ?? help?.steps;
 
+        // The old always-open Select mode tutorial covered a large part of
+        // the breadboard. Show a compact cue only during placement; expand
+        // for step-by-step guidance on request.
+        if (!isPlacing) return null;
         return (
           <div
+            className="lab-placement-tip"
+            tabIndex={0}
+            aria-label="Hover or focus for component placement instructions"
+            title="Placement help — hover or focus to read"
             style={{
               position: "absolute",
               bottom: 18,
-              right: instructionsRight,
+              left: 16,
               zIndex: 90,
               maxWidth: 300,
-              padding: 14,
-              borderRadius: 14,
-              background: "rgba(8,15,28,.94)",
+              padding: 12,
+              borderRadius: 12,
+              background: "#081b31",
               border: isPlacing
                 ? "1px solid rgba(96,165,250,.35)"
                 : "1px solid rgba(255,255,255,.12)",
@@ -4048,7 +4135,7 @@ export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
               color: "white",
               fontSize: 11,
               lineHeight: 1.55,
-              transition: "right 0.18s ease, border 0.15s ease",
+              transition: "border 0.15s ease",
             }}
           >
             <div
@@ -4069,10 +4156,22 @@ export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
                   flexShrink: 0,
                 }}
               />
-              <strong style={{ fontSize: 12 }}>{title}</strong>
+              <strong style={{ fontSize: 12, flex: 1 }}>{title}</strong>
+              <button
+                type="button"
+                onClick={() => setPlacementExpanded((expanded) => !expanded)}
+                aria-expanded={placementExpanded}
+                className="lab-tip-toggle"
+              >
+                {placementExpanded ? "Less" : "How to"}
+              </button>
             </div>
 
-            {body ? (
+            {!placementExpanded ? (
+              <div style={{ color: "#b4cce5" }}>
+                {body ?? "Click the breadboard to place or connect. Open How to for detailed steps."}
+              </div>
+            ) : body ? (
               <div style={{ color: "#94a3b8", marginTop: 2 }}>{body}</div>
             ) : displaySteps ? (
               <>
@@ -4229,18 +4328,42 @@ export function LabOverlay({ showPalette = true }: { showPalette?: boolean }) {
         </div>
       )}
 
-      {/* SIMULATION WARNINGS */}
+      {/* Non-blocking feedback for impossible physical placement/wire routing. */}
+      {placementError && (
+        <div
+          role="alert"
+          aria-live="assertive"
+          style={{
+            position: "absolute", left: "50%", bottom: 24,
+            transform: "translateX(-50%)", zIndex: 105,
+            display: "flex", alignItems: "center", gap: 10,
+            maxWidth: "min(90vw, 560px)", padding: "11px 13px",
+            borderRadius: 12, background: "rgba(22, 13, 29, .97)",
+            border: "1px solid rgba(251,113,133,.75)",
+            color: "#ffe4e6", fontSize: 12, fontWeight: 650,
+            boxShadow: "0 12px 40px rgba(0,0,0,.45)", pointerEvents: "auto",
+          }}
+        >
+          <span style={{color: "#fda4af", fontSize: 18}}>⚠</span>
+          <span>{placementError}</span>
+          <button type="button" onClick={dismissPlacementError}
+            aria-label="Dismiss placement warning"
+            style={{ marginLeft: "auto", color: "#fecdd3", background: "transparent",
+              border: 0, padding: 4, cursor: "pointer", display: "grid", placeItems: "center" }}>
+            <X size={16} />
+          </button>
+        </div>
+      )}
 
-            {/* SIMULATION WARNINGS */}
+      {/* SIMULATION WARNINGS */}
       {sim.warnings.length > 0 && (
         <div
           style={{
             position: "absolute",
-            right: 18,
+            right: monitorOpen || rightInspectorOpen ? 370 : 18,
             bottom: 18,
             zIndex: 91,
             maxWidth: 330,
-            transform: "translateY(-90px)",
             padding: 12,
             borderRadius: 12,
             background: "rgba(127,29,29,.92)",

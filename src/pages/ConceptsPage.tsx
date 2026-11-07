@@ -1215,7 +1215,7 @@ export function ConceptsPage() {
         {CONCEPTS.map((c) => {
           const Icon = c.icon;
           return (
-            <button key={c.id} type="button" onClick={() => selectConcept(c.id)} className="text-left group bg-[#111827] border border-[#1e293b] hover:border-cyan-500/40 rounded-xl p-5 flex flex-col transition shadow-sm hover:shadow-[0_0_24px_rgba(0,180,255,0.12)]">
+            <button key={c.id} type="button" onClick={() => selectConcept(c.id)} className="text-left group bg-[var(--app-surface)] border border-[var(--app-border)] hover:border-cyan-500/40 rounded-xl p-5 flex flex-col transition shadow-sm hover:shadow-[0_0_24px_rgba(0,180,255,0.12)]">
               <div className="flex items-start gap-3">
                 <div className="w-10 h-10 rounded-lg bg-cyan-500/10 text-cyan-400 flex items-center justify-center group-hover:bg-cyan-500/20 transition">
                   <Icon size={18} />

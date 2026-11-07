@@ -1593,6 +1593,10 @@ export function executeMcuProgram(
     state.running = true;
     state.error = undefined;
     runArduinoSketch(source, state, runtime, inputsForSketch, events);
+    // The current safe-subset sketch interpreter handles digital GPIO and
+    // LiquidCrystal calls. Keep the SSD1306 text interpreter alongside it;
+    // otherwise OLED sketches silently render a blank screen.
+    executeOledProgram(source, state, runtime);
     estimateGpioCurrents(runtime);
     return { state, pinEvents: events };
   } catch (e) {

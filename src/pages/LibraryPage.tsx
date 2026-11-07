@@ -35,7 +35,7 @@ function BookThumbnail({ book }: { book: LibraryBook }) {
     <img
       src={src}
       alt=""
-      className="w-14 h-[4.5rem] shrink-0 rounded-lg object-cover border border-[#1e293b] bg-[#0b1220] shadow-sm"
+      className="w-14 h-[4.5rem] shrink-0 rounded-lg object-cover border border-[var(--app-border)] bg-[#0b1220] shadow-sm"
       onError={() => setFailed(true)}
       loading="lazy"
     />
@@ -78,7 +78,7 @@ export function LibraryPage() {
   const hasFilters = query || folder !== "All Subjects" || year !== "All Years";
 
   return (
-    <div className="flex-1 min-w-0 overflow-y-auto scrollbar-thin bg-[#0a0f1a]">
+    <div className="flex-1 min-w-0 overflow-y-auto scrollbar-thin bg-[var(--app-bg)]">
       <div className="max-w-[1500px] mx-auto p-5 sm:p-6 lg:p-8">
         {/* Header */}
         <header className="mb-7">
@@ -148,13 +148,13 @@ export function LibraryPage() {
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="Search books, subjects…"
-                  className="w-full h-11 pl-10 pr-4 rounded-xl bg-[#0f172a] border border-[#1e293b] text-sm text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/20 transition"
+                  className="w-full h-11 pl-10 pr-4 rounded-xl bg-[var(--app-surface-2)] border border-[var(--app-border)] text-sm text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/20 transition"
                 />
               </div>
               <select
                 value={year}
                 onChange={(e) => setYear(e.target.value)}
-                className="h-11 rounded-xl bg-[#0f172a] border border-[#1e293b] px-4 text-sm text-slate-300 focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/20 transition sm:w-40"
+                className="h-11 rounded-xl bg-[var(--app-surface-2)] border border-[var(--app-border)] px-4 text-sm text-slate-300 focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/20 transition sm:w-40"
               >
                 {YEARS.map((item) => (
                   <option key={item} value={item}>
@@ -190,7 +190,7 @@ export function LibraryPage() {
 
             {/* Empty / list */}
             {grouped.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-[#334155] bg-[#0f172a]/40 p-14 text-center">
+              <div className="rounded-2xl border border-dashed border-[var(--app-border)] bg-[var(--app-surface-2)]/40 p-14 text-center">
                 <div className="mx-auto w-12 h-12 rounded-xl bg-slate-800/80 flex items-center justify-center mb-4">
                   <FileText className="text-slate-500" size={24} strokeWidth={1.5} />
                 </div>
@@ -208,14 +208,14 @@ export function LibraryPage() {
                       <span className="text-[11px] text-slate-600 tabular-nums">
                         {books.length}
                       </span>
-                      <div className="h-px bg-[#1e293b] flex-1" />
+                      <div className="h-px bg-[var(--app-surface-2)] flex-1" />
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-3">
                       {books.map((book) => (
                         <article
                           key={`${book.folder}-${book.title}-${book.driveUrl}`}
-                          className="group rounded-xl border border-[#1e293b] bg-[#0f172a] p-4 hover:border-blue-500/35 hover:bg-[#111b2d] transition-all duration-150"
+                          className="group rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-2)] p-4 hover:border-blue-500/35 hover:bg-[#111b2d] transition-all duration-150"
                         >
                           <div className="flex gap-3.5">
                             <BookThumbnail book={book} />
@@ -251,7 +251,7 @@ export function LibraryPage() {
                               href={book.driveUrl}
                               target="_blank"
                               rel="noreferrer"
-                              className="h-9 w-9 rounded-lg border border-[#334155] flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-800 hover:border-slate-600 transition-colors"
+                              className="h-9 w-9 rounded-lg border border-[var(--app-border)] flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-800 hover:border-slate-600 transition-colors"
                               title="Open in Google Drive"
                             >
                               <ExternalLink size={14} />
@@ -278,7 +278,7 @@ export function LibraryPage() {
             className="w-full h-full max-w-[1400px] max-h-[92vh] bg-[#0b1220] border border-[#263449] rounded-2xl overflow-hidden shadow-2xl flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
-            <header className="h-14 shrink-0 px-4 flex items-center gap-3 border-b border-[#1e293b]">
+            <header className="h-14 shrink-0 px-4 flex items-center gap-3 border-b border-[var(--app-border)]">
               <div className="w-8 h-8 rounded-lg bg-blue-600/15 flex items-center justify-center shrink-0">
                 <FileText size={15} className="text-blue-400" />
               </div>

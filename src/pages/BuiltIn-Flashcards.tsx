@@ -90,7 +90,7 @@ export function BuiltInFlashcardsPage() {
           <button
             type="button"
             onClick={() => setFlipped((f) => !f)}
-            className="w-full min-h-[220px] rounded-2xl border border-[#1e293b] bg-[#111827] p-8 text-left shadow-lg hover:border-blue-500/40 transition flex flex-col justify-center"
+            className="w-full min-h-[220px] rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface)] p-8 text-left shadow-lg hover:border-blue-500/40 transition flex flex-col justify-center"
           >
             <div className="text-xs uppercase tracking-wide text-slate-500 mb-3">
               {flipped ? "Answer" : "Question"} · click to flip
@@ -104,14 +104,14 @@ export function BuiltInFlashcardsPage() {
             <button
               type="button"
               onClick={prevCard}
-              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-[#1e293b] text-sm text-slate-300 hover:bg-[#1e293b]/50 transition"
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-[var(--app-border)] text-sm text-slate-300 hover:bg-[var(--app-surface-2)]/50 transition"
             >
               <ChevronLeft size={16} /> Prev
             </button>
             <button
               type="button"
               onClick={() => setFlipped(false)}
-              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-[#1e293b] text-sm text-slate-400 hover:bg-[#1e293b]/50 transition"
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-[var(--app-border)] text-sm text-slate-400 hover:bg-[var(--app-surface-2)]/50 transition"
               title="Reset flip"
             >
               <RotateCcw size={14} />
@@ -159,11 +159,11 @@ export function BuiltInFlashcardsPage() {
           {cards.map(([q, a], i) => (
             <div
               key={i}
-              className="rounded-xl border border-[#1e293b] bg-[#111827] p-4"
+              className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] p-4"
             >
               <div className="text-xs text-slate-500 mb-1">Card {i + 1}</div>
               <div className="text-sm font-medium text-slate-100">{q}</div>
-              <div className="text-sm text-slate-400 mt-1.5 border-t border-[#1e293b] pt-1.5">
+              <div className="text-sm text-slate-400 mt-1.5 border-t border-[var(--app-border)] pt-1.5">
                 {a}
               </div>
             </div>
@@ -192,12 +192,12 @@ export function BuiltInFlashcardsPage() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search decks…"
-          className="w-full rounded-lg border border-[#1e293b] bg-[var(--app-border)] pl-8 pr-8 py-2 text-sm text-slate-200 placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500/50"
+          className="w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-border)] pl-8 pr-8 py-2 text-sm text-slate-200 placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500/50"
         />
       </div>
 
       {filtered.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-[#1e293b] p-10 text-center text-sm text-slate-500">
+        <div className="rounded-xl border border-dashed border-[var(--app-border)] p-10 text-center text-sm text-slate-500">
           No decks match “{query}”.
         </div>
       ) : (
@@ -207,7 +207,7 @@ export function BuiltInFlashcardsPage() {
             return (
               <div
                 key={deck.id}
-                className="bg-[#111827] border border-[#1e293b] rounded-xl p-4 flex flex-col"
+                className="bg-[var(--app-surface)] border border-[var(--app-border)] rounded-xl p-4 flex flex-col"
               >
                 <div className="flex items-start gap-3">
                   <div className="w-10 h-10 rounded-lg bg-blue-500/15 text-blue-400 flex items-center justify-center shrink-0">
@@ -245,7 +245,7 @@ export function BuiltInFlashcardsPage() {
                   <button
                     type="button"
                     onClick={() => openView(deck)}
-                    className="inline-flex items-center justify-center gap-2 border border-[#1e293b] hover:bg-[#1e293b]/50 text-slate-300 text-sm font-medium px-3 py-2 rounded-lg transition"
+                    className="inline-flex items-center justify-center gap-2 border border-[var(--app-border)] hover:bg-[var(--app-surface-2)]/50 text-slate-300 text-sm font-medium px-3 py-2 rounded-lg transition"
                   >
                     <Eye size={14} /> View
                   </button>

@@ -2,7 +2,6 @@ import { useNavigate, useParams } from 'react-router-dom'
 import {
   ChevronLeft,
   Play,
-  Share2,
   Search,
   Plus,
   Undo2,
@@ -14,14 +13,35 @@ import {
   Trash2,
   RotateCw,
   HelpCircle,
+  Download,
   Hand,
+  Cable,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Maximize2,
+  Focus,
+  Star,
+  Clock3,
+  Check,
+  RotateCcw,
+  ChevronDown,
+  Keyboard,
+  Cpu,
+  CircuitBoard,
+  BookOpen,
+  LayoutGrid,
+  Settings2,
+  Monitor,
+  Info,
+  CheckCircle2,
 } from 'lucide-react'
 
 import HelpModal from '../components/HelpModal'
 import { Suspense, lazy, useEffect, useMemo, useRef, useState, Component, type ReactNode } from 'react'
 import { useLab } from '../store/lab'
-import { useProjects } from '../store/projects'
-import type { ToolId } from '../circuit/types'
+import { nextToggleableTool, type ToggleableTool } from '../circuit/editor-toolbar-state'
+import { freshPremadeCircuit, useProjects } from '../store/projects'
+import { WIRE_HEX, type ToolId, type WireColor, type WireStyle, type TransistorModelId, type MotorModelId } from '../circuit/types'
 import { Button } from '@/components/ui/button';
 import {
   BOARD_PRESETS,
@@ -29,13 +49,15 @@ import {
   nearestHole,
   type BoardPresetId,
 } from '../circuit/breadboard'
+import type { HoleId } from '../circuit/types'
 import * as THREE from 'three'
+import { WorkbenchDock } from '../circuit-lab/workbench-dock'
 
 const CircuitLab = lazy(() =>
   import('../circuit-lab/index').then((m) => ({ default: m.CircuitLab })),
 )
-const Schematic2D = lazy(() =>
-  import('../circuit-lab/schematic-2d').then((m) => ({ default: m.Schematic2D })),
+const DraggedPart3D = lazy(() =>
+  import('../circuit-lab/drag-preview-3d').then((m) => ({ default: m.DraggedPart3D })),
 )
 
 
@@ -1035,20 +1057,21 @@ function SchematicFallback() {
   )
 }
 
-const PALETTE: Array<{
-  title: string
-  items: Array<{
-    id: string
-    label: string
-    symbol: ReactNode
-    tool: ToolId | null
-  }>
-}> = [
+type PaletteItem = {
+  id: string
+  label: string
+  symbol: ReactNode
+  tool: ToolId
+  keywords?: string
+  preset?: { ledColor?: 'red' | 'green' | 'yellow' | 'blue'; transistorModel?: TransistorModelId; motorModel?: MotorModelId }
+}
+type PaletteSection = { title: string; items: PaletteItem[] }
+
+const PALETTE: PaletteSection[] = [
   {
     title: 'Sources',
     items: [
       { id: 'vdc', label: 'VDC', symbol: '⎓', tool: 'psu-positive' },
-      { id: 'vac', label: 'VAC', symbol: '~', tool: null },
       { id: 'gnd', label: 'GND', symbol: '⏚', tool: 'psu-negative' },
     ],
   },
@@ -1068,9 +1091,19 @@ const PALETTE: Array<{
     items: [
       { id: 'diode', label: 'Diode', symbol: <DiodeSymbol />, tool: 'diode' },
       { id: 'zener', label: 'Zener', symbol: 'Z', tool: 'zener' },
-      { id: 'led', label: 'LED', symbol: <LedSymbol />, tool: 'led' },
+      { id: 'led', label: 'LED (red)', symbol: <LedSymbol />, tool: 'led', preset: { ledColor: 'red' }, keywords: 'light emitting diode' },
+      { id: 'led-green', label: 'LED (green)', symbol: <LedSymbol />, tool: 'led', preset: { ledColor: 'green' } },
+      { id: 'led-yellow', label: 'LED (yellow)', symbol: <LedSymbol />, tool: 'led', preset: { ledColor: 'yellow' } },
+      { id: 'led-blue', label: 'LED (blue)', symbol: <LedSymbol />, tool: 'led', preset: { ledColor: 'blue' } },
       { id: 'rgb-led', label: 'RGB LED', symbol: 'RGB', tool: 'rgb-led' },
-      { id: 'transistor', label: 'Transistor', symbol: <TransistorSymbol />, tool: 'transistor' },
+      { id: 'transistor', label: '2N3904 NPN', symbol: <TransistorSymbol />, tool: 'transistor', preset: { transistorModel: '2n3904' }, keywords: 'BJT transistor' },
+      { id: '2n3906', label: '2N3906 PNP', symbol: <TransistorSymbol />, tool: 'transistor', preset: { transistorModel: '2n3906' } },
+      { id: 'bc547', label: 'BC547 NPN', symbol: <TransistorSymbol />, tool: 'transistor', preset: { transistorModel: 'bc547' } },
+      { id: 'tip31', label: 'TIP31 NPN', symbol: <TransistorSymbol />, tool: 'transistor', preset: { transistorModel: 'tip31' } },
+      { id: 'bc557', label: 'BC557 PNP', symbol: <TransistorSymbol />, tool: 'transistor', preset: { transistorModel: 'bc557' } },
+      { id: 'tip32', label: 'TIP32 PNP', symbol: <TransistorSymbol />, tool: 'transistor', preset: { transistorModel: 'tip32' } },
+      { id: '2n2222', label: '2N2222 NPN', symbol: <TransistorSymbol />, tool: 'transistor', preset: { transistorModel: '2n2222' } },
+      { id: '2n3055', label: '2N3055 NPN', symbol: <TransistorSymbol />, tool: 'transistor', preset: { transistorModel: '2n3055' } },
       { id: 'mosfet', label: 'MOSFET', symbol: 'MOS', tool: 'mosfet' },
       { id: 'thyristor', label: 'Thyristor (SCR)', symbol: <ThyristorSymbol />, tool: 'thyristor' },
       { id: 'triac', label: 'TRIAC', symbol: <TriacSymbol />, tool: 'triac' },
@@ -1080,7 +1113,10 @@ const PALETTE: Array<{
   {
     title: 'Switching',
     items: [
-      { id: 'switch', label: 'Switch', symbol: <SwitchSymbol />, tool: 'switch' },
+      { id: 'switch', label: 'SPST switch', symbol: <SwitchSymbol />, tool: 'switch' },
+      { id: 'switch-spdt', label: 'SPDT switch', symbol: <SwitchSymbol />, tool: 'switch-spdt' },
+      { id: 'switch-dpst', label: 'DPST switch', symbol: <SwitchSymbol />, tool: 'switch-dpst' },
+      { id: 'switch-dpdt', label: 'DPDT switch', symbol: <SwitchSymbol />, tool: 'switch-dpdt' },
       { id: 'button', label: 'Push button', symbol: <PushButtonSymbol />, tool: 'button' },
       { id: 'relay', label: 'Relay', symbol: <RelaySymbol />, tool: 'relay' },
       { id: 'pot', label: 'Potentiometer', symbol: <PotentiometerSymbol />, tool: 'pot' },
@@ -1096,7 +1132,10 @@ const PALETTE: Array<{
   {
     title: 'Actuators',
     items: [
-      { id: 'motor', label: 'DC Motor', symbol: <MotorSymbol />, tool: 'motor' },
+      { id: 'motor', label: 'DC Motor 5V', symbol: <MotorSymbol />, tool: 'motor', preset: { motorModel: '5v' } },
+      { id: 'motor-3v', label: 'DC Motor 3V', symbol: <MotorSymbol />, tool: 'motor', preset: { motorModel: '3v' } },
+      { id: 'motor-9v', label: 'DC Motor 9V', symbol: <MotorSymbol />, tool: 'motor', preset: { motorModel: '9v' } },
+      { id: 'motor-12v', label: 'DC Motor 12V', symbol: <MotorSymbol />, tool: 'motor', preset: { motorModel: '12v' } },
       { id: 'servo', label: 'Servo', symbol: 'SV', tool: 'servo' },
     ],
   },
@@ -1104,45 +1143,59 @@ const PALETTE: Array<{
     title: 'Analog & Timing',
     items: [
       { id: 'opamp', label: 'Op-Amp', symbol: 'OA', tool: 'opamp' },
-      { id: 'timer555', label: '555 Timer', symbol: '555', tool: 'timer555' },
+      { id: 'timer555', label: '555 Timer', symbol: '555', tool: 'timer555', keywords: 'NE555 astable monostable' },
       { id: 'optocoupler', label: 'Optocoupler', symbol: 'OC', tool: 'optocoupler' },
-      { id: 'regulator', label: 'Regulator', symbol: '78xx', tool: 'regulator' },
+      { id: 'regulator', label: 'Regulator', symbol: '78xx', tool: 'regulator', keywords: '7805 7812 linear voltage regulator' },
     ],
   },
   {
     title: 'Displays & Controllers',
     items: [
-      { id: 'lcd', label: 'LCD 16×2', symbol: <LcdSymbol />, tool: 'lcd' },
-      { id: 'oled', label: 'OLED', symbol: <OledSymbol />, tool: 'oled' },
+      { id: 'lcd', label: 'LCD 16×2', symbol: <LcdSymbol />, tool: 'lcd', keywords: 'HD44780 character display' },
+      { id: 'oled', label: 'OLED', symbol: <OledSymbol />, tool: 'oled', keywords: 'SSD1306 I2C 128x64' },
       { id: 'seven-segment', label: '7-Segment', symbol: '8.', tool: 'seven-segment' },
-      { id: 'mcu', label: 'Arduino / MCU', symbol: <McuSymbol />, tool: 'mcu' },
+      { id: 'mcu', label: 'Arduino / MCU', symbol: <McuSymbol />, tool: 'mcu', keywords: 'Uno R3 ATmega328P microcontroller' },
     ],
   },
   {
     title: 'Logic ICs',
     items: [
-      { id: 'not', label: 'NOT IC', symbol: <GateSymbol label="NOT" />, tool: 'not' },
-      { id: 'and', label: 'AND IC', symbol: <GateSymbol label="AND" />, tool: 'and' },
-      { id: 'or', label: 'OR IC', symbol: <GateSymbol label="OR" />, tool: 'or' },
-      { id: 'nand', label: 'NAND IC', symbol: <GateSymbol label="NAND" />, tool: 'nand' },
-      { id: 'nor', label: 'NOR IC', symbol: <GateSymbol label="NOR" />, tool: 'nor' },
-      { id: 'xor', label: 'XOR IC', symbol: <GateSymbol label="XOR" />, tool: 'xor' },
-      { id: 'xnor', label: 'XNOR IC', symbol: <GateSymbol label="XNOR" />, tool: 'xnor' },
+      { id: 'not', label: 'NOT IC', symbol: <GateSymbol label="NOT" />, tool: 'not', keywords: '74HC04 hex inverter' },
+      { id: 'and', label: 'AND IC', symbol: <GateSymbol label="AND" />, tool: 'and', keywords: '74HC08 quad' },
+      { id: 'or', label: 'OR IC', symbol: <GateSymbol label="OR" />, tool: 'or', keywords: '74HC32 quad' },
+      { id: 'nand', label: 'NAND IC', symbol: <GateSymbol label="NAND" />, tool: 'nand', keywords: '74HC00 quad' },
+      { id: 'nor', label: 'NOR IC', symbol: <GateSymbol label="NOR" />, tool: 'nor', keywords: '74HC02 quad' },
+      { id: 'xor', label: 'XOR IC', symbol: <GateSymbol label="XOR" />, tool: 'xor', keywords: '74HC86 quad exclusive or' },
+      { id: 'xnor', label: 'XNOR IC', symbol: <GateSymbol label="XNOR" />, tool: 'xnor', keywords: 'CD4077B quad exclusive nor' },
     ],
   },
   {
     title: 'Tools',
     items: [
-      { id: 'wire', label: 'Wire', symbol: '↗', tool: 'wire' },
       { id: 'probe', label: 'Voltmeter', symbol: 'V', tool: 'probe' },
     ],
   }
 ]
 
+type EditorToolButtonProps = { label: string; icon: ReactNode; onClick: () => void; shortcut?: string; active?: boolean; danger?: boolean; disabled?: boolean }
+function EditorToolButton({label,icon,onClick,shortcut,active=false,danger=false,disabled=false}: EditorToolButtonProps) {
+  return <button type="button" className={`editor-toolbar-action ${active ? 'active' : ''} ${danger ? 'danger' : ''}`} disabled={disabled} aria-pressed={active} aria-label={label} title={`${label}${shortcut ? ` (${shortcut})` : ''}${active && ['Select', 'Pan', 'Wire'].includes(label) ? ' · click again to exit' : ''}`} onClick={onClick}>
+    {icon}<span className="hidden xl:inline">{label}</span>
+  </button>
+}
+
 export function CircuitEditorPage() {
   const navigate = useNavigate()
   const { projectId } = useParams()
   const [use3D, setUse3D] = useState(true)
+  // Fast rendering is on by default. Users can switch to detailed shadows from the dock.
+  const [performanceMode, setPerformanceMode] = useState(() => {
+    try { return window.localStorage.getItem('electrolab-3d-fast-mode-v1') !== 'false' }
+    catch { return true }
+  })
+  useEffect(() => {
+    try { window.localStorage.setItem('electrolab-3d-fast-mode-v1', String(performanceMode)) } catch { /* private browsing */ }
+  }, [performanceMode])
   const [helpOpen, setHelpOpen] = useState(false)
   const boardPreset = useLab((state) => state.boardId)
   const setBoard = useLab((state) => state.setBoard)
@@ -1150,7 +1203,12 @@ export function CircuitEditorPage() {
   const getCircuitSnapshot = useLab((state) => state.getCircuitSnapshot)
   const parts = useLab((state) => state.parts)
   const wires = useLab((state) => state.wires)
+  const selectedWireId = useLab((state) => state.selectedId)
+  const focusConnections = useLab((state) => state.focusConnections)
+  const selectedWire = wires.find(w => w.id === selectedWireId)
   const psuVoltage = useLab((state) => state.psuVoltage)
+  const psuPositive = useLab((state) => state.psuPositive)
+  const psuNegative = useLab((state) => state.psuNegative)
 
   const projects = useProjects((s) => s.projects)
   const getProject = useProjects((s) => s.getProject)
@@ -1210,7 +1268,7 @@ export function CircuitEditorPage() {
       saveCircuit(id, getCircuitSnapshot())
     }, 500)
     return () => window.clearTimeout(timer)
-  }, [parts, wires, psuVoltage, boardPreset, saveCircuit, getCircuitSnapshot])
+  }, [parts, wires, psuVoltage, psuPositive, psuNegative, boardPreset, saveCircuit, getCircuitSnapshot])
 
   useEffect(() => {
     return () => {
@@ -1230,23 +1288,79 @@ export function CircuitEditorPage() {
   }
   const [moveMode, setMoveMode] = useState(false)
   const [search, setSearch] = useState('')
+  const [sidebarTab, setSidebarTab] = useState<'parts' | 'circuits' | 'examples'>('parts')
+  const workspaceRef = useRef<HTMLDivElement | null>(null)
+  const [paletteOpen, setPaletteOpen] = useState(true)
+  const [category, setCategory] = useState('All')
+  const [showTips, setShowTips] = useState(false)
+  const [showShortcuts, setShowShortcuts] = useState(false)
+  const [showMore, setShowMore] = useState(false)
+  const [showEditorSettings, setShowEditorSettings] = useState(false)
+  const settingsMenuRef = useRef<HTMLDivElement | null>(null)
+  const moreMenuRef = useRef<HTMLDivElement | null>(null)
+  const [recentIds, setRecentIds] = useState<string[]>([])
+  const [favorites, setFavorites] = useState<string[]>(() => {
+    try {
+      const raw = window.localStorage.getItem('electrolab:favorite-components')
+      const value = raw ? JSON.parse(raw) : []
+      return Array.isArray(value) ? value.filter((x): x is string => typeof x === 'string') : []
+    } catch { return [] }
+  })
+
+  useEffect(() => {
+    try { window.localStorage.setItem('electrolab:favorite-components', JSON.stringify(favorites)) } catch { /* ignore storage restrictions */ }
+  }, [favorites])
+
+  useEffect(() => {
+    if (!showMore) return
+    const outside = (event: PointerEvent) => {if (!moreMenuRef.current?.contains(event.target as Node)) setShowMore(false)}
+    window.addEventListener('pointerdown', outside)
+    return () => window.removeEventListener('pointerdown', outside)
+  }, [showMore])
+
+  useEffect(() => {
+    if (!showEditorSettings) return;
+    const outside = (event: PointerEvent) => {
+      if (!settingsMenuRef.current?.contains(event.target as Node)) setShowEditorSettings(false);
+    };
+    window.addEventListener('pointerdown', outside);
+    return () => window.removeEventListener('pointerdown', outside);
+  }, [showEditorSettings]);
 
   /** Floating component while the user drags from the palette onto the board. */
   const [dragPreview, setDragPreview] = useState<{
     tool: ToolId
     label: string
-    symbol: ReactNode
     x: number
     y: number
+    onBoard: boolean
+    moved: boolean
+    snappedHole: HoleId | null
   } | null>(null)
   const dragActiveRef = useRef(false)
   const dragToolRef = useRef<ToolId | null>(null)
   const dragMovedRef = useRef(false)
+  const suppressPaletteClickRef = useRef(false)
   const dragStartRef = useRef({ x: 0, y: 0 })
 
   const activeTool = useLab((state) => state.tool)
+  const wireStyle = useLab((state) => state.wireStyle)
+  const wireColor = useLab((state) => state.wireColor)
+  const pendingHoles = useLab((state) => state.pendingHoles)
+  const showWireFlow = useLab((state) => state.showWireFlow)
   const placePartAt = useLab((state) => state.placePartAt)
   const setHover = useLab((state) => state.setHover)
+
+  // Activating Wire from the toolbar, keyboard (W), or an in-scene action
+  // reveals the Parts sidebar, including Solid/Jumper and color options.
+  // Turning Wire off does not reopen the sidebar, and users may still
+  // collapse the Parts panel manually after starting a connection.
+  useEffect(() => {
+    if (use3D && activeTool === 'wire') {
+      setSidebarTab('parts')
+      setPaletteOpen(true)
+    }
+  }, [activeTool, use3D])
 
   const cameraCommand = (type: string, active?: boolean) => {
     window.dispatchEvent(
@@ -1255,24 +1369,42 @@ export function CircuitEditorPage() {
   }
 
   const toggleMoveMode = () => {
-    setMoveMode((current) => {
-      const next = !current
-      cameraCommand('move-mode', next)
-
-      if (next) {
-        useLab.getState().setTool('select')
-      }
-
-      return next
-    })
+    const next = !moveMode
+    setMoveMode(next)
+    cameraCommand('move-mode', next)
+    // Pan is exclusive with component selection and wire placement. Turning
+    // it off leaves a neutral cursor rather than a second active button.
+    useLab.getState().setTool('none')
   }
 
-  const selectTool = (tool: ToolId | null) => {
-    if (!tool) return
+  const applyPalettePreset = (item: PaletteItem) => {
+    if (item.preset?.ledColor) useLab.getState().setLedColor(item.preset.ledColor)
+    if (item.preset?.transistorModel) useLab.getState().setTransistorModel(item.preset.transistorModel)
+    if (item.preset?.motorModel) useLab.getState().setMotorModel(item.preset.motorModel)
+  }
 
+  const selectTool = (tool: ToolId | null, item?: PaletteItem) => {
+    if (!tool) return
+    if (item) {
+      applyPalettePreset(item)
+      setRecentIds((prev) => [item.id, ...prev.filter((id) => id !== item.id)].slice(0, 8))
+    }
     setMoveMode(false)
     cameraCommand('move-mode', false)
     useLab.getState().setTool(tool)
+  }
+
+  const toggleToolbarTool = (tool: ToggleableTool) => {
+    const next = nextToggleableTool(useLab.getState().tool, tool, moveMode)
+    if (next === 'wire') {
+      setSidebarTab('parts')
+      setPaletteOpen(true)
+    }
+    selectTool(next)
+  }
+
+  const toggleFavorite = (id: string) => {
+    setFavorites((prev) => prev.includes(id) ? prev.filter((value) => value !== id) : [...prev, id])
   }
 
   /**
@@ -1328,29 +1460,36 @@ export function CircuitEditorPage() {
     return { x: hit.x, z: hit.z }
   }
 
-  const resolveDropHole = (clientX: number, clientY: number) => {
+  const resolveDropHole = (clientX: number, clientY: number): HoleId | null => {
+    // Do not fall back to a stale hover when the user releases outside the board.
     const point = screenToBoardPoint(clientX, clientY)
-    if (point) {
-      // Generous radius so dropping near a hole still snaps.
-      const hole = nearestHole({ x: point.x, y: 0.34, z: point.z }, 0.55)
-      if (hole) return hole
-    }
-    // Fallback: last hole highlighted while dragging.
-    return useLab.getState().hoverHole
+    return point
+      ? nearestHole({ x: point.x, y: 0.34, z: point.z }, 0.55)
+      : null
   }
 
   const beginPaletteDrag = (
     event: React.PointerEvent,
     tool: ToolId,
     label: string,
-    symbol: ReactNode,
+    item: PaletteItem,
   ) => {
     if (event.button !== 0) return
     // Don't preventDefault on pointerdown — allows click-to-select when
     // the pointer never moves far enough to count as a drag.
     event.stopPropagation()
+    // A fresh press must never inherit suppression from a previous drag.
+    suppressPaletteClickRef.current = false
+    applyPalettePreset(item)
+    setRecentIds((prev) => [item.id, ...prev.filter((id) => id !== item.id)].slice(0, 8))
 
-    if (!useLab.getState().partDragEnabled) {
+    // Wire, probe and power-port tools are not physical parts: use click-to-connect.
+    if (['wire', 'probe', 'psu-positive', 'psu-negative'].includes(tool)) {
+      selectTool(tool)
+      return
+    }
+
+    if (!use3D || !useLab.getState().partDragEnabled) {
       setMoveMode(false)
       cameraCommand('move-mode', false)
       useLab.getState().setTool(tool)
@@ -1359,18 +1498,22 @@ export function CircuitEditorPage() {
     
     dragActiveRef.current = true
     dragMovedRef.current = false
+    suppressPaletteClickRef.current = false
     dragStartRef.current = { x: event.clientX, y: event.clientY }
     dragToolRef.current = tool
     setMoveMode(false)
     cameraCommand('move-mode', false)
     useLab.getState().setTool(tool)
     useLab.getState().setPaletteDragging(true)
+    setHover(null)
     setDragPreview({
       tool,
       label,
-      symbol,
       x: event.clientX,
       y: event.clientY,
+      onBoard: false,
+      moved: false,
+      snappedHole: null,
     })
 
     try {
@@ -1389,19 +1532,21 @@ export function CircuitEditorPage() {
       dragMovedRef.current = true
     }
 
-    setDragPreview((prev) =>
-      prev
-        ? { ...prev, x: event.clientX, y: event.clientY }
-        : prev,
-    )
-
     const point = screenToBoardPoint(event.clientX, event.clientY)
-    if (point) {
-      const hole = nearestHole({ x: point.x, y: 0.34, z: point.z }, 0.55)
-      setHover(hole)
-    } else {
-      setHover(null)
-    }
+    const hole = point
+      ? nearestHole({ x: point.x, y: 0.34, z: point.z }, 0.55)
+      : null
+    // The actual component appears in the 3D scene once over the board.
+    // Outside the board a small WebGL view of the SAME component follows the cursor.
+    setDragPreview((prev) => prev ? {
+      ...prev,
+      x: event.clientX,
+      y: event.clientY,
+      onBoard: Boolean(hole),
+      moved: dragMovedRef.current,
+      snappedHole: hole,
+    } : prev)
+    setHover(hole)
   }
 
   const endPaletteDrag = (event: React.PointerEvent | PointerEvent) => {
@@ -1410,6 +1555,9 @@ export function CircuitEditorPage() {
 
     const tool = dragToolRef.current
     const didDrag = dragMovedRef.current
+    // A synthetic click can fire on the palette button after pointerup even
+    // though the part was already dropped. Do not reselect the placement tool.
+    suppressPaletteClickRef.current = didDrag
     dragToolRef.current = null
     dragMovedRef.current = false
 
@@ -1451,29 +1599,36 @@ export function CircuitEditorPage() {
 
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onCancel()
+    }
     window.addEventListener('pointercancel', onCancel)
+    window.addEventListener('keydown', onKey)
     return () => {
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
       window.removeEventListener('pointercancel', onCancel)
+      window.removeEventListener('keydown', onKey)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dragPreview?.tool])
 
   const filteredPalette = useMemo(() => {
     const query = search.trim().toLowerCase()
-
-    if (!query) return PALETTE
-
-    return PALETTE
-      .map((section) => ({
-        ...section,
-        items: section.items.filter((item) =>
-          item.label.toLowerCase().includes(query),
-        ),
-      }))
-      .filter((section) => section.items.length > 0)
-  }, [search])
+    return PALETTE.map((section) => ({
+      ...section,
+      items: section.items.filter((item) =>
+        (category === 'All' || category === section.title ||
+         (category === 'Favorites' && favorites.includes(item.id)) ||
+         (category === 'Recent' && recentIds.includes(item.id))) &&
+        (!query || `${item.label} ${item.keywords ?? ''} ${section.title}`.toLowerCase().includes(query)),
+      ),
+    })).filter((section) => section.items.length > 0)
+  }, [search, category, favorites, recentIds])
+  const paletteCount = PALETTE.reduce((total, section) => total + section.items.length, 0)
+  const selectedItem = useLab((state) => state.selectedId)
+  const canUndo = useLab((state) => state.history.length > 0)
+  const canRedo = useLab((state) => state.future.length > 0)
 
   const title = useMemo(() => {
     if (!projectId || projectId === 'new') return 'Untitled Project'
@@ -1483,426 +1638,250 @@ export function CircuitEditorPage() {
     )
   }, [projectId, projects])
 
+  const handleRunSimulation = () => {
+    const id = projectId || activeIdRef.current
+    try { if (id) saveCircuit(id, getCircuitSnapshot()) } catch { /* local persistence can fail */ }
+    const lab = useLab.getState()
+    lab.runNow()
+    const after = useLab.getState()
+    const sim = after.sim
+    const current = Math.abs(sim.supplyCurrent || 0)
+    let status: 'Pass' | 'Warning' | 'Failed' = 'Pass'
+    let notes: string | undefined
+    if (sim.error || sim.shortCircuit) { status = 'Failed'; notes = sim.error || 'Short circuit detected' }
+    else if ((sim.warnings?.length ?? 0) > 0 || Object.keys(sim.burned ?? {}).length > 0) {status = 'Warning'; notes = sim.warnings?.[0] || 'Component stress warning'}
+    else if (!after.psuPositive || !after.psuNegative) {status = 'Warning'; notes = 'Power supply clips not connected'}
+    else if (after.parts.length > 0 && current < 1e-9) {status = 'Warning'; notes = 'No measurable current — check wiring and switches'}
+    if (id) useProjects.getState().recordSimRun({projectId:id, projectName:useProjects.getState().projects.find(p => p.id === id)?.name || id,status,notes})
+    navigate('/results/' + (id || 'dc-motor'))
+  }
+
+  const restorePremade = () => {
+    const id = projectId || activeIdRef.current
+    if (!id) return
+    // Never silently replace edits or mix another project into this demo.
+    if (!freshPremadeCircuit(id)) return
+    if (!window.confirm('Restore the original premade circuit? A backup of your current circuit will be created first.')) return
+    const existing = useProjects.getState().getProject(id)
+    const currentSnapshot = getCircuitSnapshot()
+    const backup = useProjects.getState().createProject(`Backup — ${existing?.name ?? 'Circuit'}`)
+    useProjects.getState().saveCircuit(backup.id, currentSnapshot)
+    const starter = freshPremadeCircuit(id)
+    if (!starter) return
+    // Suppress autosave while replacing the live Zustand lab state.
+    skipSaveRef.current = true
+    loadCircuit(starter)
+    useProjects.getState().saveCircuit(id, starter)
+    useProjects.getState().setActiveProjectId(id)
+    activeIdRef.current = id
+    window.setTimeout(() => { skipSaveRef.current = false }, 600)
+    setShowMore(false)
+  }
+
+  const canRestorePremade = ['arduino-lcd-demo', 'arduino-oled-demo', 'arduino-seven-segment-demo', 'half-adder', 'full-adder'].includes(projectId ?? '')
+
+  const isDisplayDemoMissingParts = projectId === 'arduino-lcd-demo'
+    ? !parts.some((p) => p.kind === 'mcu') || !parts.some((p) => p.kind === 'lcd')
+    : projectId === 'arduino-oled-demo'
+      ? !parts.some((p) => p.kind === 'mcu') || !parts.some((p) => p.kind === 'oled')
+      : false
+
+  const exportCurrentProject = () => {
+    const id = projectId || activeIdRef.current
+    if (!id) return
+    try { saveCircuit(id, getCircuitSnapshot()) } catch { /* continue with current snapshot */ }
+    const project = useProjects.getState().getProject(id)
+    const data = project && useProjects.getState().exportProject(project.id)
+    if (!project || !data) return
+    const url = URL.createObjectURL(new Blob([data], {type:'application/json'}))
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${project.name.replace(/[^a-z0-9-_]+/gi, '_')}.json`
+    link.click()
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+  }
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null
+      if (['INPUT','TEXTAREA','SELECT'].includes(target?.tagName || '') || target?.isContentEditable || e.ctrlKey || e.metaKey || e.altKey) return
+      const key = e.key.toLowerCase()
+      if (key === 'p' && use3D) {e.preventDefault(); toggleMoveMode()}
+      if (key === 'v' || key === 'w') {
+        // The 3D canvas handles the actual V/W tool shortcuts; synchronize
+        // pan camera state so the tool always behaves as its button indicates.
+        if (moveMode) {setMoveMode(false); cameraCommand('move-mode', false)}
+      }
+      if (key === 'f' && use3D) {e.preventDefault(); cameraCommand('reset-view')}
+      if (key === 'g' && use3D) {e.preventDefault(); cameraCommand('focus-circuit')}
+      if (e.key === '?') {e.preventDefault(); setShowShortcuts((v) => !v)}
+      if (e.key === 'Escape') {setShowMore(false);setShowEditorSettings(false);setShowShortcuts(false); if (moveMode) {setMoveMode(false);cameraCommand('move-mode',false)}}
+    }
+    window.addEventListener('keydown',onKey)
+    return () => window.removeEventListener('keydown',onKey)
+  // Only add listener when mode changes; key callbacks read current store.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [use3D, moveMode])
+
+  const premadeProjects = projects.filter(p => ['half-adder','full-adder','arduino-lcd-demo','arduino-oled-demo','arduino-seven-segment-demo'].includes(p.id));
+  const openPremade = (id: string) => {
+    const destination = useProjects.getState().getProject(id);
+    if (destination) navigate(`/editor/${id}`);
+  };
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) { void document.exitFullscreen(); return; }
+    if (workspaceRef.current?.requestFullscreen) void workspaceRef.current.requestFullscreen().catch(() => {});
+  };
+
   return (
-    <div className="flex-1 flex flex-col overflow-hidden h-full bg-[#0a0f1a]">
-      <div className="h-12 border-b border-[#1e293b] flex items-center px-3 gap-2 bg-[#0f172a] flex-shrink-0 z-20">
-        <button
-          onClick={() => navigate('/')}
-          className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 transition"
-          title="Back to Dashboard"
-        >
-          <ChevronLeft size={20} />
-        </button>
-
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="text-sm font-medium text-white truncate">{title}</span>
-          <span className="hidden sm:inline text-xs text-slate-500">• All changes saved</span>
-        </div>
-
-        <div className="flex-1" />
-
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setPartDragEnabled(!partDragEnabled)}
-            className={`hidden lg:inline-flex p-2 rounded-lg border transition flex-col items-center ${
-              partDragEnabled
-                ? 'border-blue-500/40 bg-blue-600/15 text-blue-400'
-                : 'border-transparent hover:border-[#1e293b] hover:bg-slate-800 text-slate-400'
-            }`}
-            title={
-              partDragEnabled
-                ? 'Drag parts ON — long-press a component to move it (click to turn off)'
-                : 'Drag parts OFF — click to select components and choose where the nodes go in the breadboard manually (click to enable)'
-            }
-            aria-pressed={partDragEnabled}
-          >
-            <div
-            className="hidden lg:inline-flex p-2 rounded-lg transition flex-col items-center"
-            >
-              <div>
-              <span
-                className={`relative inline-flex h-2.5 w-5 shrink-0 items-center rounded-full transition-colors ${
-                  partDragEnabled ? "bg-blue-900" : "bg-[var(--app-border)]"
-                }`}
-              >
-                <span
-                  className={`inline-block h-2 w-2 transform rounded-full bg-white shadow transition-transform ${
-                    partDragEnabled ? "translate-x-2.5" : "translate-x-0.5"
-                  }`}
-                />
-              </span>
-              </div>
-          <label className="text-[9px] text-slate-400 mt-0.5">Drag</label>
+    <div ref={workspaceRef} className="editor-workspace editor-reference-ui flex-1 flex flex-col overflow-hidden h-full bg-[#061529]">
+      <header className="editor-topbar flex-shrink-0 z-20" aria-label="Circuit editor toolbar">
+        <div className="editor-toolbar-main flex items-center gap-3 px-3 lg:px-5 py-2">
+          <button type="button" onClick={() => navigate('/projects')} aria-label="Return to projects" title="Back to Projects" className="editor-icon-btn editor-back-btn"><ChevronLeft size={18}/></button>
+          <div className="min-w-0 flex-1 editor-document-title">
+            <div className="editor-project-name truncate" title={title}>{title}</div>
+            <div className="editor-project-meta"><CheckCircle2 size={12}/> Auto-save on · {parts.length} parts · {wires.length} wires</div>
           </div>
-          </button>
-          <button
-            onClick={() => {
-              const lab = useLab.getState()
-              // Toggle: select on → off (none); off / other tool → select on
-              if (lab.tool === 'select') {
-                lab.setTool('none')
-                lab.select(null)
-              } else {
-                lab.setTool('select')
-              }
-              setMoveMode(false)
-              cameraCommand('move-mode', false)
-            }}
-            className={`hidden lg:inline-flex p-2 rounded-lg border transition flex-col items-center ${
-              activeTool === 'select' && !moveMode
-                ? 'border-blue-500/40 bg-blue-600/15 text-blue-400'
-                : 'border-transparent hover:border-[#1e293b] hover:bg-slate-800 text-slate-400'
-            }`}
-            title={
-              activeTool === 'select'
-                ? 'Select mode ON — click again to turn off'
-                : 'Select components'
-            }
-          >
-            <MousePointer2 size={16} />
-            <label className="text-[9px] text-slate-400 mt-0.5">
-              Select
-            </label>
-          </button>
-          <button
-            onClick={() => {
-              const lab = useLab.getState()
-
-              // Toggle: delete on → off (none); off / other tool → delete on
-              if (lab.tool === 'delete') {
-                lab.setTool('none')
-                lab.select(null)
-              } else {
-                lab.setTool('delete')
-              }
-
-              setMoveMode(false)
-              cameraCommand('move-mode', false)
-            }}
-            className={`hidden lg:inline-flex p-2 rounded-lg border transition flex-col items-center ${
-              activeTool === 'delete'
-                ? 'border-red-500/40 bg-red-600/15 text-red-400'
-                : 'border-transparent hover:border-[#1e293b] hover:bg-slate-800 text-slate-400'
-            }`}
-            title={
-              activeTool === 'delete'
-                ? 'Delete mode ON — click again to turn off'
-                : 'Delete components'
-            }
-          >
-            <Trash2 size={16} />
-            <label className="text-[9px] text-slate-400 mt-0.5">
-              Delete
-            </label>
-          </button>
-
-          <button
-            onClick={() => useLab.getState().rotateSelected()}
-            className="hidden lg:inline-flex p-2 rounded-lg border border-transparent hover:border-[#1e293b] hover:bg-slate-800 text-slate-400 transition flex-col items-center"
-            title="Rotate selected component clockwise on the breadboard"
-          >
-            <RotateCw size={16} />
-            <label className="text-[9px] text-slate-400 mt-0.5">
-              Rotate
-            </label>
-          </button>
-
-          <button
-            onClick={toggleMoveMode}
-            className={`hidden lg:inline-flex p-2 rounded-lg border transition flex-col items-center ${
-              moveMode
-                ? 'border-blue-500/40 bg-blue-600/15 text-blue-400'
-                : 'border-transparent hover:border-[#1e293b] hover:bg-slate-800 text-slate-400'
-            }`}
-            title={moveMode ? 'Exit move mode' : 'Move / pan the board'}
-            aria-pressed={moveMode}
-          >
-            <Move size={16} />
-            <label className="text-[9px] text-slate-400 mt-0.5">
-              Move
-            </label>
-          </button>
-
-          <button
-            onClick={() => useLab.getState().undo()}
-            className="hidden lg:inline-flex p-2 rounded-lg border border-transparent hover:border-[#1e293b] hover:bg-slate-800 text-slate-400 transition flex-col items-center"
-            title="Undo"
-          >
-            <Undo2 size={16} />
-            <label className="text-[9px] text-slate-400 mt-0.5">
-              Undo
-            </label>
-          </button>
-
-          <button
-            onClick={() => useLab.getState().redo()}
-            className="hidden lg:inline-flex p-2 rounded-lg border border-transparent hover:border-[#1e293b] hover:bg-slate-800 text-slate-400 transition flex-col items-center"
-            title="Redo"
-          >
-            
-            <Redo2 size={16} />
-            <label className="text-[9px] text-slate-400 mt-0.5">
-              Redo
-            </label>
-          </button>
-
-          <button
-            onClick={() => cameraCommand('zoom-in')}
-            className="hidden lg:inline-flex p-2 rounded-lg border border-transparent hover:border-[#1e293b] hover:bg-slate-800 text-slate-400 transition flex-col items-center"
-            title="Zoom Out"
-          >
-            <ZoomOut size={16} />
-            <label className="text-[9px] text-slate-400 mt-0.5">
-              Zoom Out
-            </label>
-          </button>
-
-          <button
-            onClick={() => cameraCommand('zoom-out')}
-            className="hidden lg:inline-flex p-2 rounded-lg border border-transparent hover:border-[#1e293b] hover:bg-slate-800 text-slate-400 transition flex-col items-center"
-            title="Zoom In"
-          >
-            <ZoomIn size={16} />
-            <label className="text-[9px] text-slate-400 mt-0.5">
-              Zoom In
-            </label>
-          </button>
-
-          <button
-            onClick={() => cameraCommand('reset-view')}
-            className="hidden xl:inline-flex px-2 py-2 rounded-lg border border-transparent hover:border-[#1e293b] hover:bg-slate-800 text-[11px] text-slate-500 transition flex-col items-center"
-            title="Reset camera view"
-          >
-            <label className="text-[9px] text-slate-400 mt-0.5">
-              Reset
-            </label>
-          </button>
+          <div className="editor-view-switch" role="group" aria-label="Editor view">
+            <button type="button" aria-pressed={use3D} className={use3D ? 'active' : ''} onClick={() => setUse3D(true)}>3D</button>
+            <button type="button" aria-pressed={!use3D} className={!use3D ? 'active' : ''} onClick={() => setUse3D(false)}>2D</button>
+          </div>
+          <button type="button" className="editor-main-action" onClick={handleRunSimulation} title="Run and view the simulation report"><Play size={17}/> <span className="hidden sm:inline">Run &amp; Results</span><span className="sm:hidden">Run</span></button>
+          <div className="editor-more-wrap" ref={moreMenuRef}>
+            <button type="button" className="editor-icon-btn editor-more-trigger" aria-label="More project actions" title="More actions" aria-expanded={showMore} onClick={() => setShowMore(v=>!v)}><ChevronDown size={18}/></button>
+            {showMore && <div className="editor-more-menu" role="menu">
+              <button type="button" role="menuitem" onClick={() => {useLab.getState().autoTidyWires();setShowMore(false)}}><Cable size={15}/> Auto Tidy wires (undoable)</button>
+              {selectedWire && <>
+                <button type="button" role="menuitem" onClick={() => {useLab.getState().setSelectedWireRouteLocked(!selectedWire.routeLocked);setShowMore(false)}}><Check size={15}/> {selectedWire.routeLocked ? 'Unlock selected wire route' : 'Lock selected wire route'}</button>
+                <button type="button" role="menuitem" onClick={() => {useLab.getState().nudgeSelectedWireLane('z', -0.15);setShowMore(false)}}><Cable size={15}/> Shift selected wire toward top rail</button>
+                <button type="button" role="menuitem" onClick={() => {useLab.getState().nudgeSelectedWireLane('z', 0.15);setShowMore(false)}}><Cable size={15}/> Shift selected wire toward bottom rail</button>
+                <button type="button" role="menuitem" onClick={() => {useLab.getState().nudgeSelectedWireLane('x', -0.15);setShowMore(false)}}><Cable size={15}/> Shift selected wire left</button>
+                <button type="button" role="menuitem" onClick={() => {useLab.getState().nudgeSelectedWireLane('x', 0.15);setShowMore(false)}}><Cable size={15}/> Shift selected wire right</button>
+              </>}
+              <button type="button" role="menuitem" onClick={() => {exportCurrentProject();setShowMore(false)}}><Download size={15}/> Export project JSON</button>
+              {canRestorePremade && <button type="button" role="menuitem" onClick={restorePremade}><RotateCcw size={15}/> Restore original demo (backs up edits)</button>}
+              <button type="button" role="menuitem" onClick={() => {setShowShortcuts(true);setShowMore(false)}}><Keyboard size={15}/> Keyboard shortcuts</button>
+              <button type="button" role="menuitem" onClick={() => {setHelpOpen(true);setShowMore(false)}}><HelpCircle size={15}/> Simulator help</button>
+              <button type="button" className="destructive" role="menuitem" onClick={() => {setShowMore(false); if(window.confirm('Clear all parts and wires on this breadboard? This action cannot be undone.')) useLab.getState().clearBoard();}}><Trash2 size={15}/> Clear breadboard</button>
+            </div>}
+          </div>
+          <div className="editor-more-wrap" ref={settingsMenuRef}>
+            <button type="button" className="editor-icon-btn editor-header-action" title="Editor settings" aria-label="Editor settings" aria-expanded={showEditorSettings} onClick={() => setShowEditorSettings(v=>!v)}><Settings2 size={19}/></button>
+            {showEditorSettings && <div className="editor-more-menu editor-settings-menu" role="group" aria-label="Editor settings">
+              <div className="editor-settings-heading">Workbench settings</div>
+              <button type="button" onClick={() => setPartDragEnabled(!partDragEnabled)} aria-pressed={partDragEnabled}><Move size={15}/>{partDragEnabled ? '3D component dragging: On' : '3D component dragging: Off'}</button>
+              <button type="button" onClick={() => useLab.getState().setShowWireFlow(!showWireFlow)} aria-pressed={showWireFlow}><Cable size={15}/>{showWireFlow ? 'Wire flow animation: On' : 'Wire flow animation: Off'}</button>
+              <button type="button" onClick={() => useLab.getState().setFocusConnections(!focusConnections)} aria-pressed={focusConnections}><Focus size={15}/>{focusConnections ? 'Focus connections: On' : 'Focus connections: Off'}</button>
+              <button type="button" onClick={() => {cameraCommand('focus-circuit');setShowEditorSettings(false)}}><Focus size={15}/> Focus placed components</button>
+              <button type="button" onClick={() => {cameraCommand('reset-view');setShowEditorSettings(false)}}><Maximize2 size={15}/> Fit entire breadboard</button>
+              <button type="button" onClick={() => {setShowShortcuts(true);setShowEditorSettings(false)}}><Keyboard size={15}/> Keyboard shortcuts</button>
+            </div>}
+          </div>
+          <button type="button" className="editor-icon-btn editor-header-action" title="Simulator help" aria-label="Simulator help" onClick={() => setHelpOpen(true)}><HelpCircle size={19}/></button>
         </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setUse3D((v) => !v)}
-            className="text-xs px-2.5 py-1.5 rounded-lg border border-[#1e293b] text-slate-400 hover:bg-slate-800 hidden sm:block"
-          >
-            {use3D ? '2D View' : '3D Lab'}
-          </button>
-
-          <button
-            onClick={() => {
-              const id = projectId || activeIdRef.current
-              // Persist board, force power + nodal solve
-              try {
-                if (id) saveCircuit(id, getCircuitSnapshot())
-              } catch {
-                /* ignore */
-              }
-              useLab.getState().runNow()
-              const lab = useLab.getState()
-              const sim = lab.sim
-              const I = Math.abs(sim.supplyCurrent || 0)
-              let status: 'Pass' | 'Warning' | 'Failed' = 'Pass'
-              let notes: string | undefined
-              if (sim.error || sim.shortCircuit) {
-                status = 'Failed'
-                notes = sim.error || 'Short circuit detected'
-              } else if ((sim.warnings && sim.warnings.length > 0) || (sim.burned && Object.keys(sim.burned).length > 0)) {
-                status = 'Warning'
-                notes = (sim.warnings && sim.warnings[0]) || 'Component stress warning'
-              } else if (!lab.psuPositive || !lab.psuNegative) {
-                status = 'Warning'
-                notes = 'Power supply clips not connected'
-              } else if (lab.parts.length > 0 && I < 1e-9) {
-                status = 'Warning'
-                notes = 'No measurable supply current — check path / press buttons'
-              }
-              if (id) {
-                useProjects.getState().recordSimRun({
-                  projectId: id,
-                  projectName:
-                    useProjects.getState().projects.find((p) => p.id === id)?.name ||
-                    id,
-                  status,
-                  notes,
-                })
-              }
-              navigate('/results/' + (id || 'dc-motor'))
-            }}
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium px-3.5 py-1.5 rounded-lg transition"
-          >
-            <Play size={16} /> Run Simulation
-          </button>
-
-          <button
-            onClick={() => setHelpOpen(true)}
-            className="flex items-center gap-2 border border-[#1e293b] hover:bg-slate-800 text-sm px-3 py-1.5 rounded-lg text-slate-300 transition"
-            title="Help"
-          >
-            <HelpCircle size={16} /> Help
-          </button>
-
-          <button
-            className="flex items-center gap-2 border border-[#1e293b] hover:bg-slate-800 text-sm px-3 py-1.5 rounded-lg text-slate-300 transition"
-            title="Share project"
-          >
-            <Share2 size={16} /> Share
-          </button>
+        <div className="editor-actions px-3 lg:px-5 pb-2" role="toolbar" aria-label="Editing tools">
+          <div className="editor-workspace-tabs" role="tablist" aria-label="Workspace panel">
+            <button type="button" role="tab" aria-selected={sidebarTab==='parts'} className={sidebarTab==='parts'?'active':''} onClick={() => {setUse3D(true);setSidebarTab('parts');setPaletteOpen(true);}}><CircuitBoard size={17}/> Parts</button>
+            <button type="button" role="tab" aria-selected={sidebarTab==='circuits'} className={sidebarTab==='circuits'?'active':''} onClick={() => {setUse3D(true);setSidebarTab('circuits');setPaletteOpen(true);}}><BookOpen size={17}/> Circuits</button>
+            <button type="button" role="tab" aria-selected={sidebarTab==='examples'} className={sidebarTab==='examples'?'active':''} onClick={() => {setUse3D(true);setSidebarTab('examples');setPaletteOpen(true);}}><LayoutGrid size={17}/> Examples</button>
+          </div>
+          <button type="button" className="editor-icon-btn editor-palette-toggle" onClick={() => setPaletteOpen(v=>!v)} aria-pressed={paletteOpen} aria-label={paletteOpen ? 'Hide components' : 'Show components'} title={paletteOpen ? 'Hide component library' : 'Show component library'}>{paletteOpen?<PanelLeftClose size={16}/>:<PanelLeftOpen size={16}/>}</button>
+          <span className="editor-toolbar-divider"/>
+          <EditorToolButton label="Select" shortcut="V" icon={<MousePointer2 size={19}/>} disabled={!use3D} active={activeTool === 'select' && !moveMode} onClick={() => toggleToolbarTool('select')}/>
+          <EditorToolButton label="Pan" shortcut="P" icon={<Hand size={19}/>} disabled={!use3D} active={moveMode} onClick={toggleMoveMode}/>
+          <EditorToolButton label="Wire" shortcut="W" icon={<Cable size={19}/>} disabled={!use3D} active={activeTool === 'wire'} onClick={() => toggleToolbarTool('wire')}/>
+          <EditorToolButton label="Auto Tidy wires" icon={<Focus size={18}/>} disabled={!use3D || !wires.length} onClick={() => useLab.getState().autoTidyWires()}/>
+          <EditorToolButton label="Rotate" shortcut="R" icon={<RotateCw size={18}/>} disabled={!use3D || !selectedItem || !parts.some(p=>p.id===selectedItem)} onClick={() => useLab.getState().rotateSelected()}/>
+          <EditorToolButton label="Delete" shortcut="Del" icon={<Trash2 size={19}/>} danger disabled={!use3D || !selectedItem} onClick={() => useLab.getState().deleteSelected()}/>
+          <span className="editor-toolbar-divider"/>
+          <EditorToolButton label="Undo" shortcut="Ctrl+Z" icon={<Undo2 size={19}/>} disabled={!use3D || !canUndo} onClick={() => useLab.getState().undo()}/>
+          <EditorToolButton label="Redo" shortcut="Ctrl+Y" icon={<Redo2 size={19}/>} disabled={!use3D || !canRedo} onClick={() => useLab.getState().redo()}/>
+          <span className="editor-toolbar-divider"/>
+          <EditorToolButton label="Zoom out" icon={<ZoomOut size={19}/>} onClick={() => cameraCommand('zoom-out')} disabled={!use3D}/>
+          <EditorToolButton label="Zoom in" icon={<ZoomIn size={19}/>} onClick={() => cameraCommand('zoom-in')} disabled={!use3D}/>
+          <EditorToolButton label="Focus components" shortcut="G" icon={<Focus size={19}/>} onClick={() => cameraCommand('focus-circuit')} disabled={!use3D}/>
+          <EditorToolButton label="Fit board" shortcut="F" icon={<Maximize2 size={19}/>} onClick={() => cameraCommand('reset-view')} disabled={!use3D}/>
+          <EditorToolButton label="Fullscreen" icon={<Monitor size={19}/>} onClick={toggleFullscreen}/>
+          <div className="editor-bench-spacer"/>
+          <div className="editor-toolbar-hint"><Info size={17}/><div><strong>{activeTool === 'wire' ? 'Connect wire' : activeTool === 'select' ? 'Select / Move' : activeTool === 'none' ? 'Ready' : 'Place component'}</strong><small>{activeTool === 'wire' ? 'Click two holes · Esc cancels' : activeTool === 'select' ? 'Click to select · Drag to move' : activeTool === 'none' ? 'Choose a tool to begin' : 'Click or drag onto the board'}</small></div></div>
         </div>
-      </div>
+      </header>
 
-      <div className="flex-1 flex overflow-hidden min-h-0">
-        <aside className="w-52 border-r border-[#1e293b] bg-[#0f172a] flex flex-col flex-shrink-0">
-          <div className="p-3 border-b border-[#1e293b]">
+      <div className="flex-1 flex overflow-hidden min-h-0 editor-body-layout">
+        {paletteOpen && use3D && <aside className="editor-sidebar w-[210px] lg:w-[260px] border-r border-[#2a4666] bg-[#091b35] flex flex-col flex-shrink-0" aria-label="Component library">
+          {sidebarTab === 'parts' && <>
+          <div className="editor-palette-heading">
+            <div className="flex justify-between items-center mb-2">
+              <div className="font-semibold text-xs text-[#e3f4ff]">Components <span className="ml-1 text-[10px] font-normal text-slate-400">{paletteCount}</span></div>
+              <button type="button" className="editor-quiet-link" onClick={() => setShowTips((v) => !v)} aria-expanded={showTips} title="Component placement help">{showTips ? 'Hide tips' : 'Tips'}</button>
+            </div>
             <div className="relative">
-              <Search
-                size={14}
-                className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500"
-              />
-              <input
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search components"
-                className="w-full bg-[#0a0f1a] border border-[#1e293b] rounded-md pl-8 pr-7 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-200 placeholder:text-slate-600"
-              />
-              {search && (
-                <button
-                  type="button"
-                  onClick={() => setSearch('')}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
-                  title="Clear search"
-                >
-                  ×
-                </button>
-              )}
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/>
+              <input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Find a part, model, or pin…" aria-label="Search components" className="editor-palette-search"/>
             </div>
+            {showTips && <p className="editor-tip-banner">{partDragEnabled ? 'Drag a 3D part onto the breadboard, or select a part and click its destination. Press V to select, W for wire.' : 'Choose a part and click each hole for its leads. Re-enable 3D drag above for one-step placement.'}</p>}
+            <div className="editor-palette-filters" role="group" aria-label="Component filters">
+              {(['All','Favorites','Recent'] as const).map((filter) => <button key={filter} type="button" className={category === filter ? 'active' : ''} onClick={() => setCategory(filter)}>{filter === 'Favorites' && <Star size={12}/>} {filter === 'Recent' && <Clock3 size={12}/>} {filter}</button>)}
+            </div>
+            <select className="editor-category-select" aria-label="Filter by component category" value={['All','Favorites','Recent'].includes(category) ? 'All' : category} onChange={(event) => setCategory(event.target.value)}>
+              <option value="All">Browse all categories</option>
+              {PALETTE.map((section) => <option key={section.title} value={section.title}>{section.title}</option>)}
+            </select>
           </div>
-
-          <div className="flex-1 overflow-y-auto scrollbar-thin p-2 space-y-3">
-
-          {/* Breadboards */}
-          <div>
-            <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide px-1 mb-1.5">
-              Breadboards
+          {activeTool === 'wire' && <section className="editor-wire-controls" aria-label="Wire options">
+            <div className="flex items-center justify-between mb-2"><strong className="text-xs text-cyan-200 flex items-center gap-2"><Cable size={14}/> Wire settings</strong><button className="editor-quiet-link" type="button" onClick={() => useLab.getState().resetPending()}>Cancel</button></div>
+            <div className="editor-wire-style" role="group" aria-label="Wire style">
+              {(['solid','jumper'] as WireStyle[]).map((style) => <button type="button" key={style} onClick={() => useLab.getState().setWireStyle(style)} className={wireStyle === style ? 'active' : ''} aria-pressed={wireStyle === style}>{style === 'solid' ? 'Solid' : 'Jumper'}</button>)}
             </div>
-
-            <div className="space-y-1">
-              {BOARD_PRESETS.map((board) => {
-                const active = boardPreset === board.id
-
-                return (
-                  <button
-                    key={board.id}
-                    type="button"
-                    onClick={() => handleBoardPresetChange(board.id)}
-                    className={`w-full flex items-center gap-2 p-2 rounded-md text-left transition border ${
-                      active
-                        ? 'bg-cyan-900/60 border-cyan-400 text-white'
-                        : 'hover:bg-slate-800/80 text-slate-400 hover:text-slate-200 border-transparent hover:border-[#1e293b]'
-                    }`}
-                    title={board.description}
-                  >
-                    <div className="w-9 h-9 shrink-0 rounded-md bg-[#0a0f1a] border border-[#1e293b] flex items-center justify-center">
-                      <div className="w-6 h-4 rounded-sm border border-slate-500 relative">
-                        <div className="absolute inset-x-1 top-1 h-px bg-red-500/70" />
-                        <div className="absolute inset-x-1 bottom-1 h-px bg-blue-500/70" />
-                      </div>
-                    </div>
-
-                    <div className="min-w-0">
-                      <div className="text-[11px] font-medium truncate">
-                        {board.label}
-                      </div>
-
-                      <div className="text-[9px] text-slate-500 truncate">
-                        {board.cols} columns
-                        {board.hasRails ? ' · Power rails' : ' · No rails'}
-                      </div>
-                    </div>
+            <div className="editor-wire-swatches" role="group" aria-label="Wire color">
+              {(['red','black','blue','orange','green','yellow','white'] as WireColor[]).map((color) => <button key={color} type="button" title={`${color} wire`} aria-label={`${color} wire`} aria-pressed={wireColor === color} className={wireColor === color ? 'active' : ''} style={{backgroundColor: WIRE_HEX[color]}} onClick={() => useLab.getState().setWireColor(color)}/>)}
+            </div>
+            <div className="text-[11px] text-slate-300">{pendingHoles.length === 1 ? `Start: ${pendingHoles[0]} · choose endpoint` : 'Click start and end holes to wire them.'}</div>
+            <label className="flex items-center gap-2 mt-2 text-[11px] text-slate-400"><input type="checkbox" checked={showWireFlow} onChange={(e) => useLab.getState().setShowWireFlow(e.target.checked)}/> Animate current flow</label>
+          </section>}
+          <div className="editor-palette-scroll flex-1 min-h-0 overflow-y-auto">
+            {filteredPalette.length === 0 && <div className="text-center py-12 px-3 text-xs text-slate-400">No matching components. {category !== 'All' && <button className="editor-quiet-link block mx-auto mt-2" type="button" onClick={() => {setCategory('All');setSearch('')}}>Show all components</button>}</div>}
+            {filteredPalette.map((section) => <section key={section.title} className="editor-palette-section">
+              <div className="editor-palette-section-title"><span>{section.title}</span><span>{section.items.length}</span></div>
+              <div className="editor-parts-grid">
+                {section.items.map((item) => <div key={item.id} className={`editor-part-tile ${activeTool === item.tool && (item.preset?.ledColor ? useLab.getState().ledColor === item.preset.ledColor : item.preset?.transistorModel ? useLab.getState().transistorModel === item.preset.transistorModel : item.preset?.motorModel ? useLab.getState().motorModel === item.preset.motorModel : true) ? 'active' : ''}`}>
+                  <button type="button" className="editor-part-main" onPointerDown={(event) => beginPaletteDrag(event, item.tool, item.label, item)} onClick={() => { if (suppressPaletteClickRef.current) {suppressPaletteClickRef.current = false;return}; if (!dragActiveRef.current) selectTool(item.tool, item) }} title={`Drag ${item.label} onto the board or click to select`}>
+                    <span className="editor-part-symbol" aria-hidden="true">{item.symbol}</span><span className="editor-part-label">{item.label}</span>
                   </button>
-                )
-              })}
-            </div>
-          </div>
-            {filteredPalette.length === 0 ? (
-              <div className="px-2 py-8 text-center text-xs text-slate-600">
-                No components found.
+                  <button type="button" className={`editor-favorite ${favorites.includes(item.id) ? 'active' : ''}`} onClick={() => toggleFavorite(item.id)} title={favorites.includes(item.id) ? `Remove ${item.label} from favorites` : `Favorite ${item.label}`} aria-label={`${favorites.includes(item.id) ? 'Unfavorite' : 'Favorite'} ${item.label}`}><Star size={12} fill={favorites.includes(item.id) ? 'currentColor' : 'none'}/></button>
+                </div>)}
               </div>
-            ) : (
-              filteredPalette.map((section) => (
-                <div key={section.title}>
-                  <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide px-1 mb-1.5">
-                    {section.title}
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-1">
-                    {section.items.map((item) => {
-                      const active = item.tool !== null && activeTool === item.tool && !moveMode
-                      const disabled = item.tool === null
-
-                      return (
-                        <button
-                          key={item.id}
-                          type="button"
-                          disabled={disabled}
-                          onClick={() => {
-                            if (dragActiveRef.current) return
-                            selectTool(item.tool)
-                          }}
-                          onPointerDown={(event) => {
-                            if (disabled || !item.tool) return
-                            beginPaletteDrag(
-                              event,
-                              item.tool,
-                              item.label,
-                              item.symbol,
-                            )
-                          }}
-                          className={`group flex flex-col items-center gap-1 p-1.5 rounded-md text-[10px] transition border select-none touch-none ${
-                            active
-                              ? 'bg-blue-600/15 border-blue-500/40 text-blue-300'
-                              : disabled
-                                ? 'border-transparent text-slate-700 opacity-60 cursor-not-allowed'
-                                : 'border-transparent hover:bg-slate-800/80 hover:border-[#1e293b] text-slate-400 hover:text-slate-200 cursor-grab active:cursor-grabbing'
-                          }`}
-                          title={
-                            disabled
-                              ? `${item.label} is not available yet`
-                              : `Drag ${item.label} onto the breadboard, or click then click a hole`
-                          }
-                        >
-                          <div
-                            className={`w-9 h-9 rounded-md bg-[#0a0f1a] border flex items-center justify-center text-xs font-mono pointer-events-none ${
-                              active
-                                ? 'border-blue-500/50 text-blue-300'
-                                : 'border-[#1e293b] text-slate-300 group-hover:border-slate-600'
-                            }`}
-                          >
-                            {item.symbol}
-                          </div>
-                          <span className="truncate w-full text-center pointer-events-none">
-                            {item.label}
-                          </span>
-                        </button>
-                      )
-                    })}
-                  </div>
-                  <div className="border-t border-[#1e293b] mt-3" />
-                </div>
-              ))
-            )}
+            </section>)}
           </div>
-
-          <div className="p-2 border-t border-[#1e293b]">
-            <button
-              type="button"
-              className="w-full flex items-center justify-center gap-1.5 text-xs text-blue-400 py-2 hover:bg-slate-800/60 rounded-md transition"
-              title="More components"
-            >
-              <Plus size={14} /> More Components
-            </button>
+          </>}
+          {sidebarTab === 'circuits' && <div className="editor-palette-scroll editor-sidebar-list flex-1 min-h-0 overflow-y-auto" aria-label="Components in the current project">
+            <div className="editor-sidebar-section-heading"><strong>Current circuit</strong><span>{parts.length} parts · {wires.length} wires</span></div>
+            <p>Select a part to inspect, move, rotate or remove it. All changes are saved in this project.</p>
+            {parts.length===0 && <div className="editor-sidebar-empty"><CircuitBoard size={23}/><strong>No components yet</strong><span>Open the Parts tab to build a circuit.</span></div>}
+            {parts.map((part,i) => <button type="button" key={part.id} className={`editor-circuit-item ${part.id===selectedItem?'active':''}`} onClick={() => {useLab.getState().setTool('select');useLab.getState().select(part.id);}}><span className="editor-circuit-item-icon"><Cpu size={17}/></span><span><strong>{part.props.label || part.kind.toUpperCase()}</strong><small>{part.kind} · #{i+1}</small></span><ChevronLeft size={15} className="editor-item-chevron"/></button>)}
+            <div className="editor-sidebar-note"><Info size={16}/> Power and measurement controls are below the breadboard.</div>
+          </div>}
+          {sidebarTab === 'examples' && <div className="editor-palette-scroll editor-sidebar-list flex-1 min-h-0 overflow-y-auto" aria-label="Premade circuit examples">
+            <div className="editor-sidebar-section-heading"><strong>Premade examples</strong><span>{premadeProjects.length} available</span></div>
+            <p>Open a complete, editable lab. Your current project remains saved.</p>
+            {premadeProjects.map(project => <button type="button" key={project.id} className={`editor-example-item ${projectId===project.id?'active':''}`} onClick={() => openPremade(project.id)}><CircuitBoard size={20}/><span><strong>{project.name}</strong><small>{project.description || 'Editable 3D breadboard project'}</small></span><ChevronLeft size={15} className="editor-item-chevron"/></button>)}
+            <div className="editor-sidebar-note"><Info size={16}/> Premade examples are independent projects. Restore their factory wiring from More actions if needed.</div>
+          </div>}
+          <div className="editor-board-choice">
+            <label htmlFor="editor-board-size" className="text-[11px] text-slate-400 block mb-1">Breadboard</label>
+            <select id="editor-board-size" className="editor-category-select" value={boardPreset} onChange={(e) => handleBoardPresetChange(e.target.value as BoardPresetId)}>
+              {BOARD_PRESETS.map((board) => <option key={board.id} value={board.id}>{board.label} · {board.cols} columns</option>)}
+            </select>
+            <p className="text-[10px] text-slate-500 mt-1">Changing board size asks before clearing your circuit.</p>
           </div>
-        </aside>
+        </aside>}
 
-        <main className="flex-1 relative min-w-0 bg-[#07101e]">
+        <div className="editor-main-stack flex-1 min-w-0 min-h-0 flex flex-col">
+        <main className="editor-board-stage flex-1 relative min-w-0 min-h-0 bg-[#282f39]">
+          {isDisplayDemoMissingParts && <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 max-w-[94%] rounded-xl bg-[#13243b] border border-amber-400/40 shadow-xl px-4 py-3 flex flex-wrap items-center justify-center gap-3 text-sm text-slate-100">
+            <span>This saved demo is missing its Arduino or display.</span>
+            <button type="button" className="rounded-lg bg-cyan-500/20 border border-cyan-300/40 text-cyan-100 px-3 py-1.5 hover:bg-cyan-500/30" onClick={restorePremade}>Restore original circuit</button>
+          </div>}
           {use3D ? (
             <LabErrorBoundary fallback={<SchematicFallback />}>
               <Suspense
@@ -1920,54 +1899,48 @@ export function CircuitEditorPage() {
                 }
               >
                 <div className="absolute inset-0">
-                  <CircuitLab />
+                  <CircuitLab performanceMode={performanceMode} />
                 </div>
               </Suspense>
             </LabErrorBoundary>
           ) : (
-            <Suspense
-              fallback={
-                <div className="absolute inset-0 flex items-center justify-center text-slate-400 text-sm">
-                  Loading schematic…
-                </div>
-              }
-            >
-              <Schematic2D />
-            </Suspense>
+            <div className="absolute inset-0 overflow-hidden">
+              <div className="absolute right-4 top-3 z-10 text-[11px] text-slate-300 bg-[#0b2541] border border-cyan-500/30 rounded-lg px-3 py-2 flex items-center gap-3">
+                <span>Read-only 2D view of this breadboard</span>
+                <button type="button" onClick={() => navigate('/schematic')} className="text-cyan-300 hover:text-white underline">Open full 2D workspace</button>
+              </div>
+              <SchematicFallback />
+            </div>
           )}
         </main>
-
+        <WorkbenchDock projectId={projectId} is3D={use3D} partDragEnabled={partDragEnabled} setPartDragEnabled={setPartDragEnabled} performanceMode={performanceMode} setPerformanceMode={setPerformanceMode} onStartWiring={() => {setUse3D(true);setSidebarTab('parts');setPaletteOpen(true);}}/>
+        </div>
       </div>
 
       <HelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
+      {showShortcuts && <div className="editor-shortcuts-backdrop" onMouseDown={() => setShowShortcuts(false)}>
+        <section className="editor-shortcuts-dialog" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts" onMouseDown={(e) => e.stopPropagation()}>
+          <div className="flex items-center justify-between mb-4"><h2 className="font-semibold text-white">Keyboard shortcuts</h2><button type="button" className="editor-icon-btn" onClick={() => setShowShortcuts(false)} aria-label="Close shortcuts">×</button></div>
+          <div className="grid grid-cols-2 gap-y-3 text-sm text-slate-300">{[['V','Select'],['W','Wire'],['P','Pan / orbit mode'],['R','Rotate selected'],['Delete','Delete selected'],['F','Fit entire breadboard'],['G','Focus components'],['Ctrl + Z','Undo'],['Ctrl + Shift + Z','Redo'],['Esc','Cancel action'],['?','Shortcuts']].map(([key,action])=><div key={key} className="col-span-2 flex items-center justify-between gap-3"><span>{action}</span><kbd className="editor-kbd">{key}</kbd></div>)}</div>
+        </section>
+      </div>}
 
-      {/* Floating component that follows the cursor while dragging from the palette */}
-      {dragPreview && (
+      {/* The actual PartSwitch 3D geometry follows the pointer. On the board,
+          the same geometry is rendered by PlacementGhost, snapped to the holes. */}
+      {dragPreview?.moved && !dragPreview.onBoard && (
         <div
           className="pointer-events-none fixed z-[9999] -translate-x-1/2 -translate-y-1/2"
-          style={{
-            left: dragPreview.x,
-            top: dragPreview.y,
-          }}
+          style={{ left: dragPreview.x, top: dragPreview.y }}
+          aria-hidden="true"
         >
-          <div
-            className="flex flex-col items-center gap-1.5 px-3 py-2.5 rounded-xl border border-blue-400/50 bg-[#0b1220]/95 shadow-2xl shadow-blue-500/20 backdrop-blur-sm"
-            style={{
-              transform: 'scale(1.08) rotate(-2deg)',
-              boxShadow:
-                '0 12px 40px rgba(0,0,0,.55), 0 0 0 1px rgba(96,165,250,.25)',
-            }}
-          >
-            <div className="w-11 h-11 rounded-lg bg-[#0a0f1a] border border-blue-500/40 flex items-center justify-center text-blue-200 text-sm font-mono">
-              {dragPreview.symbol}
-            </div>
-            <div className="text-[11px] font-semibold text-slate-100 whitespace-nowrap">
-              {dragPreview.label}
-            </div>
-            <div className="text-[9px] text-blue-300/90 font-medium tracking-wide uppercase">
-              Drop on breadboard
-            </div>
-          </div>
+          <Suspense fallback={null}>
+            <DraggedPart3D tool={dragPreview.tool} />
+          </Suspense>
+        </div>
+      )}
+      {dragPreview?.moved && dragPreview.onBoard && dragPreview.snappedHole && (
+        <div className="pointer-events-none fixed bottom-5 left-1/2 -translate-x-1/2 z-[60] rounded-xl border border-cyan-400/30 bg-[#06172b]/90 px-4 py-2 text-xs text-cyan-100 shadow-lg backdrop-blur-md" role="status">
+          <span className="text-cyan-300 font-semibold">{dragPreview.snappedHole}</span> · Release to place {dragPreview.label}
         </div>
       )}
     </div>

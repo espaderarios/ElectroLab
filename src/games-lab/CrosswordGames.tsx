@@ -436,7 +436,7 @@ export function CrosswordGame({ level, onBack, onComplete }: Props) {
             type="button"
             onClick={clearUnlocked}
             disabled={isPuzzleComplete}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-[#1e293b] disabled:opacity-50 disabled:cursor-not-allowed text-sm text-slate-300 px-3 py-2 hover:bg-[#1e293b]/50 transition"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--app-border)] disabled:opacity-50 disabled:cursor-not-allowed text-sm text-slate-300 px-3 py-2 hover:bg-[var(--app-surface-2)]/50 transition"
           >
             <RotateCcw size={14} /> Clear
           </button>
@@ -448,7 +448,7 @@ export function CrosswordGame({ level, onBack, onComplete }: Props) {
       )}
 
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-5 items-start">
-        <div className="rounded-xl border border-[#1e293b] bg-[#111827] p-3 sm:p-4 overflow-auto">
+        <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] p-3 sm:p-4 overflow-auto">
           <div
             className="grid gap-px bg-slate-800 mx-auto"
             style={{
@@ -461,7 +461,7 @@ export function CrosswordGame({ level, onBack, onComplete }: Props) {
               row.map((cell, c) => {
                 if (!cell) {
                   return (
-                    <div key={`${r}-${c}`} className="bg-[#0a0f1a] min-w-0 min-h-0" />
+                    <div key={`${r}-${c}`} className="bg-[var(--app-bg)] min-w-0 min-h-0" />
                   );
                 }
 
@@ -551,7 +551,7 @@ function ClueList({
   onSelect: (index: number) => void;
 }) {
   return (
-    <div className="rounded-xl border border-[#1e293b] bg-[#111827] p-4">
+    <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] p-4">
       <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">
         {title}
       </div>
@@ -570,7 +570,7 @@ function ClueList({
                 className={`w-full text-left rounded-lg px-2 py-1.5 text-sm transition ${
                   active
                     ? "bg-blue-600/20 text-blue-300"
-                    : "text-slate-300 hover:bg-[#1e293b]/50"
+                    : "text-slate-300 hover:bg-[var(--app-surface-2)]/50"
                 } ${done ? "opacity-70 line-through cursor-default" : ""}`}
               >
                 <span className="font-semibold text-slate-400 mr-1.5">

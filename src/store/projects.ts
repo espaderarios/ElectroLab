@@ -3,6 +3,10 @@ import { persist } from "zustand/middleware";
 import type { BoardPresetId } from "@/circuit/breadboard";
 import type { HoleId, PlacedPart, Wire } from "@/circuit/types";
 import { uid } from "@/lib/utils";
+import { circuitHalfAdder, circuitFullAdder } from "@/circuit/adder-circuits";
+import { circuitArduinoLcd, circuitArduinoOled, circuitArduinoSevenSegment } from "@/circuit/display-examples";
+import { autoTidyWireBundle } from "@/circuit/tidy-wires";
+import { holePosition } from "@/circuit/breadboard";
 
 export type ProjectStatus = "Pass" | "Warning" | "Failed" | "Draft";
 
@@ -82,7 +86,7 @@ function emptyCircuit(): ProjectCircuit {
   };
 }
 
-function circuitLedBlink(): ProjectCircuit {
+export function circuitLedBlink(): ProjectCircuit {
   const led = uid("led");
   const r = uid("r");
   const btn = uid("btn");
@@ -115,14 +119,12 @@ function circuitLedBlink(): ProjectCircuit {
     ],
     wires: [
       { id: uid("w"), a: "tp5", b: "A5", color: "red" },
-      { id: uid("w"), a: "A5", b: "E5", color: "red" },
-      { id: uid("w"), a: "E15", b: "A15", color: "black" },
       { id: uid("w"), a: "A15", b: "tn5", color: "black" },
     ],
   };
 }
 
-function circuitDcMotor(): ProjectCircuit {
+export function circuitDcMotor(): ProjectCircuit {
   const motor = uid("motor");
   const scr = uid("scr");
   const rg = uid("r");
@@ -170,21 +172,17 @@ function circuitDcMotor(): ProjectCircuit {
     wires: [
       // + → motor
       { id: uid("w"), a: "tp10", b: "J10", color: "red" },
-      { id: uid("w"), a: "J10", b: "F10", color: "red" },
       // SCR cathode → GND
-      { id: uid("w"), a: "F28", b: "J28", color: "black" },
       { id: uid("w"), a: "J28", b: "tn25", color: "black" },
       // + → gate resistor (lower half)
       { id: uid("w"), a: "tp10", b: "A10", color: "red" },
-      { id: uid("w"), a: "A10", b: "C10", color: "red" },
       // button out → SCR gate (cross the trench)
-      { id: uid("w"), a: "C22", b: "E22", color: "yellow" },
       { id: uid("w"), a: "E22", b: "F22", color: "yellow" },
     ],
   };
 }
 
-function circuitRcLpf(): ProjectCircuit {
+export function circuitRcLpf(): ProjectCircuit {
   const r = uid("r");
   const c = uid("c");
   // + → R → mid node → C → GND
@@ -209,14 +207,12 @@ function circuitRcLpf(): ProjectCircuit {
     ],
     wires: [
       { id: uid("w"), a: "tp10", b: "A10", color: "red" },
-      { id: uid("w"), a: "A10", b: "E10", color: "red" },
-      { id: uid("w"), a: "E20", b: "A20", color: "black" },
       { id: uid("w"), a: "A20", b: "tn10", color: "black" },
     ],
   };
 }
 
-function circuitBattery(): ProjectCircuit {
+export function circuitBattery(): ProjectCircuit {
   const r = uid("r");
   const led = uid("led");
   const d = uid("d");
@@ -248,8 +244,6 @@ function circuitBattery(): ProjectCircuit {
     ],
     wires: [
       { id: uid("w"), a: "tp3", b: "A5", color: "red" },
-      { id: uid("w"), a: "A5", b: "E5", color: "red" },
-      { id: uid("w"), a: "E16", b: "A16", color: "black" },
       { id: uid("w"), a: "A16", b: "tn3", color: "black" },
     ],
   };
@@ -286,15 +280,58 @@ function cloneCircuit(c: ProjectCircuit): ProjectCircuit {
       pins: { ...p.pins },
       props: { ...p.props },
     })),
-    wires: c.wires.map((w) => ({ ...w })),
+    wires: c.wires.map((w) => ({ ...w, bends: w.bends?.map(p => ({ ...p })), bendAnchors: w.bendAnchors ? { ...w.bendAnchors } : undefined })),
   };
+}
+
+/** Recreate a factory demo without replacing anyone's persisted edits. */
+export function freshPremadeCircuit(id: string): ProjectCircuit | null {
+  switch (id) {
+    case "arduino-lcd-demo": return circuitArduinoLcd();
+    case "arduino-oled-demo": return circuitArduinoOled();
+    case "arduino-seven-segment-demo": return circuitArduinoSevenSegment();
+    case "half-adder": return circuitHalfAdder();
+    case "full-adder": return circuitFullAdder();
+    default: return null;
+  }
 }
 
 const SEED_PROJECTS: ProjectRecord[] = [
   makeSeed(
+    "arduino-lcd-demo", "Arduino Uno + 16×2 LCD", "Draft",
+    "Hand-wired HD44780 4-bit display with contrast potentiometer and protected backlight.",
+    circuitArduinoLcd(), 0,
+  ),
+  makeSeed(
+    "arduino-oled-demo", "Arduino Uno + I²C OLED", "Draft",
+    "Six editable bench/jumper wires: 5 V bench input, 3.3 V OLED, SDA and SCL.",
+    circuitArduinoOled(), 0,
+  ),
+  makeSeed(
+    "arduino-seven-segment-demo", "Arduino Uno + 7-Segment", "Draft",
+    "Arduino Uno directly drives a common-cathode seven-segment display in the same editable breadboard style as the reference layout.",
+    circuitArduinoSevenSegment(), 0,
+  ),
+  makeSeed(
+    "half-adder",
+    "Half Adder · 74HC86 + 74HC08",
+    "Draft",
+    "Two switch inputs, XOR sum, AND carry, with pull-down resistors and indicator LEDs.",
+    circuitHalfAdder(),
+    0,
+  ),
+  makeSeed(
+    "full-adder",
+    "Full Adder · 74HC86 + 74HC08 + 74HC32",
+    "Draft",
+    "Three switch inputs, cascaded XOR sum, two AND gates and OR carry; 14-pin DIP ICs.",
+    circuitFullAdder(),
+    0,
+  ),
+  makeSeed(
     "dc-motor",
     "DC Motor Speed Control",
-    "Pass",
+    "Draft",
     "SCR gate-triggered motor control — unique parts and wiring.",
     circuitDcMotor(),
     2,
@@ -302,23 +339,23 @@ const SEED_PROJECTS: ProjectRecord[] = [
   makeSeed(
     "rc-lpf",
     "RC Low Pass Filter",
-    "Pass",
+    "Draft",
     "10kΩ + 100µF passive filter on its own board layout.",
     circuitRcLpf(),
     24,
   ),
   makeSeed(
     "battery",
-    "Battery Charger Circuit",
-    "Warning",
-    "9 V charge path with series diode and indicator LED.",
+    "9 V Diode and LED Indicator",
+    "Draft",
+    "Series resistor, protection diode and indicator LED; not an actual battery charger.",
     circuitBattery(),
     48,
   ),
   makeSeed(
     "led-blink",
     "LED Blink Circuit",
-    "Pass",
+    "Draft",
     "LED + 220Ω + push button — separate from the motor project.",
     circuitLedBlink(),
     72,
@@ -514,7 +551,7 @@ export const useProjects = create<ProjectsState>()(
                   pins: { ...p.pins },
                   props: { ...p.props },
                 })),
-                wires: (parsed.wires || []).map((w) => ({ ...w })),
+                wires: (parsed.wires || []).map((w) => ({ ...w, bends: w.bends?.map(p => ({ ...p })), bendAnchors: w.bendAnchors ? { ...w.bendAnchors } : undefined })),
               };
           const project: ProjectRecord = {
             id: uid("proj"),
@@ -632,7 +669,41 @@ export const useProjects = create<ProjectsState>()(
     }),
     {
       name: "electrolab-projects-v4",
-      version: 4,
+      // v8 adds visual bend routes to saved factory examples without
+      // modifying a single pin, electrical wire endpoint, or custom project.
+      version: 8,
+      migrate: (persistedState, fromVersion) => {
+        const previous = (persistedState ?? {}) as Partial<ProjectsState>;
+        const savedProjects = Array.isArray(previous.projects) ? previous.projects : [];
+        const eligibleIds = [
+          ...(fromVersion < 5 ? ["half-adder", "full-adder"] : []),
+          ...(fromVersion < 6 ? ["arduino-lcd-demo", "arduino-oled-demo"] : []),
+          ...(fromVersion < 7 ? ["arduino-seven-segment-demo"] : []),
+        ];
+        const newSeeds = SEED_PROJECTS.filter(preset => eligibleIds.includes(preset.id))
+          .filter(preset => !savedProjects.some(project => project.id === preset.id))
+          .map(preset => ({ ...preset, circuit: cloneCircuit(preset.circuit) }));
+        const exampleIds = new Set([
+          'arduino-lcd-demo', 'arduino-oled-demo', 'arduino-seven-segment-demo',
+          'half-adder', 'full-adder',
+        ]);
+        const upgraded = savedProjects.map(project => {
+          const circuit = project.circuit;
+          if (fromVersion >= 8 || !exampleIds.has(project.id) || !circuit ||
+              circuit.boardId !== 'standard-830' || !Array.isArray(circuit.wires) ||
+              !Array.isArray(circuit.parts) || circuit.wires.some(w => Array.isArray(w.bends) || w.routeLocked)) {
+            return project;
+          }
+          return {
+            ...project,
+            circuit: {
+              ...circuit,
+              wires: autoTidyWireBundle(circuit.wires, circuit.parts, holePosition),
+            },
+          };
+        });
+        return { ...previous, projects: [...newSeeds, ...upgraded] } as ProjectsState;
+      },
       partialize: (s) => ({
         projects: s.projects,
         activity: s.activity,

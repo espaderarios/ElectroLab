@@ -1,0 +1,11 @@
+ElectroLab Wire Mode — Auto Open Parts
+Extract over your existing ElectroLab project root with overwrite.
+Changed files:
+  src/pages/CircuitEditorPage.tsx
+  tests/wire-sidebar.cjs
+  package.json (adds the test:wire-sidebar script)
+Check:
+  npm run test:wire-sidebar
+  npm run dev
+Click Wire or press W to show the Parts panel automatically.
+Click the active Wire button again to exit. You can still collapse the sidebar manually.

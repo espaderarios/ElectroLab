@@ -1,15 +1,21 @@
-import { ContactShadows, Grid, OrbitControls } from "@react-three/drei";
+import { WORKBENCH_PALETTE } from "./workbench-palette";
+import { ContactShadows, Grid, OrbitControls, Html } from "@react-three/drei";
 import { useFrame, useThree } from "@react-three/fiber";
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import {
   BOARD,
   getAllHoles,
   holePosition,
+  holeStrip,
   nearestHole,
 } from "@/circuit/breadboard";
-import { buildPreviewPart, previewMovedPart, useLab } from "@/store/lab";
-import type { HoleId, PlacedPart, SimResult, ToolId } from "@/circuit/types";
+import { buildPreviewPart, previewMovedPart, useLab, introducesWireObstruction } from "@/store/lab";
+import type { HoleId, PlacedPart, SimResult, ToolId, Wire } from "@/circuit/types";
+import { terminalPosition, mcuHeaderPosition } from "@/circuit/mcu-headers";
+import { planWireRoutes, wireRoute3DPoints, type RoutedWire } from "@/circuit/wire-routing";
+import { netConnected } from "@/circuit/display-guides";
+import { placementIsBlocked, partObstacle, collectPartObstacles, rectsOverlap } from "@/circuit/placement-obstacles";
 import {
   BreadboardBody,
   JumperWire,
@@ -59,7 +65,7 @@ function screenToBoardPoint(
       0.1,
       60,
     );
-    fallback.position.set(3.8, 4.4, 5.6);
+    fallback.position.set(6.6, 8.2, 10.3);
     fallback.lookAt(0, 0.2, 0);
     fallback.updateMatrixWorld();
     camera = fallback;
@@ -83,6 +89,7 @@ function holeUnderPointer(clientX: number, clientY: number): HoleId | null {
 
 /** Stable "first" pin used as the footprint anchor when moving. */
 function firstPinHole(part: PlacedPart): HoleId | null {
+  if (part.kind === "mcu") return part.props.headerAnchor ?? "F22";
   const entries = Object.entries(part.pins).filter(
     ([, h]) => h && /^[A-T]\d+$/.test(h),
   ) as [string, HoleId][];
@@ -127,6 +134,18 @@ const PLACEABLE_TOOLS = new Set<ToolId>([
   "nor",
   "xor",
   "xnor",
+  "mosfet",
+  "zener",
+  "ldr",
+  "thermistor",
+  "fuse",
+  "rgb-led",
+  "servo",
+  "seven-segment",
+  "timer555",
+  "opamp",
+  "optocoupler",
+  "regulator",
 ]);
 
 function PulseMarker({
@@ -192,6 +211,7 @@ function HoverMarker() {
   const hover = useLab((s) => s.hoverHole);
   const pending = useLab((s) => s.pendingHoles);
   const probe = useLab((s) => s.probeHole);
+  const parts = useLab((s) => s.parts);
   // Unique holes; selected/probe takes priority for styling
   const seen = new Set<string>();
   const items: { id: string; kind: "hover" | "pending" | "selected" }[] = [];
@@ -211,9 +231,10 @@ function HoverMarker() {
   return (
     <>
       {items.map((item, i) => {
-        const [x, , z] = holePosition(item.id);
-        // Sit just above the recessed hole rim
-        const y = BOARD.height + 0.085;
+        const [x, ty, z] = terminalPosition(item.id,parts);
+        if (![x,ty,z].every(Number.isFinite)) return null;
+        // Position the hover ring at the visible Arduino header socket.
+        const y = ty + 0.055;
         const color =
           item.kind === "pending"
             ? "#14b8a6"
@@ -240,24 +261,57 @@ function PreviewWire() {
   const hover = useLab((s) => s.hoverHole);
   const tool = useLab((s) => s.tool);
   const color = useLab((s) => s.wireColor);
+  const wireStyle = useLab((s) => s.wireStyle);
+  const wires = useLab((s) => s.wires);
+  const parts = useLab((s) => s.parts);
   if (tool !== "wire" || pending.length !== 1 || !hover || pending[0] === hover) return null;
-  const a = holePosition(pending[0]);
-  const b = holePosition(hover);
-  const dist = Math.hypot(a[0] - b[0], a[2] - b[2]);
-  const mid = new THREE.Vector3((a[0] + b[0]) / 2, a[1] + 0.2 + dist * 0.2, (a[2] + b[2]) / 2);
-  const curve = new THREE.QuadraticBezierCurve3(
-    new THREE.Vector3(...a),
-    mid,
-    new THREE.Vector3(...b),
-  );
-  const geom = new THREE.TubeGeometry(curve, 16, 0.022, 6, false);
-  return (
-    <mesh geometry={geom}>
-      <meshBasicMaterial color={color === "black" ? "#111" : "#c2413b"} transparent opacity={0.45} />
-    </mesh>
-  );
+  const preview: Wire = { id: "__wire_preview__", a: pending[0], b: hover, color, style: wireStyle };
+  const route = planWireRoutes([...wires, preview], (id) => terminalPosition(id, parts), parts).slice(-1)[0];
+  if (!route) return null;
+  return <WirePreviewMesh route={route} color={color} />;
 }
 
+function WirePreviewMesh({ route, color }: { route: RoutedWire; color: string }) {
+  const geometry = useMemo(() => {
+    const points = wireRoute3DPoints(route, BOARD.height).map((p) => new THREE.Vector3(p.x, p.y, p.z));
+    const path = new THREE.CurvePath<THREE.Vector3>();
+    for (let i = 1; i < points.length; i++) {
+      if (points[i].distanceTo(points[i - 1]) > 0.001) path.add(new THREE.LineCurve3(points[i - 1], points[i]));
+    }
+    return new THREE.TubeGeometry(path, Math.max(18, points.length * 6), 0.025, 6, false);
+  }, [route]);
+  useEffect(() => () => geometry.dispose(), [geometry]);
+  const hex = color === "black" ? "#64748b" : color === "white" ? "#e8eef8" :
+    color === "blue" ? "#3b82f6" : color === "red" ? "#ef4444" :
+    color === "yellow" ? "#facc15" : color === "green" ? "#34d399" : "#fb923c";
+  return <mesh geometry={geometry} raycast={() => null}>
+    <meshBasicMaterial color={route.blocked ? "#ef4444" : hex} transparent opacity={0.78} depthWrite={false} />
+  </mesh>;
+}
+
+
+/** Thin cyan preview linking a suggested pair. Guide mode never edits wires. */
+function SuggestedWirePreview() {
+  const target = useLab((state) => state.guideTarget);
+  const wires = useLab((state) => state.wires);
+  const parts = useLab((state) => state.parts);
+  const boardId = useLab((state) => state.boardId);
+  const route = useMemo(() => {
+    if (!target || netConnected(target.a, target.b, wires)) return null;
+    const candidate: Wire = {id:'__suggestion_only__', a:target.a, b:target.b, color:'yellow', style:'jumper'};
+    const routes = planWireRoutes([...wires, candidate], (id) => terminalPosition(id, parts), parts);
+    return routes[routes.length - 1] ?? null;
+  }, [target, wires, parts, boardId]);
+  if (!target) return null;
+  const a = terminalPosition(target.a, parts), b = terminalPosition(target.b, parts);
+  return <group>
+    {route && !route.blocked && <WirePreviewMesh route={route} color="yellow" />}
+    <PulseMarker position={a} color="#22d3ee" phase={0} radius={0.115} selected />
+    <PulseMarker position={b} color="#facc15" phase={2} radius={0.115} selected />
+    <Html position={[a[0], a[1] + 0.2, a[2]]} center distanceFactor={7} style={{pointerEvents:'none', padding:'3px 5px', fontSize:'10px', fontWeight:700, color:'#67e8f9', background:'rgba(8,15,30,.86)', borderRadius:5}}>FROM · {target.a}</Html>
+    <Html position={[b[0], b[1] + 0.2, b[2]]} center distanceFactor={7} style={{pointerEvents:'none', padding:'3px 5px', fontSize:'10px', fontWeight:700, color:'#fde047', background:'rgba(8,15,30,.86)', borderRadius:5}}>TO · {target.b}</Html>
+  </group>;
+}
 
 function PowerClipMarkers() {
   const pos = useLab((s) => s.psuPositive);
@@ -278,12 +332,74 @@ function ClipMarker({ id, color }: { id: string; color: string }) {
 }
 
 function CameraRig() {
-  const { camera } = useThree();
+  const { camera, size } = useThree();
+  const boardId = useLab((s) => s.boardId);
   const controlsRef = useRef<any>(null);
 
-  useMemo(() => {
-    camera.position.set(3.8, 4.4, 5.6);
-  }, [camera]);
+  // Bottom dock and sidebar resize the canvas. Do not reset orbit/zoom on
+  // those layout changes; only an explicit Fit/Focus command may reframe it.
+  const lastFittedBoard = useRef<string | null>(null);
+  const fitRegion = useCallback((minX: number, maxX: number, minZ: number, maxZ: number) => {
+    const perspective = camera as THREE.PerspectiveCamera;
+    const aspect = Math.max(0.8, size.width / Math.max(size.height, 1));
+    const direction = new THREE.Vector3(0.2, 0.79, 0.61).normalize();
+    const target = new THREE.Vector3((minX+maxX)/2, 0.18, (minZ+maxZ)/2);
+    const right = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), direction).normalize();
+    const up = new THREE.Vector3().crossVectors(direction, right).normalize();
+    const halfFovTan = Math.tan(THREE.MathUtils.degToRad(perspective.fov || 42) / 2);
+    const corners = [
+      [minX, minZ], [minX, maxZ], [maxX, minZ], [maxX, maxZ],
+    ];
+    let cameraDistance = 3;
+    for (const [x, z] of corners) {
+      const relative = new THREE.Vector3(x, BOARD.height, z).sub(target);
+      const horizontal = Math.abs(relative.dot(right));
+      const vertical = Math.abs(relative.dot(up));
+      const foreground = relative.dot(direction);
+      cameraDistance = Math.max(cameraDistance,
+        foreground + horizontal / (halfFovTan * aspect * 0.88),
+        foreground + vertical / (halfFovTan * 0.85));
+    }
+    cameraDistance = Math.max(4.8, cameraDistance);
+    camera.position.copy(target).addScaledVector(direction, cameraDistance);
+    camera.lookAt(target);
+    perspective.updateProjectionMatrix();
+    const controls = controlsRef.current;
+    if (controls) {
+      controls.target.copy(target);
+      controls.update();
+      controls.saveState();
+    }
+  }, [camera, size.width, size.height]);
+
+  const fitBoard = useCallback(() => {
+    fitRegion(-BOARD.width/2-0.85, BOARD.width/2+0.35,
+      -BOARD.depth/2-0.22, BOARD.depth/2+0.22);
+  }, [fitRegion]);
+
+  const focusCircuit = useCallback(() => {
+    const { parts } = useLab.getState();
+    const holes = parts.flatMap(part => Object.values(part.pins));
+    if (!holes.length) { fitBoard(); return; }
+    const coords = holes.map(hole => terminalPosition(hole, parts)).filter(p => p.every(Number.isFinite));
+    if (!coords.length) {fitBoard();return;}
+    const minX = Math.min(...coords.map(v => v[0]));
+    const maxX = Math.max(...coords.map(v => v[0]));
+    const minZ = Math.min(...coords.map(v => v[2]));
+    const maxZ = Math.max(...coords.map(v => v[2]));
+    // A usable bench view, not a macro shot of a single resistor.
+    const spanX = Math.max(8.7, maxX-minX+1.7);
+    const spanZ = Math.max(4.25, maxZ-minZ+1.35);
+    const midX = (minX+maxX)/2;
+    const midZ = (minZ+maxZ)/2;
+    fitRegion(midX-spanX/2, midX+spanX/2, midZ-spanZ/2, midZ+spanZ/2);
+  }, [fitRegion, fitBoard]);
+
+  useEffect(() => {
+    if (lastFittedBoard.current === boardId || !size.width || !size.height) return;
+    lastFittedBoard.current = boardId;
+    focusCircuit();
+  }, [focusCircuit, boardId, size.width, size.height]);
 
   useEffect(() => {
     const controls = controlsRef.current;
@@ -302,7 +418,9 @@ function CameraRig() {
         controls.dollyOut(1.2);
         controls.update();
       } else if (detail.type === "reset-view") {
-        controls.reset();
+        fitBoard();
+      } else if (detail.type === "focus-circuit") {
+        focusCircuit();
       } else if (detail.type === "move-mode") {
         controls.mouseButtons.LEFT = detail.active
           ? THREE.MOUSE.PAN
@@ -315,13 +433,13 @@ function CameraRig() {
 
     window.addEventListener("ece-lab-camera", onCommand);
     return () => window.removeEventListener("ece-lab-camera", onCommand);
-  }, []);
+  }, [fitBoard, focusCircuit]);
 
   useFrame(() => {
     if (!controlsRef.current) return;
-
     controlsRef.current.enabled =
-      !window.__ecePotDragging && !window.__ecePartDragging;
+      !window.__ecePotDragging && !window.__ecePartDragging &&
+      !useLab.getState().paletteDragging;
   });
 
   return (
@@ -334,7 +452,7 @@ function CameraRig() {
       minPolarAngle={0.25}
       maxPolarAngle={Math.PI / 2.15}
       minDistance={3.2}
-      maxDistance={16}
+      maxDistance={45}
       target={[0, 0.2, 0]}
     />
   );
@@ -356,6 +474,7 @@ function PlacementGhost() {
   const movingSelected = useLab((s) => s.movingSelected);
   const selectedId = useLab((s) => s.selectedId);
   const parts = useLab((s) => s.parts);
+  const wires = useLab((s) => s.wires);
   const sim = useLab((s) => s.sim);
 
   const preview = useMemo(() => {
@@ -382,6 +501,7 @@ function PlacementGhost() {
       motorModel,
     });
   }, [
+    partDragEnabled,
     tool,
     hover,
     resistorValue,
@@ -397,17 +517,82 @@ function PlacementGhost() {
     parts,
   ]);
 
+  const invalidPlacement = useMemo(() => {
+    if (!preview) return false;
+    if (placementIsBlocked(preview, parts, movingSelected ? selectedId ?? undefined : undefined)) return true;
+
+    // Match the actual drop's wire-clearance validation so the ghost cannot
+    // appear safe in cyan only to fail with a routing warning on release.
+    const proposedParts = movingSelected && selectedId
+      ? parts.map((part) => part.id === selectedId ? { ...preview, id: part.id } : part)
+      : [...parts, preview];
+    return introducesWireObstruction(wires, parts, wires, proposedParts);
+  }, [preview, parts, wires, movingSelected, selectedId]);
+
+  const footprint = useMemo(() => preview ? partObstacle(preview) : null, [preview]);
+  const collisions = useMemo(() => {
+    if (!footprint) return [];
+    return collectPartObstacles(parts, movingSelected ? selectedId ?? undefined : undefined)
+      .filter((other) => rectsOverlap(footprint, other));
+  }, [footprint, parts, movingSelected, selectedId]);
+  const markerColor = invalidPlacement ? "#fb7185" : "#22d3ee";
+
+  const ghostGroup = useRef<THREE.Group>(null);
+  useLayoutEffect(() => {
+    // Ghost is a render-only model: disable all child mesh raycasts so a
+    // preview can never eat the click intended for a breadboard hole.
+    ghostGroup.current?.traverse((child) => {
+      if (child instanceof THREE.Mesh || child instanceof THREE.InstancedMesh) {
+        child.raycast = () => undefined;
+      }
+    });
+  }, [preview]);
+
   if (!preview) return null;
 
   return (
-    <group>
+    <group ref={ghostGroup}>
+      {/* True solid-object footprint, computed by the SAME predicate used for drop. */}
+      {footprint && (
+        <group position={[(footprint.minX + footprint.maxX) / 2, BOARD.height + 0.09, (footprint.minZ + footprint.maxZ) / 2]}>
+          <mesh rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
+            <planeGeometry args={[footprint.maxX - footprint.minX, footprint.maxZ - footprint.minZ]} />
+            <meshBasicMaterial color={markerColor} transparent opacity={0.13} depthWrite={false} side={THREE.DoubleSide} />
+          </mesh>
+          <lineSegments raycast={() => null}>
+            <edgesGeometry args={[new THREE.BoxGeometry(footprint.maxX - footprint.minX, 0.02, footprint.maxZ - footprint.minZ)]} />
+            <lineBasicMaterial color={markerColor} transparent opacity={0.97} depthTest={false} />
+          </lineSegments>
+          {invalidPlacement && (
+            <Html center position={[0, 0.48, 0]} distanceFactor={9}
+              style={{pointerEvents: "none", whiteSpace: "nowrap", userSelect: "none"}}>
+              <div style={{padding: "5px 9px", fontSize: 10, fontWeight: 800, borderRadius: 7,
+                color: "#fecdd3", background: "rgba(3,9,25,.94)",
+                border: "1px solid #fb7185", boxShadow: "0 0 20px #fb718544"}}>
+                BLOCKED · MOVE PART
+              </div>
+            </Html>
+          )}
+        </group>
+      )}
+      {collisions.map((other) => (
+        <lineSegments key={`collision-${other.id}`}
+          position={[(other.minX + other.maxX) / 2, BOARD.height + 0.07, (other.minZ + other.maxZ) / 2]}
+          raycast={() => null}>
+          <edgesGeometry args={[new THREE.BoxGeometry(other.maxX - other.minX, 0.025, other.maxZ - other.minZ)]} />
+          <lineBasicMaterial color="#f43f5e" transparent opacity={0.95} depthTest={false} />
+        </lineSegments>
+      ))}
       {/* Soft lift so the ghost reads as floating above the board */}
       <group position={[0, 0.04, 0]}>
         <PartSwitch part={preview} selected sim={sim} />
       </group>
       {/* Pin markers for every node of the ghost footprint */}
       {Object.entries(preview.pins).map(([pinName, holeId]) => {
-        const [x, y, z] = holePosition(holeId);
+        const [x, y, z] = (preview.kind === 'mcu'
+          ? mcuHeaderPosition(preview, pinName)
+          : holePosition(holeId)) ?? [NaN, NaN, NaN];
+        if (![x,y,z].every(Number.isFinite)) return null;
         return (
           <mesh
             key={`preview-pin-${pinName}-${holeId}`}
@@ -415,7 +600,7 @@ function PlacementGhost() {
             rotation={[-Math.PI / 2, 0, 0]}
           >
             <ringGeometry args={[0.05, 0.085, 18]} />
-            <meshBasicMaterial color="#38bdf8" transparent opacity={0.85} depthWrite={false} />
+            <meshBasicMaterial color={invalidPlacement ? "#ef4444" : "#38bdf8"} transparent opacity={0.88} depthWrite={false} />
           </mesh>
         );
       })}
@@ -423,18 +608,13 @@ function PlacementGhost() {
   );
 }
 
-/** Hold this long (ms) on a part to enter move mode. */
-const LONG_PRESS_MS = 450;
-/** Finger/cursor may jitter this many px during long-press without canceling. */
-const LONG_PRESS_SLOP_PX = 10;
+/** Normal click selects; dragging beyond this distance starts a real 3D move. */
+const DRAG_THRESHOLD_PX = 7;
 
 /**
- * Wraps a placed part so it can be moved when the select tool is active.
- *
- * - Short click → select
- * - Long-press (~0.45s) → enter move mode (ghost); drag to a hole and release,
- *   or release and click a hole
- * - Drag after long-press also works in one continuous gesture
+ * Selection and movement share the exact physical part model.
+ * Holding the mouse is no longer required: click selects, drag moves.
+ * Pin location under the grabbed point is preserved to avoid jumps.
  */
 function MovablePart({
   part,
@@ -449,120 +629,120 @@ function MovablePart({
   const select = useLab((s) => s.select);
   const setHover = useLab((s) => s.setHover);
   const partDragEnabled = useLab((s) => s.partDragEnabled);
+  const movingSelected = useLab((s) => s.movingSelected);
 
   const dragRef = useRef<{
     active: boolean;
-    armed: boolean;
+    moving: boolean;
     startX: number;
     startY: number;
     partId: string;
-    timer: ReturnType<typeof setTimeout> | null;
+    // Displacement of the clicked surface point from the first pin.
+    offsetX: number;
+    offsetZ: number;
   } | null>(null);
 
   useEffect(() => {
     if (!partDragEnabled) {
-      if (dragRef.current?.timer) clearTimeout(dragRef.current.timer);
       dragRef.current = null;
       window.__ecePartDragging = false;
       return;
     }
 
-    const clearTimer = () => {
-      const d = dragRef.current;
-      if (d?.timer) {
-        clearTimeout(d.timer);
-        d.timer = null;
-      }
+    const getAnchor = (x: number, y: number, d: NonNullable<typeof dragRef.current>) => {
+      const point = screenToBoardPoint(x, y);
+      if (!point) return null;
+      return nearestHole({
+        x: point.x - d.offsetX,
+        y: BOARD.height,
+        z: point.z - d.offsetZ,
+      }, 0.37);
     };
 
     const onMove = (e: PointerEvent) => {
       const d = dragRef.current;
       if (!d?.active) return;
-
       const dist = Math.hypot(e.clientX - d.startX, e.clientY - d.startY);
-
-      if (!d.armed && dist > LONG_PRESS_SLOP_PX) {
-        clearTimer();
-        return;
+      if (!d.moving && dist >= DRAG_THRESHOLD_PX) {
+        d.moving = true;
+        const lab = useLab.getState();
+        lab.select(d.partId);
+        lab.setMovingSelected(true);
       }
-
-      if (d.armed) {
-        window.__ecePartDragging = true;
-        setHover(holeUnderPointer(e.clientX, e.clientY));
-      }
+      if (d.moving) setHover(getAnchor(e.clientX, e.clientY, d));
     };
 
-    const onUp = (e: PointerEvent) => {
+    const finish = (e: PointerEvent, canceled = false) => {
       const d = dragRef.current;
       if (!d?.active) return;
-      clearTimer();
       d.active = false;
-      window.__ecePartDragging = false;
-
-      if (d.armed) {
-        const hole =
-          holeUnderPointer(e.clientX, e.clientY) ??
-          useLab.getState().hoverHole;
-        if (hole) {
-          useLab.getState().select(d.partId);
-          useLab.getState().moveSelectedTo(hole);
-          setHover(null);
-        }
-      }
-
       dragRef.current = null;
+      window.__ecePartDragging = false;
+      if (d.moving) {
+        const hole = canceled ? null : getAnchor(e.clientX, e.clientY, d);
+        if (hole) {
+          const lab = useLab.getState();
+          lab.select(d.partId);
+          lab.moveSelectedTo(hole);
+        }
+        useLab.getState().setMovingSelected(false);
+        setHover(null);
+      }
     };
 
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
-    window.addEventListener("pointercancel", onUp);
+    const onUp = (e: PointerEvent) => finish(e);
+    const onCancel = (e: PointerEvent) => finish(e, true);
+    const onEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && dragRef.current) {
+        dragRef.current = null;
+        window.__ecePartDragging = false;
+        useLab.getState().setMovingSelected(false);
+        setHover(null);
+      }
+    };
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onCancel);
+    window.addEventListener('keydown', onEscape);
     return () => {
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-      window.removeEventListener("pointercancel", onUp);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onCancel);
+      window.removeEventListener('keydown', onEscape);
+      if (dragRef.current) window.__ecePartDragging = false;
     };
   }, [setHover, partDragEnabled]);
 
-  // Drag off → original zip behavior (click to select only).
-  if (!partDragEnabled) {
-    return <PartSwitch part={part} selected={selected} sim={sim} />;
-  }
-
-
-return (
-  <group
-    onPointerDown={(e) => {
-      if (e.button !== 0) return;
-      if (tool !== "select" && tool !== "none") return;
-        e.stopPropagation();
-
-        select(part.id);
-
-        if (dragRef.current?.timer) {
-          clearTimeout(dragRef.current.timer);
+  return (
+    <group
+      visible={!(movingSelected && selected)}
+      onPointerDown={(e) => {
+        if (e.button !== 0) return;
+        if (tool === 'delete') {
+          e.stopPropagation();
+          useLab.getState().select(part.id);
+          return;
         }
+        if (tool !== 'select') return;
+        e.stopPropagation();
+        select(part.id);
+        if (!partDragEnabled) return;
 
-        const partId = part.id;
+        const anchor = firstPinHole(part);
+        const point = screenToBoardPoint(e.clientX, e.clientY);
+        const pinWorld = anchor ? holePosition(anchor) : null;
         dragRef.current = {
           active: true,
-          armed: false,
+          moving: false,
           startX: e.clientX,
           startY: e.clientY,
-          partId,
-          timer: setTimeout(() => {
-            const d = dragRef.current;
-            if (!d?.active || d.partId !== partId) return;
-            if (!useLab.getState().partDragEnabled) return;
-            d.armed = true;
-            const lab = useLab.getState();
-            lab.select(partId);
-            lab.setMovingSelected(true);
-            window.__ecePartDragging = true;
-            const live = lab.parts.find((p) => p.id === partId);
-            const seed = live ? firstPinHole(live) : null;
-            if (seed) lab.setHover(seed);
-          }, LONG_PRESS_MS),
+          partId: part.id,
+          offsetX: point && pinWorld ? point.x - pinWorld[0] : 0,
+          offsetZ: point && pinWorld ? point.z - pinWorld[2] : 0,
         };
+        // Do not rotate the whole breadboard while the component is grabbed.
+        window.__ecePartDragging = true;
       }}
     >
       <PartSwitch part={part} selected={selected} sim={sim} />
@@ -570,21 +750,26 @@ return (
   );
 }
 
-export function LabScene() {
+export function LabScene({ performanceMode = true }: { performanceMode?: boolean }) {
   const parts = useLab((s) => s.parts);
   const wires = useLab((s) => s.wires);
   const selectedId = useLab((s) => s.selectedId);
+  const focusConnections = useLab((s) => s.focusConnections);
   const sim = useLab((s) => s.sim);
   const select = useLab((s) => s.select);
   const movingSelected = useLab((s) => s.movingSelected);
   const tickAccumulator = useRef(0);
+  const boardId = useLab((s) => s.boardId);
+  const routes = useMemo(() => new Map(planWireRoutes(wires, (id) => terminalPosition(id, parts), parts).map((route) => [route.id, route])), [wires, parts, boardId]);
 
+  // Run MCU ticks at 10 Hz in Fast 3D, or 20 Hz in Detail 3D.
+  // This avoids unnecessarily solving the entire circuit every rendered frame.
   // Run the MCU at a stable virtual 20 Hz instead of tying sketch execution
   // to the renderer's 60–144 FPS rate. This is the foundation for millis(),
   // button debounce, PWM and timer-like peripherals.
   useFrame((_, delta) => {
     tickAccumulator.current += delta * 1000;
-    if (tickAccumulator.current < 50) return;
+    if (tickAccumulator.current < (performanceMode ? 100 : 50)) return;
     const elapsed = tickAccumulator.current;
     tickAccumulator.current = 0;
     useLab.getState().tickSimulation(Math.min(elapsed, 100));
@@ -592,14 +777,14 @@ export function LabScene() {
 
   return (
     <>
-      <color attach="background" args={["#0a1018"]} />
-      <fog attach="fog" args={["#0a1018", 12, 28]} />
+      <color attach="background" args={[WORKBENCH_PALETTE.background]} />
+      <fog attach="fog" args={[WORKBENCH_PALETTE.background, 14, 36]} />
       <hemisphereLight args={["#9db4d0", "#1a1f28", 0.55]} />
       <ambientLight intensity={0.28} />
       <directionalLight
         position={[6, 10, 4]}
         intensity={1.35}
-        castShadow
+        castShadow={!performanceMode}
         shadow-mapSize-width={1024}
         shadow-mapSize-height={1024}
         shadow-camera-far={24}
@@ -621,18 +806,18 @@ export function LabScene() {
         }}
       >
         <planeGeometry args={[40, 40]} />
-        <meshStandardMaterial color="#0c121c" />
+        <meshStandardMaterial color={WORKBENCH_PALETTE.floor} roughness={0.95} metalness={0.01} />
       </mesh>
       <Grid
         position={[0, 0.001, 0]}
         args={[40, 40]}
         cellSize={0.5}
         cellThickness={0.6}
-        cellColor="#1a2436"
+        cellColor={WORKBENCH_PALETTE.gridCell}
         sectionSize={2}
         sectionThickness={1.1}
-        sectionColor="#243044"
-        fadeDistance={22}
+        sectionColor={WORKBENCH_PALETTE.gridSection}
+        fadeDistance={26}
         fadeStrength={1.4}
         infiniteGrid
       />
@@ -641,23 +826,34 @@ export function LabScene() {
       <PowerSupply />
       <PowerClipMarkers />
       {wires.map((w) => (
-        <JumperWire key={w.id} wire={w} selected={selectedId === w.id} />
+        <JumperWire
+          key={w.id}
+          wire={w}
+          route={routes.get(w.id)!}
+          selected={selectedId === w.id}
+          dimmed={focusConnections && Boolean(selectedId) && selectedId !== w.id && (() => {
+            const part = parts.find(p => p.id === selectedId);
+            if (!part) return true;
+            const pins = new Set(Object.values(part.pins).map(holeStrip));
+            return !pins.has(holeStrip(w.a)) && !pins.has(holeStrip(w.b));
+          })()}
+        />
       ))}
-      {parts.map((p) =>
-        // Hide the original while it is being moved so only the ghost shows.
-        movingSelected && p.id === selectedId ? null : (
-          <MovablePart
-            key={p.id}
-            part={p}
-            selected={selectedId === p.id}
-            sim={sim}
-          />
-        ),
-      )}
+      {parts.map((p) => (
+        // Keep MovablePart MOUNTED during drag: its window pointer listeners
+        // must survive until pointerup. It hides its mesh using visible=false.
+        <MovablePart
+          key={p.id}
+          part={p}
+          selected={selectedId === p.id}
+          sim={sim}
+        />
+      ))}
       <PlacementGhost />
       <HoverMarker />
       <PreviewWire />
-      <ContactShadows position={[0, 0, 0]} opacity={0.45} scale={18} blur={2.2} far={3} />
+      <SuggestedWirePreview />
+      {!performanceMode && <ContactShadows position={[0, 0, 0]} opacity={0.4} scale={18} blur={2.2} far={3} resolution={256} frames={1} />}
       <CameraRig />
       <group visible={false}>
         {getAllHoles().slice(0, 1).map((id) => (

@@ -45,15 +45,15 @@ export function SimulationsPage() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
-        <div className="bg-[#111827] border border-[#1e293b] rounded-xl p-4">
+        <div className="bg-[var(--app-surface)] border border-[var(--app-border)] rounded-xl p-4">
           <div className="text-xs text-slate-500 uppercase">Passed</div>
           <div className="text-2xl font-bold text-emerald-400 mt-1">{passed}</div>
         </div>
-        <div className="bg-[#111827] border border-[#1e293b] rounded-xl p-4">
+        <div className="bg-[var(--app-surface)] border border-[var(--app-border)] rounded-xl p-4">
           <div className="text-xs text-slate-500 uppercase">Warnings</div>
           <div className="text-2xl font-bold text-amber-400 mt-1">{warnings}</div>
         </div>
-        <div className="bg-[#111827] border border-[#1e293b] rounded-xl p-4">
+        <div className="bg-[var(--app-surface)] border border-[var(--app-border)] rounded-xl p-4">
           <div className="text-xs text-slate-500 uppercase">Failed</div>
           <div className="text-2xl font-bold text-red-400 mt-1">{failed}</div>
         </div>
@@ -68,11 +68,11 @@ export function SimulationsPage() {
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Search simulation history..."
-          className="w-full bg-[#111827] border border-[#1e293b] rounded-lg pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+          className="w-full bg-[var(--app-surface)] border border-[var(--app-border)] rounded-lg pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
         />
       </div>
 
-      <div className="bg-[#111827] border border-[#1e293b] rounded-xl divide-y divide-[#1e293b]">
+      <div className="bg-[var(--app-surface)] border border-[var(--app-border)] rounded-xl divide-y divide-[var(--app-border)]">
         {list.length === 0 ? (
           <div className="p-8 text-center text-slate-500 text-sm">
             No simulation runs yet. Open a project and use Run Simulation.

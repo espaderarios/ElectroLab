@@ -76,3 +76,7 @@ electrolab/
 - Lucide icons
 
 Enjoy building circuits.
+
+## Physical 3D component and wire clearance
+
+This version adds solid-footprint collision rejection, cyan/red snap outlines, hard body-avoiding wire routes, and automatic solid/jumper wire-height separation. See `PHYSICAL_COLLISION_AND_WIRING.md` for implementation notes and limitations. Verify using `npm run test:physical` after installing dependencies.

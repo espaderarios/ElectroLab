@@ -622,7 +622,7 @@ export function PythonTutorialPage() {
                 key={p.id}
                 type="button"
                 onClick={() => setView(p.id)}
-                className="text-left group bg-[#111827] border border-[#1e293b] hover:border-emerald-500/40 rounded-xl p-5 flex flex-col transition shadow-sm hover:shadow-[0_0_24px_rgba(16,185,129,0.12)]"
+                className="text-left group bg-[var(--app-surface)] border border-[var(--app-border)] hover:border-emerald-500/40 rounded-xl p-5 flex flex-col transition shadow-sm hover:shadow-[0_0_24px_rgba(16,185,129,0.12)]"
               >
                 <div className="flex items-start gap-3">
                   <div className="w-10 h-10 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center group-hover:bg-emerald-500/20 transition">
@@ -710,7 +710,7 @@ export function PythonTutorialPage() {
           </div>
         </button>
 
-        <div className="rounded-2xl border border-slate-700/50 bg-[#111827]/60 p-6 flex flex-col justify-center opacity-60">
+        <div className="rounded-2xl border border-slate-700/50 bg-[var(--app-surface)]/60 p-6 flex flex-col justify-center opacity-60">
           <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-3">
             <span className="px-2 py-0.5 rounded-full bg-slate-800 border border-slate-700">
               Tutorial 2

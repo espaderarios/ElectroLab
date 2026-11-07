@@ -359,6 +359,8 @@ export interface PlacedPart {
     label?: string;
 
     mcuModel?: "arduino-uno" | "esp32";
+    /** Breadboard anchor used only for positioning the off-board Uno PCB. */
+    headerAnchor?: HoleId;
 
     transistorModel?: TransistorModelId;
 
@@ -423,11 +425,21 @@ export interface PlacedPart {
 }
 
 
+export type WireStyle = "solid" | "jumper";
+
 export interface Wire {
   id: string;
   a: HoleId;
   b: HoleId;
   color: WireColor;
+  /** Visual routing only; omitted in old saved projects (defaults to solid). */
+  style?: WireStyle;
+  /** Optional saved visual bend points in board-world coordinates (not electrical contacts). */
+  bends?: Array<{ x: number; z: number }>;
+  /** Stored endpoints let us discard stale visual routes after moving a part. */
+  bendAnchors?: { a: HoleId; b: HoleId };
+  /** When true, Auto Tidy preserves this route until the user unlocks it. */
+  routeLocked?: boolean;
 }
 
 export interface LedState {
@@ -622,7 +634,7 @@ export interface RgbLedState {
 
 export interface SevenSegState {
   id: string;
-  segments: boolean[]; // a,b,c,d,e,f,g
+  segments: boolean[]; // a,b,c,d,e,f,g,dp
   digit?: number;
 }
 

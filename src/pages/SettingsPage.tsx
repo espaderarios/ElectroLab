@@ -10,6 +10,7 @@ import {
   Sun,
   ChevronRight,
   RotateCcw,
+  Zap,
   Info,
 } from "lucide-react";
 import { useProjects } from "../store/projects";
@@ -122,8 +123,8 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-xl border border-[#1e293b] bg-[#0f172a] overflow-hidden">
-      <div className="flex items-center gap-2.5 px-4 py-3 border-b border-[#1e293b]/80">
+    <section className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-2)] overflow-hidden">
+      <div className="flex items-center gap-2.5 px-4 py-3 border-b border-[var(--app-border)]/80">
         <div className="w-7 h-7 rounded-lg bg-blue-600/15 flex items-center justify-center">
           <Icon size={14} className="text-blue-400" />
         </div>
@@ -153,7 +154,7 @@ function Field({
 }
 
 const inputClass =
-  "w-full h-10 bg-[#0a0f1a] border border-[#1e293b] rounded-lg px-3 text-sm text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/20 transition";
+  "w-full h-10 bg-[var(--app-bg)] border border-[var(--app-border)] rounded-lg px-3 text-sm text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/20 transition";
 
 export function SettingsPage() {
   const darkMode = useProjects((s) => s.darkMode);
@@ -206,7 +207,7 @@ export function SettingsPage() {
   };
 
   return (
-    <div className="flex-1 min-w-0 overflow-y-auto scrollbar-thin bg-[#0a0f1a]">
+    <div className="flex-1 min-w-0 overflow-y-auto scrollbar-thin bg-[var(--app-bg)]">
       <div className="max-w-2xl mx-auto p-5 sm:p-6 lg:p-8">
         <header className="mb-7 flex items-start justify-between gap-4">
           <div>
@@ -264,7 +265,7 @@ export function SettingsPage() {
             <button
               type="button"
               onClick={() => toggleDarkMode()}
-              className="flex items-center justify-between w-full rounded-lg border border-[#1e293b] bg-[#0a0f1a] px-3.5 py-3 hover:border-slate-600 transition-colors"
+              className="flex items-center justify-between w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-bg)] px-3.5 py-3 hover:border-slate-600 transition-colors"
             >
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-lg bg-slate-800 flex items-center justify-center">
@@ -300,6 +301,20 @@ export function SettingsPage() {
               label="Reduce motion"
               description="Minimize animations and transitions."
             />
+            <button
+              type="button"
+              disabled={prefs.reducedMotion}
+              onClick={() => window.dispatchEvent(new Event("electrolab:replay-intro"))}
+              className="w-full rounded-lg border border-cyan-500/30 bg-cyan-500/10 hover:bg-cyan-500/20 disabled:opacity-50 disabled:cursor-not-allowed px-3.5 py-3 flex items-center gap-2.5 text-left transition-colors"
+            >
+              <Zap size={18} className="text-cyan-400 shrink-0" />
+              <span>
+                <span className="block text-sm font-semibold text-slate-100">Replay ElectroLab intro</span>
+                <span className="block text-xs text-slate-400 mt-0.5">
+                  {prefs.reducedMotion ? "Disable Reduce motion to preview the entrance animation." : "Watch the circuit-board startup animation again."}
+                </span>
+              </span>
+            </button>
           </Section>
 
           {/* Lab defaults */}
@@ -327,7 +342,7 @@ export function SettingsPage() {
                       className={`h-10 px-2.5 rounded-lg text-xs font-medium border transition-colors ${
                         psuVoltage === v
                           ? "bg-blue-600/20 border-blue-500/40 text-blue-300"
-                          : "border-[#1e293b] text-slate-400 hover:bg-slate-800/60 hover:text-slate-200"
+                          : "border-[var(--app-border)] text-slate-400 hover:bg-slate-800/60 hover:text-slate-200"
                       }`}
                     >
                       {v}V
@@ -354,7 +369,7 @@ export function SettingsPage() {
               </select>
             </Field>
 
-            <div className="pt-1 border-t border-[#1e293b]/80 space-y-1">
+            <div className="pt-1 border-t border-[var(--app-border)]/80 space-y-1">
               <Toggle
                 on={prefs.showGrid}
                 onChange={(v) => updatePref("showGrid", v)}

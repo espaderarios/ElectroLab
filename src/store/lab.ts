@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import {
   BOARD,
+  holePosition,
   holeStrip,
   offsetHole,
   parseTerminalHole,
@@ -9,7 +10,13 @@ import {
   type BoardPresetId,
 } from "@/circuit/breadboard";
 import { helloWorldPreset, type LabPreset } from "@/circuit/presets";
+import { LOGIC_IC_PINOUTS } from "@/circuit/logic-ics";
+import { SEVEN_SEGMENT_PINS } from "@/circuit/seven-segment";
 import { simulate } from "@/circuit/simulate";
+import { placementIsBlocked } from "@/circuit/placement-obstacles";
+import { planWireRoutes } from "@/circuit/wire-routing";
+import { mcuTerminalId, terminalPosition, upgradeMcuHeaders, UNO_HEADER_NAMES } from "@/circuit/mcu-headers";
+import { autoTidyWireBundle } from "@/circuit/tidy-wires";
 import type {
   HoleId,
   PartKind,
@@ -19,9 +26,35 @@ import type {
   ToolId,
   Wire,
   WireColor,
+  WireStyle,
 } from "@/circuit/types";
 import { MOTOR_MODELS } from "@/circuit/types";
 import { uid } from "@/lib/utils";
+
+/**
+ * Existing user projects can contain an unroutable saved wire (for example
+ * from an older simulator version). A NEW part should only be rejected if it
+ * introduces a NEW wire obstruction. Existing problems must not lock the
+ * whole breadboard against editing.
+ *
+ * A route is compared by its permanent wire id, never by list position,
+ * because solid/jumper tracks may be reordered by the planner.
+ */
+export function introducesWireObstruction(
+  previousWires: readonly Wire[],
+  previousParts: readonly PlacedPart[],
+  nextWires: readonly Wire[],
+  nextParts: readonly PlacedPart[],
+): boolean {
+  if (!nextWires.length) return false;
+  const previouslyBlocked = new Set(
+    planWireRoutes(previousWires, (id) => terminalPosition(id, previousParts), previousParts)
+      .filter((route) => route.blocked)
+      .map((route) => route.id),
+  );
+  return planWireRoutes(nextWires, (id) => terminalPosition(id, nextParts), nextParts)
+    .some((route) => route.blocked && !previouslyBlocked.has(route.id));
+}
 
 /** Suppress accidental double placement from drag-drop + hole-click on the same gesture. */
 let _lastPlace: { key: string; at: number; tool: string } = {
@@ -34,7 +67,7 @@ let _suppressHolePlaceUntil = 0;
 
 /** Dual-inline packages that straddle the centre channel. */
 const DIP_KINDS = new Set<string>([
-  "not", "and", "or", "nand", "nor", "xor", "xnor", "timer555", "opamp",
+  "not", "and", "or", "nand", "nor", "xor", "xnor", "timer555", "opamp", "seven-segment",
 ]);
 
 /** Terminal-strip row groups (same half of the board). */
@@ -96,6 +129,9 @@ interface LabSnapshot {
 interface LabState {
   tool: ToolId;
   wireColor: WireColor;
+  wireStyle: WireStyle;
+  showWireFlow: boolean;
+  focusConnections: boolean;
 
   resistorValue: number;
   transistorModel: import("@/circuit/types").TransistorModelId;
@@ -111,9 +147,14 @@ interface LabState {
   pendingHole: HoleId | null;
   pendingHoles: HoleId[];
   hoverHole: HoleId | null;
+  /** Nonintrusive error/status shown after a physically invalid drop. */
+  placementError: string | null;
 
   selectedId: string | null;
   probeHole: HoleId | null;
+  /** Read-only guide highlight; this never changes circuit connectivity. */
+  guideTarget: { a: HoleId; b: HoleId } | null;
+  setGuideTarget: (target: { a: HoleId; b: HoleId } | null) => void;
 
   /**
    * When set, the next hole click reassigns this pin on the part
@@ -181,6 +222,15 @@ interface LabState {
 
   setTool: (tool: ToolId) => void;
   setWireColor: (color: WireColor) => void;
+  setWireStyle: (style: WireStyle) => void;
+  setShowWireFlow: (enabled: boolean) => void;
+  setFocusConnections: (enabled: boolean) => void;
+  /** Plan a cleaner shared layout without altering wire endpoints. Undoable. */
+  autoTidyWires: () => void;
+  /** Preserve or release the selected wire's manually adjusted visual path. */
+  setSelectedWireRouteLocked: (locked: boolean) => void;
+  /** Move a selected wire's main routing corridor in board units. */
+  nudgeSelectedWireLane: (axis: 'x' | 'z', delta: number) => void;
 
   setResistorValue: (value: number) => void;
 
@@ -217,6 +267,7 @@ interface LabState {
   setMcuCode: (id: string, code: string) => void;
 
   setHover: (hole: HoleId | null) => void;
+  dismissPlacementError: () => void;
   clickHole: (hole: HoleId) => void;
   select: (id: string | null) => void;
 
@@ -307,7 +358,7 @@ function snapshot(state: LabState): LabSnapshot {
       props: { ...p.props },
     })),
 
-    wires: state.wires.map((w) => ({ ...w })),
+    wires: state.wires.map((w) => ({ ...w, bends: w.bends?.map(p => ({ ...p })), bendAnchors: w.bendAnchors ? { ...w.bendAnchors } : undefined })),
 
     psuPositive: state.psuPositive,
 
@@ -528,17 +579,15 @@ export function computePinLayout(
   ) as Record<string, HoleId>;
 
   if (["not", "and", "or", "nand", "nor", "xor", "xnor"].includes(placement.kind)) {
-    // The package always has 14 physical pins, but the educational model
-    // exposes only the signal pins required by the selected gate.
-    // NOT has one input and one output; the other gates have A, B, and Y.
+    // Keep legacy A/B/Y aliases in sync with each IC's *real* first gate.
+    // In particular, the NOR 74HC02 output is pin 1, not pin 3.
+    const chip = LOGIC_IC_PINOUTS[placement.kind as keyof typeof LOGIC_IC_PINOUTS];
+    const firstGate = chip.gates[0];
     pins.vcc = pins.p14;
     pins.gnd = pins.p7;
-    pins.a = pins.p1;
-    pins.y = pins.p2;
-    if (placement.kind !== "not") {
-      pins.b = pins.p2;
-      pins.y = pins.p3;
-    }
+    pins.a = pins[`p${firstGate.inputs[0]}`];
+    if (firstGate.inputs.length > 1) pins.b = pins[`p${firstGate.inputs[1]}`];
+    pins.y = pins[`p${firstGate.output}`];
   }
 
   return { holes, pins, kind: placement.kind };
@@ -611,6 +660,7 @@ export function buildPreviewPart(
           : undefined,
       switchStyle: kind === "button" ? defaults?.switchStyle ?? "tactile-black" : undefined,
       mcuModel: kind === "mcu" ? "arduino-uno" : undefined,
+      headerAnchor: kind === "mcu" ? anchor : undefined,
       transistorModel:
         kind === "transistor" ? defaults?.transistorModel : undefined,
       thyristorModel:
@@ -638,6 +688,7 @@ export function reanchorPartPins(
 ): Record<string, HoleId> | null {
   const parsed = parseTerminalHole(anchor);
   if (!parsed) return null;
+  if (part.kind === "mcu") return { ...part.pins };
 
   if (DIP_KINDS.has(part.kind)) {
     return computePinLayout(part.kind, anchor)?.pins ?? null;
@@ -697,7 +748,7 @@ export function previewMovedPart(
     ...part,
     id: "__move_preview__",
     pins: newPins,
-    props: { ...part.props },
+    props: { ...part.props, ...(part.kind === 'mcu' ? { headerAnchor: anchor } : {}) },
   };
 }
 
@@ -753,8 +804,8 @@ function getPlacement(tool: ToolId) {
       return { kind, pins: ["r", "g", "b", "k"] };
     }
     if (kind === "seven-segment") {
-      // a b c d e f g dp com
-      return { kind, pins: ["a", "b", "c", "d", "e", "f", "g", "dp", "com"] };
+      // Physical 10-pin 5161AS/5161BS: a–g, DP and two internal COM leads.
+      return { kind, pins: [...SEVEN_SEGMENT_PINS] };
     }
     if (kind === "timer555") {
       // NE555 DIP-8: 1 GND, 2 TRIG, 3 OUT, 4 RESET, 5 CONT, 6 THRES, 7 DISCH, 8 VCC
@@ -848,7 +899,7 @@ function getPlacement(tool: ToolId) {
   return null;
 }
 
-/** Default Arduino sketch (matches auto-wire pin map below). */
+/** Default Arduino sketch example for an HD44780 LCD in 4-bit mode. */
 export const DEFAULT_MCU_CODE = `#include <LiquidCrystal.h>
 
 // RS, E, D4, D5, D6, D7
@@ -863,74 +914,6 @@ void loop() {
 }
 `;
 
-/**
- * Wire MCU ↔ LCD to match LiquidCrystal lcd(12, 11, 5, 4, 3, 2)
- * plus power / backlight / RW→GND.
- */
-function autoWireMcuLcd(
-  mcu: PlacedPart,
-  lcd: PlacedPart,
-  existing: Wire[],
-): Wire[] {
-  const pairs: Array<{
-    a?: HoleId;
-    b?: HoleId;
-    color: WireColor;
-  }> = [
-    { a: mcu.pins.d12, b: lcd.pins.rs, color: "blue" },
-    { a: mcu.pins.d11, b: lcd.pins.e, color: "blue" },
-    { a: mcu.pins.d5, b: lcd.pins.d4, color: "green" },
-    { a: mcu.pins.d4, b: lcd.pins.d5, color: "green" },
-    { a: mcu.pins.d3, b: lcd.pins.d6, color: "green" },
-    { a: mcu.pins.d2, b: lcd.pins.d7, color: "green" },
-    // LCD power comes from the Arduino power header, not directly from the
-    // bench PSU. The Arduino's VCC/5V rail is the source seen by the LCD.
-    { a: mcu.pins.vcc, b: lcd.pins.vdd, color: "red" },
-    { a: mcu.pins.gnd, b: lcd.pins.vss, color: "black" },
-    { a: mcu.pins.gnd, b: lcd.pins.rw, color: "black" },
-    { a: mcu.pins.vcc, b: lcd.pins.a, color: "orange" },
-    { a: mcu.pins.gnd, b: lcd.pins.k, color: "black" },
-  ];
-
-  const wires = [...existing];
-  const hasLink = (a: HoleId, b: HoleId) =>
-    wires.some(
-      (w) =>
-        (w.a === a && w.b === b) || (w.a === b && w.b === a),
-    );
-
-  for (const { a, b, color } of pairs) {
-    if (!a || !b) continue;
-    if (a === b) continue;
-    if (hasLink(a, b)) continue;
-    wires.push({ id: uid("wire"), a, b, color });
-  }
-  return wires;
-}
-
-
-function autoWireMcuOled(
-  mcu: PlacedPart,
-  oled: PlacedPart,
-  existing: Wire[],
-): Wire[] {
-  // Uno I2C: SDA = A4, SCL = A5
-  const pairs: Array<{ a?: string; b?: string; color: WireColor }> = [
-    { a: mcu.pins["3v3"], b: oled.pins.vcc, color: "red" },
-    { a: mcu.pins.gnd, b: oled.pins.gnd, color: "black" },
-    { a: mcu.pins.a4 ?? mcu.pins.sda, b: oled.pins.sda, color: "blue" },
-    { a: mcu.pins.a5 ?? mcu.pins.scl, b: oled.pins.scl, color: "yellow" },
-  ];
-  const wires = [...existing];
-  const hasLink = (a: string, b: string) =>
-    wires.some((w) => (w.a === a && w.b === b) || (w.a === b && w.b === a));
-  for (const { a, b, color } of pairs) {
-    if (!a || !b || a === b || hasLink(a, b)) continue;
-    wires.push({ id: uid("wire"), a, b, color });
-  }
-  return wires;
-}
-
 
 /** Default bench rails when the user has not clipped the PSU yet. */
 function defaultPowerRails(): { pos: HoleId; neg: HoleId } {
@@ -944,7 +927,8 @@ function defaultPowerRails(): { pos: HoleId; neg: HoleId } {
 }
 
 /**
- * Ensure PSU clips exist and MCU VCC/GND (and LCD/OLED power) reach them.
+ * Establish bench supply clip positions, but NEVER invent or remove physical
+ * wires. Even rail segment bridges must be placed explicitly by the user.
  */
 function ensurePowerWiring(
   state: {
@@ -953,122 +937,13 @@ function ensurePowerWiring(
     psuPositive: HoleId | null;
     psuNegative: HoleId | null;
   },
-): {
-  wires: Wire[];
-  psuPositive: HoleId;
-  psuNegative: HoleId;
-} {
-  const rails = defaultPowerRails();
-  const psuPositive = state.psuPositive ?? rails.pos;
-  const psuNegative = state.psuNegative ?? rails.neg;
-  let wires = [...state.wires];
-
-  // Migration/safety cleanup for circuits created by older simulator builds.
-  // Older builds wired LCD/OLED power directly to the bench PSU. Remove those
-  // exact display-to-PSU links so the displays are now powered only through
-  // the Arduino power outputs. Manual signal wiring is left untouched.
-  const displayPowerPins = new Set<HoleId>();
-  for (const part of state.parts) {
-    if (part.kind === "lcd") {
-      for (const pin of [part.pins.vdd, part.pins.a]) {
-        if (pin) displayPowerPins.add(pin);
-      }
-      for (const pin of [part.pins.vss, part.pins.k]) {
-        if (pin) displayPowerPins.add(pin);
-      }
-    }
-    if (part.kind === "oled") {
-      if (part.pins.vcc) displayPowerPins.add(part.pins.vcc);
-      if (part.pins.gnd) displayPowerPins.add(part.pins.gnd);
-    }
-  }
-
-  wires = wires.filter((w) => {
-    const directDisplayPsuLink =
-      (w.a === psuPositive || w.a === psuNegative ||
-        w.b === psuPositive || w.b === psuNegative) &&
-      (displayPowerPins.has(w.a) || displayPowerPins.has(w.b));
-    return !directDisplayPsuLink;
-  });
-
-  const hasLink = (a: HoleId, b: HoleId) =>
-    wires.some(
-      (w) => (w.a === a && w.b === b) || (w.a === b && w.b === a),
-    );
-  const link = (a: HoleId | undefined, b: HoleId | undefined, color: WireColor) => {
-    if (!a || !b || a === b || hasLink(a, b)) return;
-    wires.push({ id: uid("wire"), a, b, color });
+): { wires: Wire[]; psuPositive: HoleId; psuNegative: HoleId } {
+  const defaults = defaultPowerRails();
+  return {
+    wires: [...state.wires],
+    psuPositive: state.psuPositive ?? defaults.pos,
+    psuNegative: state.psuNegative ?? defaults.neg,
   };
-
-  if (BOARD.hasRails) {
-    // Bridge adjacent rail segments so a single bus is continuous when the
-    // physical board has a break (e.g. standard-830 has two 25-hole segments).
-    // For continuous rails (mb-102, segment === railHoles) this is a no-op.
-    const seg = Math.max(1, BOARD.railSegment);
-    const midCol = Math.min(BOARD.railHoles, seg + 1);
-
-    if (BOARD.presetId === "full-1660") {
-      // Positive rails (red): otp, itp, ibp, obp
-      for (const prefix of ["otp", "itp", "ibp", "obp"] as const) {
-        if (midCol > 1 && midCol <= BOARD.railHoles) {
-          link(`${prefix}1` as HoleId, `${prefix}${midCol}` as HoleId, "red");
-        }
-      }
-      // Negative rails (black): otn, itn, ibn, obn
-      for (const prefix of ["otn", "itn", "ibn", "obn"] as const) {
-        if (midCol > 1 && midCol <= BOARD.railHoles) {
-          link(`${prefix}1` as HoleId, `${prefix}${midCol}` as HoleId, "black");
-        }
-      }
-      // Optionally tie outer top ↔ outer bottom positives/negatives for a
-      // single bench bus (user can still cut the wire if they want isolation).
-      link("otp1", "obp1", "red");
-      link("otn1", "obn1", "black");
-    } else {
-      for (const prefix of ["tp", "bp"] as const) {
-        if (midCol > 1 && midCol <= BOARD.railHoles) {
-          link(`${prefix}1` as HoleId, `${prefix}${midCol}` as HoleId, "red");
-        }
-      }
-      for (const prefix of ["tn", "bn"] as const) {
-        if (midCol > 1 && midCol <= BOARD.railHoles) {
-          link(`${prefix}1` as HoleId, `${prefix}${midCol}` as HoleId, "black");
-        }
-      }
-      // Top ↔ bottom buses share the same net by default
-      link("tn1", "bn1", "black");
-      link("tp1", "bp1", "red");
-    }
-  }
-
-  for (const part of state.parts) {
-    if (part.kind === "mcu") {
-      link(part.pins.vcc, psuPositive, "red");
-      link(part.pins.gnd, psuNegative, "black");
-    }
-    if (part.kind === "lcd") {
-      // IMPORTANT: LCD power is supplied by the Arduino, not by the bench
-      // PSU directly. The Arduino VCC/5V pin is already connected to the PSU
-      // input above, so the LCD receives power through the MCU power rail.
-      // This models the real wiring and prevents the LCD from being treated
-      // as an independent PSU load/short.
-      const mcu = state.parts.find((p) => p.kind === "mcu");
-      link(mcu?.pins.vcc, part.pins.vdd, "red");
-      link(mcu?.pins.gnd, part.pins.vss, "black");
-      link(mcu?.pins.gnd, part.pins.rw, "black");
-      link(mcu?.pins.vcc, part.pins.a, "orange");
-      link(mcu?.pins.gnd, part.pins.k, "black");
-    }
-    if (part.kind === "oled") {
-      // OLED power also comes from the Arduino, specifically its regulated
-      // 3.3 V output. Never connect the OLED directly to the bench PSU.
-      const mcu = state.parts.find((p) => p.kind === "mcu");
-      link(mcu?.pins["3v3"], part.pins.vcc, "red");
-      link(mcu?.pins.gnd, part.pins.gnd, "black");
-    }
-  }
-
-  return { wires, psuPositive, psuNegative };
 }
 
 export const useLab = create<LabState>((set, get) => ({
@@ -1076,6 +951,9 @@ export const useLab = create<LabState>((set, get) => ({
   tool: "select",
 
   wireColor: "red",
+  wireStyle: "solid",
+  showWireFlow: false,
+  focusConnections: false,
 
   resistorValue: 1000,
   transistorModel: "2n3904",
@@ -1095,10 +973,12 @@ export const useLab = create<LabState>((set, get) => ({
   pendingHoles: [],
 
   hoverHole: null,
+  placementError: null,
 
   selectedId: null,
 
   probeHole: null,
+  guideTarget: null,
 
   pinEditTarget: null,
 
@@ -1156,13 +1036,14 @@ export const useLab = create<LabState>((set, get) => ({
     BOARD_PRESETS.find((p) => p.id === id)?.label ??
     "new breadboard";
 
-  const confirmed = window.confirm(
+  // Empty boards can change size immediately. Only warn when the user would
+  // lose placed components, wires or custom PSU connections.
+  const containsWork = state.parts.length > 0 || state.wires.length > 0 || Boolean(state.psuPositive || state.psuNegative);
+  if (containsWork && !window.confirm(
     `Change breadboard?\n\n` +
-      `Changing from ${currentBoard} to ${newBoard} will clear the entire breadboard, including all components and wires.\n\n` +
-      `Do you want to continue?`,
-  );
-
-  if (!confirmed) return;
+    `Switching from ${currentBoard} to ${newBoard} will clear all placed parts, wires, and power connections.\n\n` +
+    `Export a backup first if you need this layout. Continue?`,
+  )) return;
 
   setBoardPreset(id);
 
@@ -1178,8 +1059,10 @@ export const useLab = create<LabState>((set, get) => ({
     psuNegative: null,
 
     // CLEAR PLACEMENT / SELECTION
+    guideTarget: null,
     pendingHole: null,
     pendingHoles: [],
+    placementError: null,
     selectedId: null,
     probeHole: null,
     hoverHole: null,
@@ -1201,6 +1084,8 @@ export const useLab = create<LabState>((set, get) => ({
   });
 },
 
+  setGuideTarget: (guideTarget) => set({ guideTarget }),
+
   setPaletteDragging: (active) => set({ paletteDragging: active }),
 
   setPartDragEnabled: (enabled) =>
@@ -1218,20 +1103,19 @@ export const useLab = create<LabState>((set, get) => ({
     const placement = getPlacement(tool);
     if (!placement) return;
 
-    // Dedupe: drag-drop + hole-click (or double pointerup) often fire together.
-    // Block any second place of the same tool within 500ms, even on a nearby hole.
-    // Skip dedupe when the user is placing pin-by-pin with explicit holes.
+    // Dedupe duplicate pointer events on the *same* location only. A user
+    // deliberately dropping two identical parts in different holes must work
+    // even when the second drag happens quickly.
+    // Skip dedupe when placing pin-by-pin with explicit holes.
     if (!explicitPins) {
       const now = Date.now();
       const key = `${tool}:${anchor}`;
       if (
-        now - _lastPlace.at < 500 &&
-        (_lastPlace.key === key || _lastPlace.tool === tool)
+        now - _lastPlace.at < 350 &&
+        _lastPlace.key === key
       ) {
         return;
       }
-      _lastPlace = { key, at: now, tool };
-      _suppressHolePlaceUntil = now + 500;
     }
 
     let pins: Record<string, HoleId>;
@@ -1257,13 +1141,19 @@ export const useLab = create<LabState>((set, get) => ({
         a,
         b,
         color: state.wireColor,
+        style: state.wireStyle,
       };
       const wires = [...state.wires, wire];
+      if (planWireRoutes(wires, (id) => terminalPosition(id, state.parts), state.parts).slice(-1)[0]?.blocked) {
+        set({ placementError: "Wire would intersect a component. Try another pair of breadboard holes." });
+        return;
+      }
       const next = { ...state, wires };
       set({
         wires,
         pendingHole: null,
         pendingHoles: [],
+        placementError: null,
         sim: runSimulation(next),
         history: [...state.history, snapshot(state)],
         future: [],
@@ -1333,6 +1223,7 @@ export const useLab = create<LabState>((set, get) => ({
         switchStyle:
           placement.kind === "button" ? state.switchStyle : undefined,
         mcuModel: placement.kind === "mcu" ? "arduino-uno" : undefined,
+        headerAnchor: placement.kind === "mcu" ? anchor : undefined,
         code: placement.kind === "mcu" ? DEFAULT_MCU_CODE : undefined,
         lcdCols: placement.kind === "lcd" ? 16 : undefined,
         lcdRows: placement.kind === "lcd" ? 2 : undefined,
@@ -1379,34 +1270,17 @@ export const useLab = create<LabState>((set, get) => ({
       },
     };
 
+    if (part.kind === 'mcu') {
+      part.pins = Object.fromEntries(UNO_HEADER_NAMES.map(name => [name, mcuTerminalId(part.id,name)]));
+    }
+
+    if (placementIsBlocked(part, state.parts)) {
+      set({ placementError: "Position occupied. Move the part to an empty, cyan-outlined footprint." });
+      return;
+    }
+
     let parts = [...state.parts, part];
     let wires = state.wires;
-
-    // Auto-connect MCU ↔ LCD / OLED when both are on the board.
-    if (
-      placement.kind === "mcu" ||
-      placement.kind === "lcd" ||
-      placement.kind === "oled"
-    ) {
-      const mcu =
-        placement.kind === "mcu"
-          ? part
-          : parts.find((p) => p.kind === "mcu");
-      const lcd =
-        placement.kind === "lcd"
-          ? part
-          : parts.find((p) => p.kind === "lcd");
-      const oled =
-        placement.kind === "oled"
-          ? part
-          : parts.find((p) => p.kind === "oled");
-      if (mcu && lcd) {
-        wires = autoWireMcuLcd(mcu, lcd, wires);
-      }
-      if (mcu && oled) {
-        wires = autoWireMcuOled(mcu, oled, wires);
-      }
-    }
 
     const powered = ensurePowerWiring({
       parts,
@@ -1415,7 +1289,16 @@ export const useLab = create<LabState>((set, get) => ({
       psuNegative: state.psuNegative,
     });
     wires = powered.wires;
+    if (introducesWireObstruction(state.wires, state.parts, wires, parts)) {
+      set({ placementError: "Placement blocks existing wiring. Choose a clearer location." });
+      return;
+    }
 
+    if (!explicitPins) {
+      const now = Date.now();
+      _lastPlace = { key: `${tool}:${anchor}`, at: now, tool };
+      _suppressHolePlaceUntil = now + 500;
+    }
     const next = {
       ...state,
       parts,
@@ -1432,6 +1315,7 @@ export const useLab = create<LabState>((set, get) => ({
       pendingHoles: [],
       hoverHole: null,
       selectedId: part.id,
+      placementError: null,
       sim: runSimulation(next),
       history: [...state.history, snapshot(state)],
       future: [],
@@ -1439,15 +1323,19 @@ export const useLab = create<LabState>((set, get) => ({
     });
   },
 
+  dismissPlacementError: () => set({ placementError: null }),
+
   setTool: (tool) =>
     set((state) => ({
       tool,
+      placementError: null,
       pendingHole: null,
       pendingHoles: [],
       pinEditTarget: null,
       movingSelected: false,
-      // Idle tool clears selection so nothing stays highlighted
-      ...(tool === "none" ? { selectedId: null as string | null } : {}),
+      // Don't accidentally restyle a previously selected wire when configuring
+      // a new wire, or leave a stale inspector on top of placement controls.
+      ...(tool !== "select" ? { selectedId: null as string | null } : {}),
     })),
 
   setWireColor: (wireColor) =>
@@ -1483,6 +1371,79 @@ export const useLab = create<LabState>((set, get) => ({
         future: [],
       };
     }),
+
+  setWireStyle: (wireStyle) =>
+    set((state) => {
+      const selected = state.wires.some((wire) => wire.id === state.selectedId);
+      if (!selected) return { wireStyle };
+      const wires = state.wires.map((wire) =>
+        wire.id === state.selectedId ? { ...wire, style: wireStyle } : wire,
+      );
+      return {
+        wireStyle,
+        wires,
+        // Electrical connectivity is unchanged by appearance settings.
+        history: [...state.history, snapshot(state)],
+        future: [],
+      };
+    }),
+
+  setShowWireFlow: (showWireFlow) => set({ showWireFlow }),
+  setFocusConnections: (focusConnections) => set({ focusConnections }),
+
+  autoTidyWires: () => set((state) => {
+    if (!state.wires.length) return state;
+    const wires = autoTidyWireBundle(state.wires, state.parts, (id) => terminalPosition(id, state.parts));
+    const unchanged = state.wires.every((wire, i) =>
+      JSON.stringify(wire) === JSON.stringify(wires[i]));
+    if (unchanged) return state;
+    return {
+      wires,
+      // This is a layout-only operation; no electrical simulation recompute.
+      history: [...state.history, snapshot(state)],
+      future: [],
+      placementError: null,
+    };
+  }),
+
+  setSelectedWireRouteLocked: (locked) => set((state) => {
+    const wire = state.wires.find(w => w.id === state.selectedId);
+    if (!wire || Boolean(wire.routeLocked) === locked) return state;
+    const visual = locked && !wire.bends
+      ? planWireRoutes(state.wires, (id) => terminalPosition(id, state.parts), state.parts).find(r => r.id === wire.id)
+      : null;
+    const wires = state.wires.map(w => w.id === state.selectedId ? {
+      ...w,
+      routeLocked: locked,
+      ...(visual && !visual.blocked ? {
+        bends: visual.waypoints.slice(1, -1).map(p => ({ x: p.x, z: p.z })),
+        bendAnchors: { a: w.a, b: w.b },
+      } : {}),
+    } : w);
+    return { wires, history: [...state.history, snapshot(state)], future: [] };
+  }),
+
+  nudgeSelectedWireLane: (axis, delta) => set((state) => {
+    const wire = state.wires.find(w => w.id === state.selectedId);
+    if (!wire || !Number.isFinite(delta) || !delta) return state;
+    const route = planWireRoutes(state.wires, (id) => terminalPosition(id, state.parts), state.parts).find(r => r.id === wire.id);
+    if (!route || route.blocked || route.waypoints.length < 2) return state;
+    const from = route.waypoints[0], to = route.waypoints[route.waypoints.length - 1];
+    const current = route.waypoints[Math.floor(route.waypoints.length / 2)];
+    const lane = (axis === 'z' ? current.z : current.x) + delta;
+    const bends = axis === 'z'
+      ? [{ x: from.x, z: lane }, { x: to.x, z: lane }]
+      : [{ x: lane, z: from.z }, { x: lane, z: to.z }];
+    const changed = { ...wire, bends, bendAnchors: { a: wire.a, b: wire.b }, routeLocked: true };
+    const wires = state.wires.map(w => w.id === wire.id ? changed : w);
+    const planned = planWireRoutes(wires, (id) => terminalPosition(id, state.parts), state.parts).find(r => r.id === wire.id);
+    // A blocked lane must be rejected rather than silently replaced with the
+    // old route (which would make an "Edit wire" button appear broken).
+    const valid = planned && !planned.blocked && bends.every(p =>
+      planned.waypoints.some(q => Math.abs(p.x - q.x) < 0.001 && Math.abs(p.z - q.z) < 0.001));
+    if (!valid) return { placementError: 'That wire lane crosses a component. Try another direction.' };
+    return { wires, history: [...state.history, snapshot(state)], future: [], placementError: null };
+  }),
 
   setResistorValue: (resistorValue) =>
     set({
@@ -1686,12 +1647,13 @@ export const useLab = create<LabState>((set, get) => ({
       // Delete tool: clicking a part or wire removes it immediately.
       if (state.tool === "delete" && selectedId) {
         const parts = state.parts.filter((p) => p.id !== selectedId);
-        const wires = state.wires.filter((w) => w.id !== selectedId);
+        const wires = state.wires.filter((w) => w.id !== selectedId && !w.a.startsWith(`mcu:${selectedId}:`) && !w.b.startsWith(`mcu:${selectedId}:`));
         const next = {
           ...state,
           parts,
           wires,
           selectedId: null,
+        guideTarget: null,
           pendingHole: null,
           pendingHoles: [] as HoleId[],
         };
@@ -2146,7 +2108,7 @@ setSelectedCapacitance: (capacitance) =>
           props: { ...p.props },
         })),
 
-        wires: preset.wires.map((w) => ({ ...w })),
+        wires: preset.wires.map((w) => ({ ...w, bends: w.bends?.map(p => ({ ...p })), bendAnchors: w.bendAnchors ? { ...w.bendAnchors } : undefined })),
 
         psuPositive: preset.psuPositive,
 
@@ -2159,6 +2121,8 @@ setSelectedCapacitance: (capacitance) =>
         pendingHoles: [],
 
         selectedId: null,
+        guideTarget: null,
+        placementError: null,
 
         probeHole: null,
       };
@@ -2182,23 +2146,32 @@ setSelectedCapacitance: (capacitance) =>
       if (circuit.boardId && circuit.boardId !== state.boardId) {
         setBoardPreset(circuit.boardId);
       }
+      const normalized = upgradeMcuHeaders(circuit.parts, circuit.wires);
+      const changedEndpoints = normalized.wires.some((w,i) => w.a !== circuit.wires[i]?.a || w.b !== circuit.wires[i]?.b);
+      // Migrated header paths need a new initial tidy geometry. This also
+      // preserves the existing undo baseline for older premade projects.
+      const normalizedWires = changedEndpoints
+        ? autoTidyWireBundle(normalized.wires, normalized.parts, (id)=>terminalPosition(id,normalized.parts))
+        : normalized.wires;
       const next = {
         ...state,
         boardId: circuit.boardId ?? state.boardId,
         psuVoltage: circuit.psuVoltage ?? state.psuVoltage,
         psuPositive: circuit.psuPositive,
         psuNegative: circuit.psuNegative,
-        parts: circuit.parts.map((p) => ({
+        parts: normalized.parts.map((p) => ({
           ...p,
           pins: { ...p.pins },
           props: { ...p.props },
         })),
-        wires: circuit.wires.map((w) => ({ ...w })),
+        wires: normalizedWires.map((w) => ({ ...w, bends: w.bends?.map(p => ({ ...p })), bendAnchors: w.bendAnchors ? { ...w.bendAnchors } : undefined })),
         powerOn: false,
         pendingHole: null,
         pendingHoles: [] as HoleId[],
         selectedId: null,
+        guideTarget: null,
         probeHole: null,
+        placementError: null,
         history: [] as LabSnapshot[],
         future: [] as LabSnapshot[],
         labId: "project",
@@ -2221,7 +2194,7 @@ setSelectedCapacitance: (capacitance) =>
         pins: { ...p.pins },
         props: { ...p.props },
       })),
-      wires: s.wires.map((w) => ({ ...w })),
+      wires: s.wires.map((w) => ({ ...w, bends: w.bends?.map(p => ({ ...p })), bendAnchors: w.bendAnchors ? { ...w.bendAnchors } : undefined })),
     };
   },
 
@@ -2265,14 +2238,18 @@ setSelectedCapacitance: (capacitance) =>
 
   deleteSelected: () =>
     set((state) => {
-      if (!state.selectedId) return state;
+      if (!state.selectedId ||
+          (!state.parts.some((part) => part.id === state.selectedId) &&
+           !state.wires.some((wire) => wire.id === state.selectedId))) return state;
 
       const parts = state.parts.filter(
         (part) => part.id !== state.selectedId
       );
 
       const wires = state.wires.filter(
-        (wire) => wire.id !== state.selectedId
+        (wire) => wire.id !== state.selectedId &&
+          !wire.a.startsWith(`mcu:${state.selectedId}:`) &&
+          !wire.b.startsWith(`mcu:${state.selectedId}:`)
       );
 
       const next = {
@@ -2286,6 +2263,10 @@ setSelectedCapacitance: (capacitance) =>
         parts,
         wires,
         selectedId: null,
+        movingSelected: false,
+        pinEditTarget: null,
+        pendingHoles: [],
+        pendingHole: null,
 
         sim: runSimulation(next),
 
@@ -2304,12 +2285,27 @@ setSelectedCapacitance: (capacitance) =>
       const part = state.parts.find((p) => p.id === state.selectedId);
       if (!part) return state;
       // DIP-8 packages must keep straddling the centre channel.
-      if (part.kind === "timer555" || part.kind === "opamp") return state;
+      if (part.kind === "timer555" || part.kind === "opamp" || part.kind === "seven-segment") return state;
 
       const newPins = rotatePins90Clockwise(part.pins);
       if (!newPins) return state;
 
       const nextRotation = ((Number(part.props.rotation) || 0) + 90) % 360;
+
+      const rotatedPart = {
+        ...part,
+        pins: newPins,
+        props: {
+          ...part.props,
+          rotation: nextRotation,
+        },
+      };
+      if (placementIsBlocked(rotatedPart, state.parts, part.id)) {
+        return { placementError: "Cannot rotate: the component would collide with another part." };
+      }
+      if (introducesWireObstruction(state.wires, state.parts, state.wires, state.parts.map((p) => p.id === part.id ? rotatedPart : p))) {
+        return { placementError: "Cannot rotate: there is no collision-free wire route." };
+      }
 
       const parts = state.parts.map((p) =>
         p.id === part.id
@@ -2327,6 +2323,7 @@ setSelectedCapacitance: (capacitance) =>
       const next = { ...state, parts };
       return {
         parts,
+        placementError: null,
         sim: runSimulation(next),
         history: [...state.history, snapshot(state)],
         future: [],
@@ -2346,17 +2343,29 @@ setSelectedCapacitance: (capacitance) =>
     const part = state.parts.find((p) => p.id === state.selectedId);
     if (!part) return;
 
-    const newPins = reanchorPartPins(part, anchor);
+    const newPins = part.kind === 'mcu' ? part.pins : reanchorPartPins(part, anchor);
     if (!newPins) return;
+    // Dropping at the original location is a no-op: do not create an undo step
+    // or unnecessarily re-run simulation.
+    if (Object.entries(part.pins).every(([name, hole]) => newPins[name] === hole) && (part.kind !== "mcu" || part.props.headerAnchor === anchor)) {
+      set({ movingSelected: false });
+      return;
+    }
 
     // Keep props (including rotation) so orientation survives the move.
+    const movedPart = { ...part, pins: newPins, props: { ...part.props, ...(part.kind === 'mcu' ? {headerAnchor: anchor} : {}) } };
+    if (placementIsBlocked(movedPart, state.parts, part.id)) {
+      set({ placementError: "Cannot drop: the component would occupy another solid object." });
+      return;
+    }
+    if (introducesWireObstruction(state.wires, state.parts, state.wires, state.parts.map((p) => p.id === part.id ? movedPart : p))) {
+      set({ placementError: "Cannot drop: attached wires cannot safely route around nearby parts." });
+      return;
+    }
+
     const parts = state.parts.map((p) =>
       p.id === part.id
-        ? {
-            ...p,
-            pins: newPins,
-            props: { ...p.props },
-          }
+        ? movedPart
         : p,
     );
     const next = { ...state, parts };
@@ -2365,6 +2374,7 @@ setSelectedCapacitance: (capacitance) =>
       movingSelected: false,
       pinEditTarget: null,
       selectedId: part.id,
+      placementError: null,
       sim: runSimulation(next),
       history: [...state.history, snapshot(state)],
       future: [],
@@ -2372,29 +2382,40 @@ setSelectedCapacitance: (capacitance) =>
   },
 
   startPinEdit: (partId, pinName) =>
-    set({
+    set((state) => state.parts.some(p => p.id === partId && p.kind === 'mcu') ? {} : ({
       pinEditTarget: { partId, pinName },
       movingSelected: false,
       selectedId: partId,
       tool: "select",
-    }),
+    })),
 
   cancelPinEdit: () => set({ pinEditTarget: null }),
 
   setPartPin: (partId, pinName, hole) => {
     const state = get();
     const part = state.parts.find((p) => p.id === partId);
-    if (!part || !(pinName in part.pins)) return;
+    if (!part || part.kind === "mcu" || !(pinName in part.pins)) return;
+
+    const updatedPart = { ...part, pins: { ...part.pins, [pinName]: hole } };
+    if (placementIsBlocked(updatedPart, state.parts, partId)) {
+      set({ placementError: "Pin location occupied by a solid component." });
+      return;
+    }
+    if (introducesWireObstruction(state.wires, state.parts, state.wires, state.parts.map((p) => p.id === partId ? updatedPart : p))) {
+      set({ placementError: "Moving that pin would obstruct a wire route." });
+      return;
+    }
 
     const parts = state.parts.map((p) =>
       p.id === partId
-        ? { ...p, pins: { ...p.pins, [pinName]: hole } }
+        ? updatedPart
         : p,
     );
     const next = { ...state, parts };
     set({
       parts,
       pinEditTarget: null,
+      placementError: null,
       sim: runSimulation(next),
       history: [...state.history, snapshot(state)],
       future: [],
@@ -2596,13 +2617,23 @@ setSelectedCapacitance: (capacitance) =>
       }
 
       const [a, b] = holes;
-      const wire: Wire = { id: uid("wire"), a, b, color: state.wireColor };
+      if (a === b || holeStrip(a) === holeStrip(b) ||
+          state.wires.some((wire) => (wire.a === a && wire.b === b) || (wire.a === b && wire.b === a))) {
+        set({ pendingHole: null, pendingHoles: [] });
+        return;
+      }
+      const wire: Wire = { id: uid("wire"), a, b, color: state.wireColor, style: state.wireStyle };
       const wires = [...state.wires, wire];
+      if (planWireRoutes(wires, (id) => terminalPosition(id, state.parts), state.parts).slice(-1)[0]?.blocked) {
+        set({ placementError: "Wire cannot be routed without intersecting a solid part.", pendingHoles: [], pendingHole: null });
+        return;
+      }
       const next = { ...state, wires };
       set({
         wires,
         pendingHole: null,
         pendingHoles: [],
+        placementError: null,
         sim: runSimulation(next),
         history: [...state.history, snapshot(state)],
         future: [],

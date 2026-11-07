@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
-import { useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { EntranceAnimation } from "./components/EntranceAnimation";
 import { Sidebar } from "./components/Sidebar";
 import { Dashboard } from "./pages/Dashboard";
 import { ComponentLibrary } from "./pages/ComponentLibrary";
@@ -24,6 +25,12 @@ import PythonTutorialPage from "./pages/PythonTutorialPage";
 
 
 export default function App() {
+  const [showIntro, setShowIntro] = useState(() => {
+    try {
+      // Show on first entry of a browser tab, but not on every navigation.
+      return sessionStorage.getItem("electrolab-intro-v2") !== "shown";
+    } catch { return true; }
+  });
   const location = useLocation();
   const darkMode = useProjects((s) => s.darkMode);
   const isFullScreen =
@@ -39,14 +46,27 @@ export default function App() {
     root.classList.toggle("light", !darkMode);
     root.dataset.theme = darkMode ? "dark" : "light";
     root.style.colorScheme = darkMode ? "dark" : "light";
+    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", darkMode ? "#050f22" : "#edf5fc");
   }, [darkMode]);
 
+  useEffect(() => {
+    const replay = () => setShowIntro(true);
+    window.addEventListener("electrolab:replay-intro", replay);
+    return () => window.removeEventListener("electrolab:replay-intro", replay);
+  }, []);
+
+  const finishIntro = useCallback(() => {
+    try { sessionStorage.setItem("electrolab-intro-v2", "shown"); } catch { /* private-mode storage */ }
+    setShowIntro(false);
+  }, []);
+
   return (
+    <>
     <div
       className={`electrolab-app h-screen flex overflow-hidden ${
         isFullScreen
-          ? "bg-[#0a0f1a] text-slate-200"
-          : "theme-surface bg-[var(--app-bg)] text-[var(--app-text)]"
+          ? "electrolab-workspace bg-[#030b1b] text-slate-200"
+          : "themed-workspace theme-surface bg-[var(--app-bg)] text-[var(--app-text)]"
       }`}
     >
       {!isFullScreen && <Sidebar />}
@@ -77,5 +97,7 @@ export default function App() {
         </Routes>
       </div>
     </div>
+    {showIntro && <EntranceAnimation onComplete={finishIntro} />}
+    </>
   );
 }

@@ -1,5 +1,6 @@
 import { useEffect, useState, type ComponentType } from "react";
 import { useLab } from "@/store/lab";
+import { nextToggleableTool } from "@/circuit/editor-toolbar-state";
 import { LabOverlay } from "./overlay";
 
 declare global {
@@ -96,8 +97,8 @@ function MobileUnavailableNotice() {
   );
 }
 
-export function CircuitLab() {
-  const [Canvas, setCanvas] = useState<ComponentType | null>(null);
+export function CircuitLab({ performanceMode = true }: { performanceMode?: boolean }) {
+  const [Canvas, setCanvas] = useState<ComponentType<{ performanceMode: boolean }> | null>(null);
   const [mobile, setMobile] = useState(false);
 
   useEffect(() => {
@@ -121,17 +122,42 @@ export function CircuitLab() {
   useEffect(() => {
     if (mobile) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Delete" || e.key === "Backspace") {
-        const tag = (e.target as HTMLElement | null)?.tagName;
-        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-        useLab.getState().deleteSelected();
+      if (!e.defaultPrevented && (e.key === "Delete" || e.key === "Backspace")) {
+        const target = e.target as HTMLElement | null;
+        const tag = target?.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" ||
+            target?.isContentEditable || e.ctrlKey || e.metaKey || e.altKey) return;
+        if (useLab.getState().selectedId) {
+          e.preventDefault();
+          useLab.getState().deleteSelected();
+        }
       }
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
+      // Never override Undo/Redo inside inspector inputs or the Arduino code editor.
+      const target = e.target as HTMLElement | null;
+      const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(target?.tagName || '') ||
+        target?.isContentEditable;
+      if (!typing && (e.metaKey || e.ctrlKey) && (e.key.toLowerCase() === 'z' || e.key.toLowerCase() === 'y')) {
         e.preventDefault();
-        if (e.shiftKey) useLab.getState().redo();
+        if (e.shiftKey || e.key.toLowerCase() === 'y') useLab.getState().redo();
         else useLab.getState().undo();
       }
-      if (e.key === "Escape") useLab.getState().resetPending();
+      // Familiar circuit-editor shortcuts; leave all text fields untouched.
+      if (!typing && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (e.key.toLowerCase() === 'r' && useLab.getState().selectedId) {
+          e.preventDefault();
+          useLab.getState().rotateSelected();
+        } else if (e.key.toLowerCase() === 'w') {
+          e.preventDefault();
+          useLab.getState().setTool(nextToggleableTool(useLab.getState().tool, 'wire'));
+        } else if (e.key.toLowerCase() === 'v') {
+          e.preventDefault();
+          useLab.getState().setTool(nextToggleableTool(useLab.getState().tool, 'select'));
+        }
+      }
+      if (e.key === "Escape" && !typing) {
+        useLab.getState().resetPending();
+        if (useLab.getState().tool !== 'none') useLab.getState().setTool('none');
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -144,13 +170,13 @@ export function CircuitLab() {
       ) : (
         <>
           {Canvas ? (
-            <Canvas />
+            <Canvas performanceMode={performanceMode} />
           ) : (
             <div className="flex h-full items-center justify-center text-sm text-paper/70">
               Opening the bench…
             </div>
           )}
-          <LabOverlay showPalette={false} />
+          <LabOverlay showPalette={false} embedded />
         </>
       )}
     </div>

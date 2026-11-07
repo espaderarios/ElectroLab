@@ -1,4 +1,6 @@
 import { getAllHoles, holeStrip } from "./breadboard";
+import { LOGIC_IC_PINOUTS } from "./logic-ics";
+import { SEVEN_SEGMENT_LED_NAMES, commonPin } from "./seven-segment";
 import type {
   HoleId,
   PlacedPart,
@@ -479,7 +481,9 @@ export function simulate(input: {
 
   const indexOf = new Map<HoleId, number>();
 
-  getAllHoles().forEach((hole, index) => {
+  // Include off-board Arduino header sockets as independent electrical nodes.
+  const electricalHoles = [...new Set([...getAllHoles(), ...input.parts.filter(p => p.kind === 'mcu').flatMap(p => Object.values(p.pins))])];
+  electricalHoles.forEach((hole, index) => {
     indexOf.set(hole, index);
   });
 
@@ -502,7 +506,7 @@ export function simulate(input: {
   // hole id → strip id; it is not itself an iterable of strips.
 
   const strips = new Map<string, HoleId[]>();
-  for (const hole of getAllHoles()) {
+  for (const hole of electricalHoles) {
     const stripId = holeStrip(hole);
     let group = strips.get(stripId);
     if (!group) {
@@ -516,6 +520,20 @@ export function simulate(input: {
     for (let i = 1; i < group.length; i++) {
       union(group[0], group[i]);
     }
+  }
+
+  // Two GND sockets and IOREF share the Uno's internal ground / logic reference.
+  for (const part of input.parts) {
+    if (part.kind === 'mcu') {
+      union(part.pins.gnd,part.pins.gnd2);
+      union(part.pins.vcc,part.pins.ioref);
+    }
+  }
+
+  // 5161-style ten-pin LED packages contain TWO internally connected COM
+  // legs; old projects have only the legacy `com` contact.
+  for (const part of input.parts) {
+    if (part.kind === "seven-segment") union(part.pins.com1, part.pins.com2);
   }
 
   // ============================================================
@@ -631,7 +649,7 @@ export function simulate(input: {
 
   const nodes = new Set<number>();
 
-  for (const hole of getAllHoles()) {
+  for (const hole of electricalHoles) {
     const index = indexOf.get(hole);
 
     if (index === undefined) continue;
@@ -648,7 +666,7 @@ export function simulate(input: {
   const voltages: Record<string, number> = {};
 
   // Start everything at 0 V.
-  for (const hole of getAllHoles()) {
+  for (const hole of electricalHoles) {
     voltages[hole] = 0;
   }
 
@@ -1096,9 +1114,9 @@ export function simulate(input: {
     // 7-SEGMENT — each segment as LED to common
     // ----------------------------------------------------------
     if (part.kind === "seven-segment") {
-      const com = pinNode(part.pins.com);
+      const com = pinNode(commonPin(part.pins));
       const commonAnode = part.props.sevenSegCommon === "anode";
-      for (const seg of ["a", "b", "c", "d", "e", "f", "g", "dp"] as const) {
+      for (const seg of SEVEN_SEGMENT_LED_NAMES) {
         const p = pinNode(part.pins[seg]);
         if (p === undefined || com === undefined) continue;
         elements.push({
@@ -1240,82 +1258,66 @@ export function simulate(input: {
   }
 
   // ============================================================
-  // LOGIC IC OUTPUTS (ideal educational gate driver)
+  // COMBINATIONAL LOGIC ICs — real DIP pinouts + cascading evaluation
   // ============================================================
-  // Resolve input levels from the first pass, then add a low-resistance
-  // driver from the gate output to the appropriate supply rail.
+  // A single solve is insufficient: the output of XOR1 may be the input
+  // to XOR2/AND2, which feeds an OR gate (e.g. full-adder carry). Iterate
+  // until the driver truth values settle; never accumulate obsolete drivers.
   const logicGates: SimResult["logicGates"] = {};
-  const gateKinds = new Set(["not", "and", "or", "nand", "nor", "xor", "xnor"]);
-  if (positiveNode !== null && negativeNode !== null && input.powerOn) {
-    for (const part of input.parts) {
-      if (!gateKinds.has(part.kind)) continue;
-      const vccPin = part.pins.p14 ?? part.pins.vcc;
-      const gndPin = part.pins.p7 ?? part.pins.gnd;
-      const ivcc = vccPin ? indexOf.get(vccPin) : undefined;
-      const ignd = gndPin ? indexOf.get(gndPin) : undefined;
-      if (ivcc === undefined || ignd === undefined) continue;
+  const gateKinds = new Set(Object.keys(LOGIC_IC_PINOUTS));
+  if (positiveNode !== null && negativeNode !== null && !hardShort) {
+    const baseCount = elements.length;
+    let previousTruth = "";
+    for (let pass = 0; pass < 12; pass++) {
+      const drivers: typeof elements = [];
+      const truth: string[] = [];
+      for (const part of input.parts) {
+        if (!gateKinds.has(part.kind)) continue;
+        const pinout = LOGIC_IC_PINOUTS[part.kind as keyof typeof LOGIC_IC_PINOUTS];
+        const vccNode = pinNode(part.pins.p14 ?? part.pins.vcc);
+        const gndNode = pinNode(part.pins.p7 ?? part.pins.gnd);
+        const powered = vccNode !== undefined && gndNode !== undefined &&
+          (solved[vccNode] ?? 0) - (solved[gndNode] ?? 0) >= 2;
+        if (!powered) {
+          logicGates[part.id] = { output: 0, powered: false };
+          truth.push(`${part.id}:off`);
+          continue;
+        }
 
-      const powered =
-        (solved[uf.find(ivcc)] ?? 0) -
-        (solved[uf.find(ignd)] ?? 0) >= 2;
-      if (!powered) {
-        logicGates[part.id] = { output: 0, powered: false };
-        continue;
+        let firstOutput: 0 | 1 = 0;
+        pinout.gates.forEach((gate, channelIndex) => {
+          const inputNodes = gate.inputs.map((pin) => pinNode(part.pins[`p${pin}`]));
+          const outputNode = pinNode(part.pins[`p${gate.output}`]);
+          if (outputNode === undefined || inputNodes.some((n) => n === undefined)) return;
+          const inputs = inputNodes.map((node) =>
+            (solved[node!] ?? 0) - (solved[gndNode!] ?? 0) >= 2.5,
+          );
+          const value =
+            part.kind === "not" ? !inputs[0] :
+            part.kind === "and" ? inputs.every(Boolean) :
+            part.kind === "or" ? inputs.some(Boolean) :
+            part.kind === "nand" ? !inputs.every(Boolean) :
+            part.kind === "nor" ? !inputs.some(Boolean) :
+            part.kind === "xor" ? inputs[0] !== inputs[1] :
+            inputs[0] === inputs[1];
+          if (channelIndex === 0) firstOutput = value ? 1 : 0;
+          truth.push(`${part.id}:${gate.output}:${Number(value)}`);
+          drivers.push({
+            a: outputNode,
+            b: value ? vccNode! : gndNode!,
+            resistance: 10,
+            id: `${part.id}:logic-driver-${gate.output}`,
+          });
+        });
+        logicGates[part.id] = { output: firstOutput, powered: true };
       }
 
-      // DIP-14 pinouts. Quad gates use four 2-input gates; the 7404-style
-      // inverter uses six 1-input gates. Every physical output is driven.
-      const gates =
-        part.kind === "not"
-          ? [
-              { inputs: [1], output: 2 },
-              { inputs: [3], output: 4 },
-              { inputs: [5], output: 6 },
-              { inputs: [9], output: 8 },
-              { inputs: [11], output: 10 },
-              { inputs: [13], output: 12 },
-            ]
-          : [
-              { inputs: [1, 2], output: 3 },
-              { inputs: [4, 5], output: 6 },
-              { inputs: [9, 10], output: 8 },
-              { inputs: [12, 13], output: 11 },
-            ];
-
-      let firstOutput = 0 as 0 | 1;
-      gates.forEach((gate, gateIndex) => {
-        const inputPins = gate.inputs
-          .map((pin) => part.pins[`p${pin}`])
-          .filter((pin): pin is string => Boolean(pin));
-        const outputPin = part.pins[`p${gate.output}`];
-        if (!outputPin || inputPins.length !== gate.inputs.length) return;
-
-        const inputLevels = inputPins.map((pin) => {
-          const index = indexOf.get(pin);
-          return index !== undefined && (solved[uf.find(index)] ?? 0) >= 2.5;
-        });
-        const output =
-          part.kind === "not" ? !inputLevels[0] :
-          part.kind === "and" ? inputLevels.every(Boolean) :
-          part.kind === "or" ? inputLevels.some(Boolean) :
-          part.kind === "nand" ? !inputLevels.every(Boolean) :
-          part.kind === "nor" ? !inputLevels.some(Boolean) :
-          part.kind === "xor" ? inputLevels[0] !== inputLevels[1] :
-          inputLevels[0] === inputLevels[1];
-
-        if (gateIndex === 0) firstOutput = output ? 1 : 0;
-        const outputIndex = indexOf.get(outputPin);
-        if (outputIndex === undefined) return;
-        elements.push({
-          a: uf.find(outputIndex),
-          b: output ? positiveNode : negativeNode,
-          resistance: 10,
-          id: `${part.id}:logic-driver-${gate.output}`,
-        });
-      });
-      logicGates[part.id] = { output: firstOutput, powered: true };
-    }
-    if (Object.keys(logicGates).some((id) => logicGates[id]?.powered)) {
+      const signature = truth.join("|");
+      // `solved` already represents these drivers if the signature has
+      // not changed; no need to solve one more expensive nodal matrix.
+      if (signature === previousTruth) break;
+      elements.splice(baseCount, elements.length - baseCount, ...drivers);
+      if (!drivers.length) break;
       try {
         solved = solve({
           nodes: nodeList,
@@ -1325,8 +1327,9 @@ export function simulate(input: {
           voltage: input.psuVoltage,
         });
       } catch {
-        // Preserve the first-pass solution if a gate is wired into an invalid network.
+        break;
       }
+      previousTruth = signature;
     }
   }
 
@@ -1465,7 +1468,7 @@ export function simulate(input: {
 
     if (needsResolve && positiveNode !== null && negativeNode !== null) {
       const nodes2 = new Set<number>();
-      for (const hole of getAllHoles()) {
+      for (const hole of electricalHoles) {
         const index = indexOf.get(hole);
         if (index === undefined) continue;
         nodes2.add(uf.find(index));
@@ -1662,7 +1665,7 @@ export function simulate(input: {
     }
 
     const rootNodes = new Set<number>();
-    for (const hole of getAllHoles()) {
+    for (const hole of electricalHoles) {
       const index = indexOf.get(hole);
       if (index !== undefined) rootNodes.add(uf.find(index));
     }
@@ -1827,7 +1830,7 @@ export function simulate(input: {
   // COPY NODE VOLTAGES BACK TO HOLES
   // ============================================================
 
-  for (const hole of getAllHoles()) {
+  for (const hole of electricalHoles) {
     const index = indexOf.get(hole);
 
     if (index === undefined) continue;
@@ -1847,7 +1850,7 @@ export function simulate(input: {
     positiveNode !== null &&
     negativeNode !== null
   ) {
-    for (const hole of getAllHoles()) {
+    for (const hole of electricalHoles) {
       const index = indexOf.get(hole);
       if (index === undefined) continue;
       const node = uf.find(index);
@@ -1895,7 +1898,7 @@ export function simulate(input: {
       positiveNode !== null && railNode === positiveNode;
 
     if (input.powerOn && !hardShort && !regulatorShorted && !regulatorTiedTo5V && inputVoltage >= 4.0) {
-      for (const hole of getAllHoles()) {
+      for (const hole of electricalHoles) {
         const index = indexOf.get(hole);
         if (index !== undefined && uf.find(index) === railNode) {
           voltages[hole] = OLED_NOMINAL_V;
@@ -2764,6 +2767,13 @@ export function simulate(input: {
       if (soft.trim()) lcdSoftFromMcu = soft;
     }
 
+    // SSD1306 text is produced only by an active sketch. Previously these
+    // accumulators were never updated, leaving OLED output permanently blank.
+    if (powered && runtime.state.oledActive) {
+      oledActiveFromMcu = true;
+      oledTextFromMcu = (runtime.state.oledLines ?? []).join("\n").trimEnd();
+    }
+
     // Keep the exact state returned by this execution.
     mcus[mcu.id] = {
       id: mcu.id,
@@ -2833,7 +2843,7 @@ export function simulate(input: {
       }
       const driven = gnd + span * level;
 
-      for (const h of getAllHoles()) {
+      for (const h of electricalHoles) {
         const hi = indexOf.get(h);
         if (hi !== undefined && uf.find(hi) === node) {
           voltages[h] = driven;
@@ -2867,6 +2877,13 @@ export function simulate(input: {
 
 // PROCESS EVERY LCD
   // ============================================================
+  // Displays need real wires: simply adding a display next to a powered MCU
+  // must not make it appear powered.
+  const sameElectricalNet = (a?: HoleId, b?: HoleId): boolean => {
+    if (!a || !b) return false;
+    const x = indexOf.get(a), y = indexOf.get(b);
+    return x !== undefined && y !== undefined && uf.find(x) === uf.find(y);
+  };
 
   for (const lcd of input.parts) {
     if (lcd.kind !== "lcd") continue;
@@ -2874,7 +2891,10 @@ export function simulate(input: {
     // LCD power comes from the Arduino 5 V output. The display's visual
     // power wires are intentionally not merged into the bench PSU net.
     const lcdMcu = input.parts.find((part) => part.kind === "mcu");
-    const lcdVoltage = lcdMcu
+    const lcdHasPowerWires = Boolean(lcdMcu &&
+      sameElectricalNet(lcdMcu.pins.vcc, lcd.pins.vdd) &&
+      sameElectricalNet(lcdMcu.pins.gnd, lcd.pins.vss));
+    const lcdVoltage = lcdMcu && lcdHasPowerWires
       ? voltageAt(lcdMcu, "vcc") - voltageAt(lcdMcu, "gnd")
       : 0;
     const powered =
@@ -3091,7 +3111,12 @@ export function simulate(input: {
     const mcuSupply = oledMcu
       ? voltageAt(oledMcu, "vcc") - voltageAt(oledMcu, "gnd")
       : 0;
-    const v = input.powerOn && !hardShort && mcuSupply >= 4.0
+    const oledWired = Boolean(oledMcu &&
+      sameElectricalNet(oledMcu.pins["3v3"], oled.pins.vcc) &&
+      sameElectricalNet(oledMcu.pins.gnd, oled.pins.gnd) &&
+      sameElectricalNet(oledMcu.pins.a4, oled.pins.sda) &&
+      sameElectricalNet(oledMcu.pins.a5, oled.pins.scl));
+    const v = input.powerOn && !hardShort && mcuSupply >= 4.0 && oledWired
       ? OLED_NOMINAL_V
       : 0;
     oledVoltage = v;
@@ -3356,7 +3381,7 @@ export function simulate(input: {
     nodeCurrentByUf.set(el.b, (nodeCurrentByUf.get(el.b) ?? 0) + i);
   }
   const nodeCurrents: Record<string, number> = {};
-  for (const hole of getAllHoles()) {
+  for (const hole of electricalHoles) {
     const index = indexOf.get(hole);
     if (index === undefined) continue;
     const node = uf.find(index);
@@ -3381,9 +3406,7 @@ export function simulate(input: {
 
   const volt = (hole?: string | null) => {
     if (!hole) return 0;
-    const idx = indexOf.get(hole);
-    if (idx === undefined) return 0;
-    return solved[uf.find(idx)] ?? 0;
+    return voltages[hole] ?? 0;
   };
 
   // Nets that reach some other part / the PSU (used for servo SIG).
@@ -3472,15 +3495,19 @@ export function simulate(input: {
     }
 
     if (part.kind === "seven-segment") {
-      const com = volt(part.pins.com);
+      const com = volt(commonPin(part.pins));
       const commonAnode = part.props.sevenSegCommon === "anode";
-      const segs: boolean[] = [];
-      for (const name of ["a", "b", "c", "d", "e", "f", "g"]) {
+      // Order: a,b,c,d,e,f,g,dp. Decimal point is the eighth LED.
+      const segments: boolean[] = SEVEN_SEGMENT_LED_NAMES.map((name) => {
         const vs = volt(part.pins[name]);
-        segs.push((commonAnode ? com - vs : vs - com) >= 1.85);
-      }
-      const pattern = segs.map((on) => (on ? "1" : "0")).join("");
-      sevenSegments[part.id] = { id: part.id, segments: segs, digit: SEVEN_SEG_DIGITS[pattern] };
+        return (commonAnode ? com - vs : vs - com) >= 1.85;
+      });
+      const pattern = segments.slice(0, 7).map((on) => (on ? "1" : "0")).join("");
+      sevenSegments[part.id] = {
+        id: part.id,
+        segments,
+        digit: SEVEN_SEG_DIGITS[pattern],
+      };
     }
 
     if (part.kind === "timer555") {

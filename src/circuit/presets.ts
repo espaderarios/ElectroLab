@@ -1,5 +1,6 @@
 import { uid } from "@/lib/utils";
 import type { PlacedPart, Wire, WireColor } from "./types";
+import { circuitArduinoLcd } from "./display-examples";
 
 export interface LabPreset {
   id: string;
@@ -17,138 +18,46 @@ function W(a: string, b: string, color: WireColor): Wire {
 }
 
 export function helloWorldPreset(): LabPreset {
-  const mcuId = uid("mcu");
-  const lcdId = uid("lcd");
-  const ledId = uid("led");
-  const r1 = uid("r");
-  const r2 = uid("r");
-  const c1 = uid("c");
-  const sw = uid("sw");
-
-  const parts: PlacedPart[] = [
-    {
-      id: mcuId,
-      kind: "mcu",
-      pins: {
-        p1: "E10",
-        p2: "E11",
-        p3: "E12",
-        p4: "E13",
-        p5: "E14",
-        p6: "E15",
-        p7: "E16",
-        p8: "E17",
-        p9: "F17",
-        p10: "F16",
-        p11: "F15",
-        p12: "F14",
-        p13: "F13",
-        p14: "F12",
-        p15: "F11",
-        vcc: "F10",
-        gnd: "E17",
-      },
-      props: { label: "MCU" },
-    },
-    {
-      id: lcdId,
-      kind: "lcd",
-      pins: {
-        vss: "J18",
-        vdd: "J19",
-        v0: "J20",
-        rs: "J21",
-        e: "J22",
-        d4: "J23",
-      },
-      props: { label: "LCD 16x2" },
-    },
-    {
-      id: r1,
-      kind: "resistor",
-      pins: { a: "A3", b: "A8" },
-      props: { resistance: 220 },
-    },
-    {
-      id: r2,
-      kind: "resistor",
-      pins: { a: "I19", b: "I22" },
-      props: { resistance: 10000 },
-    },
-    {
-      id: ledId,
-      kind: "led",
-      pins: { a: "E8", k: "F8" },
-      props: { ledColor: "red" },
-    },
-    {
-      id: c1,
-      kind: "capacitor",
-      pins: { a: "A12", b: "A14" },
-      props: {},
-    },
-    {
-      id: sw,
-      kind: "switch",
-      pins: { a: "D24", b: "D26" },
-      props: { closed: true },
-    },
-  ];
-
-  const wires: Wire[] = [
-    W("tp2", "tp16", "red"),
-    W("tn2", "tn16", "black"),
-    W("bp2", "bp16", "red"),
-    W("bn2", "bn16", "black"),
-    W("tn4", "bn4", "black"),
-    W("tp6", "bp6", "red"),
-    W("tp5", "A3", "red"),
-    W("F8", "bn8", "black"),
-    W("F10", "H10", "red"),
-    W("H10", "bp10", "red"),
-    W("E17", "G17", "black"),
-    W("G17", "bn17", "black"),
-    W("J18", "bn18", "black"),
-    W("J19", "bp19", "red"),
-    W("F14", "I21", "blue"),
-    W("I21", "J21", "blue"),
-    W("F13", "I22", "blue"),
-    W("bp20", "I19", "orange"),
-    W("tn20", "J20", "black"),
-  ];
-
+  // Keep the older learning-lab entry aligned with the clean editable 3D
+  // template. This avoids showing the obsolete 7-wire LCD placeholder.
+  const circuit = circuitArduinoLcd();
   return {
-    id: "hello-world",
-    title: "Hello, World!",
-    blurb: "A powered MCU driving a 16??2 LCD on a solderless breadboard.",
+    id: 'hello-world',
+    title: 'Hello, World! — Arduino + LCD',
+    blurb: 'Actual 4-bit HD44780 jumper wiring, 10k contrast and a series backlight resistor.',
     steps: [
-      "The red probe is on the + rail, black on the ??? rail.",
-      "Power the bench supply ??? the LCD backlight should come up.",
-      "If VCC and GND reach the MCU, it writes Hello, World! to the display.",
-      "Try probing holes with the meter to see rail voltages.",
+      'All connections are real editable wires, not baked into component models.',
+      'Turn on the 5 V bench supply. The Arduino will drive LCD RS/E/D4–D7.',
+      'Open Wiring guide to highlight each connection; it does not add wires.',
+      'Try unplugging one wire to see which signal or power connection is missing.',
     ],
-    psuPositive: "tp1",
-    psuNegative: "tn1",
-    parts,
-    wires,
+    psuPositive: circuit.psuPositive ?? 'tp5',
+    psuNegative: circuit.psuNegative ?? 'tn5',
+    parts: circuit.parts,
+    wires: circuit.wires,
   };
 }
 
 export function firstLightPreset(): LabPreset {
+  const resistorId = uid("r");
+  const ledId = uid("led");
   return {
     id: "first-light",
     title: "First Light",
-    blurb: "Build a series LED circuit with a current-limiting resistor.",
+    blurb: "A complete, powered LED and series current-limiting resistor circuit.",
     steps: [
-      "Place a 220 ?? resistor from the + rail into a column.",
-      "Place a red LED from that column to the ??? rail (anode toward the resistor).",
-      "Turn the supply on. The LED should glow around 12???15 mA.",
-      "If it is dark, flip the LED ??? diodes only conduct one way.",
+      "The 330 Ω resistor and red LED are already wired in series.",
+      "Turn on the 5 V supply. The LED should draw approximately 9 mA.",
+      "Try reversing the LED leads — diodes conduct in only one direction.",
+      "Probe the resistor and LED terminals to observe the voltage drops.",
     ],
     psuPositive: "tp1",
     psuNegative: "tn1",
-    parts: [],
-    wires: [W("tp2", "tp16", "red"), W("tn2", "tn16", "black")],
+    parts: [
+      { id: resistorId, kind: "resistor", pins: { a: "E5", b: "E9" }, props: { resistance: 330, label: "330 Ω" } },
+      { id: ledId, kind: "led", pins: { a: "E9", k: "E10" }, props: { ledColor: "red", label: "LED" } },
+    ],
+    wires: [W("tp5", "A5", "red"), W("A10", "tn10", "black")],
   };
 }
 
@@ -163,7 +72,7 @@ export function dividerPreset(): LabPreset {
       "Power on the supply.",
       "Select the probe tool and tap the midpoint hole (A10).",
       "You should read about 2.5 V versus ground.",
-      "Swap one resistor for 10 k?? and watch the ratio change.",
+      "Swap one resistor for 10 kΩ and watch the ratio change.",
     ],
     psuPositive: "tp1",
     psuNegative: "tn1",
@@ -172,8 +81,6 @@ export function dividerPreset(): LabPreset {
       { id: r2, kind: "resistor", pins: { a: "A10", b: "A15" }, props: { resistance: 1000 } },
     ],
     wires: [
-      W("tp2", "tp16", "red"),
-      W("tn2", "tn16", "black"),
       W("tp5", "A5", "red"),
       W("A15", "tn15", "black"),
     ],
