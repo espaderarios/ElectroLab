@@ -11,6 +11,7 @@ export type BoardPresetId =
   | "mini-170"
   | "half-400"
   | "standard-830"
+  | "extended-1400"
   | "full-1660"
   | "mb-102";
 
@@ -53,6 +54,15 @@ export const BOARD_PRESETS: BoardPreset[] = [
     description: "63 columns · 830 tie-points",
     cols: 63,
     railHoles: 50,
+    hasRails: true,
+    railSegment: 25,
+  },
+  {
+    id: "extended-1400",
+    label: "Extended 1400",
+    description: "100 columns · 1400 contact points · four segmented power rails",
+    cols: 100,
+    railHoles: 100,
     hasRails: true,
     railSegment: 25,
   },

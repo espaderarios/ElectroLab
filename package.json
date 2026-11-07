@@ -26,7 +26,8 @@
     "test:toolbar-hover": "node tests/toolbar-pin-hover.cjs",
     "test:wire-sidebar": "node tests/wire-sidebar.cjs",
     "test:hover-labels": "node tests/hover-only-labels.cjs",
-    "test:workbench-theme": "node tests/gray-workbench-theme.cjs"
+    "test:workbench-theme": "node tests/gray-workbench-theme.cjs",
+    "test:extended-adder": "node tests/extended-full-adder.cjs"
   },
   "dependencies": {
     "react": "^18.3.1",

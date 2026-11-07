@@ -322,9 +322,9 @@ const SEED_PROJECTS: ProjectRecord[] = [
   ),
   makeSeed(
     "full-adder",
-    "Full Adder · 74HC86 + 74HC08 + 74HC32",
+    "Full Adder · Visual Demo + 7-Segment",
     "Draft",
-    "Three switch inputs, cascaded XOR sum, two AND gates and OR carry; 14-pin DIP ICs.",
+    "Extended 1400-contact board, three input switches, XOR/AND/OR decoder and 7-segment display showing the correct result 0–3.",
     circuitFullAdder(),
     0,
   ),
@@ -669,9 +669,9 @@ export const useProjects = create<ProjectsState>()(
     }),
     {
       name: "electrolab-projects-v4",
-      // v8 adds visual bend routes to saved factory examples without
-      // modifying a single pin, electrical wire endpoint, or custom project.
-      version: 8,
+      // v10 moves the seven-segment Full Adder onto an extended 1400-contact board.
+      // The previous Full Adder is backed up first, so user edits survive.
+      version: 10,
       migrate: (persistedState, fromVersion) => {
         const previous = (persistedState ?? {}) as Partial<ProjectsState>;
         const savedProjects = Array.isArray(previous.projects) ? previous.projects : [];
@@ -687,7 +687,32 @@ export const useProjects = create<ProjectsState>()(
           'arduino-lcd-demo', 'arduino-oled-demo', 'arduino-seven-segment-demo',
           'half-adder', 'full-adder',
         ]);
-        const upgraded = savedProjects.map(project => {
+        // Persisted project records take priority over factory SEED_PROJECTS.
+        // Updating the source alone will NOT replace an older stored Full Adder.
+        // Upgrade it once, making a fully editable backup of its previous circuit.
+        const needsFullAdderUpgrade = fromVersion < 10;
+        const fullAdderBackupProjects: ProjectRecord[] = [];
+        const upgradedVisualProjects = savedProjects.map(project => {
+          if (!needsFullAdderUpgrade || project.id !== "full-adder" ||
+              !project.circuit || !Array.isArray(project.circuit.parts) ||
+              project.circuit.boardId === "extended-1400") return project;
+          const backup: ProjectRecord = {
+            ...project,
+            id: uid("proj"),
+            name: `Backup — ${project.name} (before extended-board update)`,
+            description: "Saved copy of the Full Adder before moving it to the larger demonstration breadboard.",
+            circuit: cloneCircuit(project.circuit),
+          };
+          fullAdderBackupProjects.push(backup);
+          const factory = freshPremadeCircuit("full-adder");
+          return factory ? {
+            ...project,
+            circuit: factory,
+            description: "Full Adder on an extended 1400-point board; 7-segment shows the correct decimal total 0–3. Previous circuit saved as a backup project.",
+            updatedAt: Date.now(),
+          } : project;
+        });
+        const upgraded = upgradedVisualProjects.map(project => {
           const circuit = project.circuit;
           if (fromVersion >= 8 || !exampleIds.has(project.id) || !circuit ||
               circuit.boardId !== 'standard-830' || !Array.isArray(circuit.wires) ||
@@ -702,7 +727,7 @@ export const useProjects = create<ProjectsState>()(
             },
           };
         });
-        return { ...previous, projects: [...newSeeds, ...upgraded] } as ProjectsState;
+        return { ...previous, projects: [...newSeeds, ...upgraded, ...fullAdderBackupProjects] } as ProjectsState;
       },
       partialize: (s) => ({
         projects: s.projects,

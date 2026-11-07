@@ -1684,7 +1684,9 @@ export function CircuitEditorPage() {
     ? !parts.some((p) => p.kind === 'mcu') || !parts.some((p) => p.kind === 'lcd')
     : projectId === 'arduino-oled-demo'
       ? !parts.some((p) => p.kind === 'mcu') || !parts.some((p) => p.kind === 'oled')
-      : false
+      : projectId === 'full-adder'
+        ? !parts.some((p) => p.kind === 'seven-segment')
+        : false
 
   const exportCurrentProject = () => {
     const id = projectId || activeIdRef.current
@@ -1879,7 +1881,7 @@ export function CircuitEditorPage() {
         <div className="editor-main-stack flex-1 min-w-0 min-h-0 flex flex-col">
         <main className="editor-board-stage flex-1 relative min-w-0 min-h-0 bg-[#282f39]">
           {isDisplayDemoMissingParts && <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 max-w-[94%] rounded-xl bg-[#13243b] border border-amber-400/40 shadow-xl px-4 py-3 flex flex-wrap items-center justify-center gap-3 text-sm text-slate-100">
-            <span>This saved demo is missing its Arduino or display.</span>
+            <span>{projectId === 'full-adder' ? 'This saved Full Adder does not include the new 7-segment display.' : 'This saved demo is missing its Arduino or display.'}</span>
             <button type="button" className="rounded-lg bg-cyan-500/20 border border-cyan-300/40 text-cyan-100 px-3 py-1.5 hover:bg-cyan-500/30" onClick={restorePremade}>Restore original circuit</button>
           </div>}
           {use3D ? (

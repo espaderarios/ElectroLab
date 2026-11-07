@@ -21,8 +21,8 @@ const templates = [
   },
   {
     id: "full-adder",
-    name: "Full Adder · 3 inputs",
-    desc: "74HC86, 74HC08 and 74HC32 with real DIP-14 pin wiring and cascaded outputs.",
+    name: "Full Adder · 3 inputs + 7-segment",
+    desc: "Spacious 1400-point virtual breadboard with 74HC logic gates and a 7-segment decimal result display (0–3).",
   },
   {
     id: "led-blink",

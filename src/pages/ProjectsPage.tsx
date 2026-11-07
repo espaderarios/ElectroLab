@@ -15,7 +15,7 @@ const STATUS_STYLE: Record<ProjectStatus, string> = {
 
 const QUICK_START_PRESETS = [
   { id: "half-adder", name: "Half Adder", subtitle: "2 inputs · XOR + AND", icon: CircuitBoard },
-  { id: "full-adder", name: "Full Adder", subtitle: "3 inputs · XOR + AND + OR", icon: Cpu },
+  { id: "full-adder", name: "Full Adder", subtitle: "1400-point board · 7-segment result", icon: Cpu },
   { id: "arduino-lcd-demo", name: "Arduino + LCD", subtitle: "16×2 HD44780 · 4-bit wiring + contrast", icon: CircuitBoard },
   { id: "arduino-oled-demo", name: "Arduino + OLED", subtitle: "128×64 SSD1306 · SDA/SCL + 3.3 V", icon: Cpu },
 ];

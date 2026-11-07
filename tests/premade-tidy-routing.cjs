@@ -44,6 +44,7 @@ const pairs=[
 ];
 for(const [name,factory] of pairs){
   const circuit=factory();
+  setBoardPreset(circuit.boardId);
   assert(circuit.wires.every(w=>Array.isArray(w.bends) && w.bendAnchors?.a===w.a && w.bendAnchors?.b===w.b),`${name}: saved bends`);
   const auto=planWireRoutes(circuit.wires,holePosition,circuit.parts);
   assert.equal(auto.length,circuit.wires.length,`${name}: number of connections unchanged`);
@@ -66,6 +67,7 @@ for(const [name,factory] of pairs){
   assert(peak<1.15,`${name}: tall overlapping wires (${peak})`);
   console.log(`${name}: ${circuit.wires.length} wires, nearby path contacts ${oldNear} → ${newNear}, max height ${peak.toFixed(2)}: PASS`);
 }
+setBoardPreset('standard-830');
 const sample=circuitArduinoOled();
 const first=sample.wires[0];
 const original=JSON.stringify(sample);

@@ -74,12 +74,19 @@ assert.equal(LOGIC_IC_PINOUTS.xnor.gates[1].output,4);
 
 function check(full) {
   const circuit = full ? circuitFullAdder() : circuitHalfAdder();
+  setBoardPreset(circuit.boardId);
   assertPhysicalWiring(circuit);
+  if(full) {
+    assert.equal(circuit.boardId, 'extended-1400');
+    assert.equal(circuit.parts.filter(p=>p.kind==='seven-segment').length, 1);
+  }
   const switches = circuit.parts.filter((p) => p.kind === 'switch');
   assert.equal(switches.length, full ? 3 : 2);
   assert.equal(circuit.parts.filter((p) => p.kind === 'xor').length, 1);
   assert.equal(circuit.parts.filter((p) => p.kind === 'and').length, 1);
   assert.equal(circuit.parts.filter((p) => p.kind === 'or').length, full ? 1 : 0);
+  assert.equal(circuit.parts.filter((p) => p.kind === 'not').length, full ? 1 : 0);
+  assert.equal(circuit.parts.filter((p) => p.kind === 'seven-segment').length, full ? 1 : 0);
   for (let mask = 0; mask < 2 ** switches.length; mask++) {
     const states = switches.map((_, i) => Boolean(mask & (1 << i)));
     const parts = circuit.parts.map((p) => p.kind === 'switch' ? {
@@ -90,18 +97,30 @@ function check(full) {
     const [a,b,cin=false] = states;
     const sum = Number(a !== b !== cin);
     const carry = Number(Number(a) + Number(b) + Number(cin) >= 2);
-    const sumPin = parts.find((p) => p.props.label === 'SUM · 680Ω').pins.a;
-    const carryPin = parts.find((p) => p.props.label === 'CARRY · 680Ω').pins.a;
+    const sumPin = full
+      ? parts.find((p) => p.kind === 'xor' && /U1/.test(p.props.label)).pins.p6
+      : parts.find((p) => p.props.label === 'SUM · 680Ω').pins.a;
+    const carryPin = full
+      ? parts.find((p) => p.kind === 'or' && /U3/.test(p.props.label)).pins.p3
+      : parts.find((p) => p.props.label === 'CARRY · 680Ω').pins.a;
     const sumV = result.voltages[sumPin];
     const carryV = result.voltages[carryPin];
     assert.equal(sumV >= 2.5 ? 1 : 0, sum, `SUM wrong for ${states}: ${sumV}`);
     assert.equal(carryV >= 2.5 ? 1 : 0, carry, `CARRY wrong for ${states}: ${carryV}`);
-    const sumLed = parts.find((p) => p.kind === 'led' && p.props.label === 'SUM');
-    const carryLed = parts.find((p) => p.kind === 'led' && p.props.label === 'CARRY');
-    assert.equal(Number(result.leds[sumLed.id].on), sum, `SUM LED wrong for ${states}`);
-    assert.equal(Number(result.leds[carryLed.id].on), carry, `CARRY LED wrong for ${states}`);
-    console.log(`${full ? 'FULL' : 'HALF'} ${states.map(Number).join('')} → S=${Number(sumV>=2.5)} C=${Number(carryV>=2.5)} (V=${sumV.toFixed(2)},${carryV.toFixed(2)})`);
+    if (full) {
+      const display = parts.find((p) => p.kind === 'seven-segment');
+      assert.ok(display, 'Missing full-adder 7-segment display');
+      const shown = result.sevenSegments[display.id]?.digit;
+      assert.equal(shown, sum + 2 * carry, `7-segment wrong for ${states}: ${shown}`);
+    } else {
+      const sumLed = parts.find((p) => p.kind === 'led' && p.props.label === 'SUM');
+      const carryLed = parts.find((p) => p.kind === 'led' && p.props.label === 'CARRY');
+      assert.equal(Number(result.leds[sumLed.id].on), sum, `SUM LED wrong for ${states}`);
+      assert.equal(Number(result.leds[carryLed.id].on), carry, `CARRY LED wrong for ${states}`);
+    }
+    console.log(`${full ? 'FULL' : 'HALF'} ${states.map(Number).join('')} → S=${Number(sumV>=2.5)} C=${Number(carryV>=2.5)}${full ? ` D=${result.sevenSegments[parts.find((p) => p.kind === 'seven-segment').id]?.digit}` : ''} (V=${sumV.toFixed(2)},${carryV.toFixed(2)})`);
   }
+  setBoardPreset('standard-830');
 }
 check(false);
 check(true);
@@ -112,6 +131,7 @@ console.log('Circuit truth tables and physical wiring: PASS');
 const {useProjects} = require('../src/store/projects.ts');
 for (const project of useProjects.getState().projects) {
   const circuit = project.circuit;
+  setBoardPreset(circuit.boardId);
   assertPhysicalWiring(circuit, false);
   const redundant = circuit.wires.filter((w) => holeStrip(w.a) === holeStrip(w.b)).map((w) => `${w.a}→${w.b}`);
   if (redundant.length) console.log('  redundant jumper(s):', redundant.join(', '));
@@ -119,6 +139,7 @@ for (const project of useProjects.getState().projects) {
   console.log(`SEEDED ${project.id}: parts=${circuit.parts.length} wires=${circuit.wires.length} current=${result.supplyCurrent.toFixed(5)} short=${result.shortCircuit} leds=${Object.values(result.leds).filter((led) => led.on).length}`);
   assert.equal(result.shortCircuit, false, `Unexpected short in ${project.id}`);
 }
+setBoardPreset('standard-830');
 for (const name of ['led-blink', 'dc-motor']) {
   const circuit = useProjects.getState().projects.find((p) => p.id === name).circuit;
   const pressed = circuit.parts.map((p) => p.kind === 'button' ? ({...p, props:{...p.props, closed:true}}) : p);
