@@ -7,9 +7,10 @@ import type { PlacedPart } from '@/circuit/types';
 import { SimulationConsole } from './simulation-console';
 import { GRAPHICS_QUALITY, type GraphicsQuality } from './graphics-quality';
 
-type Tab = 'monitor' | 'guide' | 'truth' | 'code';
+export type WorkbenchPanelTab = 'monitor' | 'guide' | 'truth' | 'code';
+type Tab = WorkbenchPanelTab;
 
-type Props = {
+export type WorkbenchControlsProps = {
   projectId?: string;
   focusMode?: boolean;
   onExitFocusMode?: () => void;
@@ -24,6 +25,7 @@ type Props = {
   graphicsQuality?: GraphicsQuality;
   onGraphicsQualityChange?: (quality: GraphicsQuality) => void;
 };
+type Props = WorkbenchControlsProps;
 
 const isAdder = (projectId?: string) => projectId === 'half-adder' || projectId === 'full-adder';
 const logicRows = (full: boolean) => Array.from({length: full ? 8 : 4}, (_, n) => {
@@ -98,12 +100,20 @@ export function WorkbenchDock(props: Props) {
   </section>;
 }
 
-function WorkbenchDockContent({projectId, openArduinoCodeRequest, openMonitorRequest, is3D, partDragEnabled, setPartDragEnabled, onStartWiring, performanceMode, setPerformanceMode, graphicsQuality = "low", onGraphicsQualityChange}: Props) {
-  const [tab, setTab] = useState<Tab>(() => (openArduinoCodeRequest ?? 0) > 0 || Boolean(projectId?.startsWith('arduino-')) ? 'code' : 'monitor');
+/** The independent Utilities rail reuses monitor, guide, truth table and Arduino code.
+ * Properties remains a separate panel. Both panels share the same circuit store. */
+export function WorkbenchSidebarContent(props: Props & {tab: Tab; showDetails: boolean; onTabChange: (tab: Tab) => void}) {
+  return <WorkbenchDockContent {...props} sidebar tabOverride={props.tab} showDetails={props.showDetails} onTabChange={props.onTabChange}/>;
+}
+
+function WorkbenchDockContent({projectId, openArduinoCodeRequest, openMonitorRequest, is3D, partDragEnabled, setPartDragEnabled, onStartWiring, performanceMode, setPerformanceMode, graphicsQuality = "low", onGraphicsQualityChange, sidebar = false, tabOverride, showDetails = true, onTabChange}: Props & {sidebar?: boolean; tabOverride?: Tab; showDetails?: boolean; onTabChange?: (tab:Tab)=>void}) {
+  const [localTab, setLocalTab] = useState<Tab>(() => (openArduinoCodeRequest ?? 0) > 0 || Boolean(projectId?.startsWith('arduino-')) ? 'code' : 'monitor');
+  const tab = sidebar ? (tabOverride ?? localTab) : localTab;
+  const setTab = (value: Tab) => { if (sidebar) onTabChange?.(value); else setLocalTab(value); };
   useEffect(() => {
-    if ((openArduinoCodeRequest ?? 0) > 0) setTab('code');
+    if (!sidebar && (openArduinoCodeRequest ?? 0) > 0) setTab('code');
   }, [openArduinoCodeRequest]);
-  useEffect(() => {if ((openMonitorRequest ?? 0) > 0) setTab('monitor');},[openMonitorRequest]);
+  useEffect(() => {if (!sidebar && (openMonitorRequest ?? 0) > 0) setTab('monitor');},[openMonitorRequest,sidebar]);
   const [selectedGuide, setSelectedGuide] = useState(0);
   const parts = useLab(s => s.parts);
   const wires = useLab(s => s.wires);
@@ -129,14 +139,16 @@ function WorkbenchDockContent({projectId, openArduinoCodeRequest, openMonitorReq
   const showWarnings = Boolean(sim.shortCircuit || sim.error || sim.warnings?.length);
 
   return <>
-    <div className={`editor-diagnostics ${tab === 'code' ? 'editor-diagnostics-code' : ''}`}>
-      <div className="editor-diagnostics-toolbar">
-      <div className="editor-diagnostics-tabs" role="tablist" aria-label="Circuit information">
+    <div className={`editor-diagnostics ${tab === 'code' ? 'editor-diagnostics-code' : ''} ${sidebar ? 'editor-sidebar-diagnostics' : ''} ${sidebar && tab === 'code' ? 'editor-code-workspace' : ''}`}>
+      {/* The Arduino Code utility is a focused coding workspace. Voltage, graphics,
+          and drag settings remain available elsewhere in the ribbon/inspector. */}
+      {!(sidebar && tab === 'code') && <div className="editor-diagnostics-toolbar">
+      {!sidebar && <div className="editor-diagnostics-tabs" role="tablist" aria-label="Circuit information">
         <button type="button" role="tab" aria-selected={tab==='monitor'} className={tab === 'monitor' ? 'active' : ''} onClick={() => {setTab('monitor');useLab.getState().setGuideTarget(null);}}><Monitor size={16}/> Monitor</button>
         <button type="button" role="tab" aria-selected={tab==='guide'} className={tab === 'guide' ? 'active' : ''} onClick={() => setTab('guide')}><Cable size={16}/> Wiring Guide</button>
         <button type="button" role="tab" aria-selected={tab==='truth'} className={tab === 'truth' ? 'active' : ''} onClick={() => {setTab('truth');useLab.getState().setGuideTarget(null);}}><Table2 size={16}/> Truth Table</button>
         {mcus.length > 0 && <button type="button" role="tab" aria-selected={tab==='code'} className={tab === 'code' ? 'active' : ''} onClick={() => {setTab('code');useLab.getState().setGuideTarget(null);}} title="Edit and run the Arduino sketch"><Code2 size={16}/> Arduino Code</button>}
-      </div>
+      </div>}
       <div className="editor-bench-power editor-dock-instruments" role="group" aria-label="Workbench voltage and graphics settings">
       <label className="editor-power-voltage" title="Bench power supply voltage"><span>V</span><input type="number" min={0} max={24} step={0.1} aria-label="Power supply voltage" value={voltage} onChange={e => useLab.getState().setVoltage(Number(e.target.value) || 0)}/><span className="editor-power-unit">V</span></label>
       <div className="editor-power-current" title="Current drawn from simulated power supply"><Activity size={16}/><span>I = {formatCurrent(sim.supplyCurrent)}</span></div>
@@ -155,10 +167,10 @@ function WorkbenchDockContent({projectId, openArduinoCodeRequest, openMonitorReq
             <option key={level} value={level}>{GRAPHICS_QUALITY[level].label}</option>)}
         </select>
       </label>
-      <button type="button" className={`editor-bench-drag ${partDragEnabled ? 'active':''}`} aria-pressed={partDragEnabled} disabled={!is3D} onClick={() => setPartDragEnabled(!partDragEnabled)} title="Drag placed parts directly in 3D"><Move size={16}/><span>3D Drag</span><span className="editor-mini-switch" aria-hidden="true"/></button>
+      <button type="button" className={`editor-bench-drag ${partDragEnabled ? 'active':''}`} aria-pressed={partDragEnabled} onClick={() => setPartDragEnabled(!partDragEnabled)} title={`Drag placed parts directly in ${is3D ? '3D' : '2D'}`}><Move size={16}/><span>{is3D ? '3D Drag' : '2D Drag'}</span><span className="editor-mini-switch" aria-hidden="true"/></button>
       </div>
-      </div>
-      <div className="editor-diagnostics-body" role="tabpanel">
+      </div>}
+      {showDetails && <div className="editor-diagnostics-body" role="tabpanel">
         {tab === 'code' && <div className="editor-studio-code-split"><ArduinoCodePanel mcus={mcus} selectedId={selectedId} sim={sim.mcus ?? {}} powerOn={powerOn}/><SimulationConsole fullAdder={fullAdder}/></div>}
 
         {tab === 'monitor' && <div className="editor-monitor-grid">
@@ -188,7 +200,7 @@ function WorkbenchDockContent({projectId, openArduinoCodeRequest, openMonitorReq
           </> : <div className="editor-guide-empty"><Cable size={20}/><div><strong>{adder ? 'Adder wiring reference' : 'Connect components with Wire mode'}</strong><p>{adder ? (fullAdder ? 'For a full adder, cascade two XOR gates to generate SUM, use two AND gates plus one OR gate for CARRY, then decode the (Carry, Sum) result onto the 7-segment display.' : 'For a half adder, connect inputs A and B to the first gates of both the 74HC86 XOR and 74HC08 AND.') : 'Select Wire and click two breadboard holes. Arduino display guides appear here when an Arduino and display are present.'} {adder && `${fullAdder ? 'Power each logic IC at pin 14 (+5 V) and pin 7 (GND). The 7-segment can display 0–9 in general, but a one-bit Full Adder can only generate 0–3. This is a simplified simulation: real LED segments require separate current-limiting resistors.' : 'Power each logic IC at pin 14 (+5 V) and pin 7 (GND). Use current-limiting resistors for both output LEDs.'} ${wires.length} editable wires are in this circuit.`}</p></div><button type="button" onClick={() => {onStartWiring();useLab.getState().setTool('wire');}}>Start wiring</button></div>}
         </div>}
         {tab === 'truth' && (adder ? <div className="editor-truth-wrap"><div><strong>{fullAdder?'Full Adder':'Half Adder'} truth table</strong><p>The active row follows the current switch positions. Values represent expected Boolean outputs.</p></div><table className="editor-truth-table"><thead><tr><th>A</th><th>B</th>{fullAdder && <th>Cin</th>}<th>Sum</th><th>Carry</th>{fullAdder && <th>Digit</th>}</tr></thead><tbody>{logicRows(fullAdder).map((row,i) => <tr key={i} className={row.a===a&&row.b===b&&row.cin===cin?'active':''}><td>{row.a}</td><td>{row.b}</td>{fullAdder&&<td>{row.cin}</td>}<td>{row.sum}</td><td>{row.carry}</td>{fullAdder&&<td>{row.digit}</td>}</tr>)}</tbody></table></div> : <div className="editor-guide-empty"><Lightbulb size={20}/><div><strong>Logic truth tables</strong><p>Open the premade Half Adder or Full Adder circuit to compare its Boolean input combinations. This project is currently a general circuit.</p></div></div>)}
-      </div>
+      </div>}
     </div>
   </>;
 }

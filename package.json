@@ -13,6 +13,7 @@
     "test:editor": "node tests/wire-editor.cjs",
     "test:drag": "node tests/drag-interaction.cjs",
     "test:physical": "node tests/physical-layout.cjs",
+    "test:clearance": "node tests/led-placement-clearance.cjs",
     "test:displays": "node tests/display-wiring.cjs",
     "test:ui": "node tests/editor-ui.cjs",
     "test:seven-segment": "node tests/seven-segment.cjs",

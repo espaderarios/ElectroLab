@@ -17,7 +17,7 @@ for(const filename of ['src/pages/CircuitEditorPage.tsx','src/circuit-lab/workbe
 }
 for(const tab of ['parts','circuits','examples']) assert.match(page,new RegExp(`sidebarTab==='${tab}'`),`missing ${tab} navigation`);
 for(const control of ['Zoom in','Zoom out','Fit board','Fullscreen','Select','Pan','Wire','Delete','Undo','Redo']) assert.ok(page.includes(`label="${control}"`),`missing ${control} button`);
-assert.match(page,/<WorkbenchDock projectId=/);
+assert.match(page,/<WorkbenchUtilities open=\{utilitiesOpen\}/,'Utilities must mount alongside Properties, not in the bottom dock');
 assert.match(lab,/LabOverlay showPalette=\{false\} embedded/,'3D scene overlay should not duplicate dock power controls');
 assert.match(overlay,/!embedded &&/,'overlay power bar should be optional');
 assert.match(dock,/aria-label="Power supply voltage"/);

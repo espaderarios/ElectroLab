@@ -25,7 +25,7 @@ assert.match(page,/setRibbonCollapsed\(v => !v\)/,'ribbon button toggles');
 assert.match(page,/e\.ctrlKey && e\.key === 'F1'/,'Ctrl+F1 shortcut');
 assert.doesNotMatch(tabs,/editor-ribbon-library-toggle/,'Components toggle retired');
 assert.match(panel,/aria-label="Insert component kinds"/,'insert ribbon groups by kind');
-assert.match(page,/\{paletteOpen && use3D && ribbonTab === 'insert' && !ribbonCollapsed/,'floating Insert gallery visibility follows ribbon');
+assert.match(page,/\{paletteOpen && ribbonTab === 'insert' && !ribbonCollapsed/,'floating Insert gallery visibility follows ribbon');
 assert.doesNotMatch(page,/<aside id="editor-library-panel"/,'no permanent component sidebar');
 assert.match(page,/useState\(false\)\n  \/\/ Component Library|setPaletteOpen\(false\)/,'space-saving sidebar collapse supported');
 assert.match(page,/const \[propertiesOpen, setPropertiesOpen\] = useState\(false\)/,'Properties minimized until used');

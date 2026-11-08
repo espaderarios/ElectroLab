@@ -15,7 +15,7 @@ import { expansionById } from "@/circuit/expansion-catalog";
 import { LOGIC_IC_PINOUTS } from "@/circuit/logic-ics";
 import { SEVEN_SEGMENT_PINS } from "@/circuit/seven-segment";
 import { simulate } from "@/circuit/simulate";
-import { placementIsBlocked } from "@/circuit/placement-obstacles";
+import { placementIsBlocked, pinConflict } from "@/circuit/placement-obstacles";
 import { planWireRoutes } from "@/circuit/wire-routing";
 import { mcuTerminalId, terminalPosition, upgradeMcuHeaders, UNO_HEADER_NAMES } from "@/circuit/mcu-headers";
 import { isControllerTool, isOffboardController, controllerPosition, constrainBenchPoint, defaultControllerPosition, moduleTerminalId, upgradeControllerHeaders, type BenchPoint } from '@/circuit/offboard-controllers';
@@ -1307,7 +1307,9 @@ export const useLab = create<LabState>((set, get) => ({
     }
 
     if (placementIsBlocked(part, state.parts)) {
-      set({ placementError: "Position occupied. Move the part to an empty, cyan-outlined footprint." });
+      set({ placementError: pinConflict(part, state.parts)
+        ? "That breadboard hole is occupied by another component lead. Choose an unused hole."
+        : "Position occupied: component bodies would overlap. Move the part farther from the existing package." });
       return;
     }
 
@@ -2394,7 +2396,9 @@ setSelectedCapacitance: (capacitance) =>
     // Keep props (including rotation) so orientation survives the move.
     const movedPart = { ...part, pins: newPins, props: { ...part.props, ...(controller ? { benchPosition: nextBench, headerAnchor: benchPosition ? part.props.headerAnchor : anchor } : {}) } };
     if (placementIsBlocked(movedPart, state.parts, part.id)) {
-      set({ placementError: "Cannot drop: the component would occupy another solid object." });
+      set({ placementError: pinConflict(movedPart, state.parts, part.id)
+        ? "Cannot move: target breadboard hole is occupied by another lead."
+        : "Cannot move: component bodies would overlap at that location." });
       return;
     }
     if (introducesWireObstruction(state.wires, state.parts, state.wires, state.parts.map((p) => p.id === part.id ? movedPart : p))) {

@@ -20,7 +20,7 @@ assert.match(page,/MORE_INSERT_KINDS\.map\(section =>/,'dropdown lists only rema
 assert.match(ribbon,/toggleInsertGallery\('circuits'\)/);
 assert.match(ribbon,/toggleInsertGallery\('examples'\)/);
 assert.match(ribbon,/aria-label="Breadboard size"/,'board size accessible from Insert');
-const gallery=page.slice(page.indexOf('{paletteOpen && use3D && ribbonTab === \'insert\''),page.indexOf('</section>}',page.indexOf('{paletteOpen && use3D && ribbonTab === \'insert\'')));
+const gallery=page.slice(page.indexOf('{paletteOpen && ribbonTab === \'insert\''),page.indexOf('</section>}',page.indexOf('{paletteOpen && ribbonTab === \'insert\'')));
 assert.match(gallery,/role="dialog"/,'floating nonmodal gallery');
 assert.match(gallery,/editor-insert-kind-list/,'all kinds are explicitly listed');
 assert.match(gallery,/PALETTE.map\(section => <button/,'kind choices derive from real component catalog');

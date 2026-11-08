@@ -72,6 +72,57 @@ function pinBounds(part: PlacedPart): BoardRect | null {
 }
 
 /**
+ * The bounding rectangle for a two-pin PART'S BODY, not its entire lead span.
+ *
+ * A breadboard contact belongs to a lead, but the narrow lead between a hole
+ * and the package is NOT a solid plastic box. Earlier pinBounds() padded the
+ * entire span in X and Z, so an LED one row away from a resistor was rejected
+ * even when the packages clearly did not touch (0.20 row pitch versus
+ * ~0.18 combined body radii). Hole sharing is protected separately by
+ * pinConflict(), so we can use the real package envelope here.
+ *
+ * Sizes match the rendered ResistorMesh / LedMesh / DiodeMesh / ZenerMesh.
+ * Small physical clearance is included to avoid visible body intersections.
+ */
+function smallTwoPinBodyRect(part: PlacedPart): BoardRect | null {
+  if (!['resistor', 'led', 'diode', 'zener'].includes(part.kind)) return null;
+  const a = part.pins.a;
+  const b = part.kind === 'resistor' ? part.pins.b : part.pins.k;
+  if (!a || !b || !parseTerminalHole(a) || !parseTerminalHole(b)) return null;
+  const [ax, , az] = holePosition(a);
+  const [bx, , bz] = holePosition(b);
+  const dx = bx - ax;
+  const dz = bz - az;
+  const pinSpan = Math.hypot(dx, dz);
+  if (pinSpan < 1e-6) return null;
+  const cx = (ax + bx) / 2;
+  const cz = (az + bz) / 2;
+  const clearance = 0.007;
+
+  // The LED bulb sits above the midpoint of its two leads. Its flange is
+  // wider than its translucent dome, and defines the physical clearance.
+  if (part.kind === 'led') {
+    const r = 0.124 + clearance;
+    return { id: part.id, kind: part.kind,
+      minX: cx - r, maxX: cx + r, minZ: cz - r, maxZ: cz + r };
+  }
+
+  const bodyLength = part.kind === 'resistor'
+    ? 0.38
+    : part.kind === 'zener'
+      ? 0.32
+      : Math.min(0.38, Math.max(0.22, pinSpan * 0.48));
+  const radius = (part.kind === 'resistor' ? 0.058 : part.kind === 'zener' ? 0.078 : 0.058) + clearance;
+  const halfLength = bodyLength / 2;
+  // Orientation comes from the two physical contacts, so rotated bodies
+  // receive the correct X/Z clearance rather than a fixed horizontal box.
+  const hx = Math.abs(dx / pinSpan) * halfLength + radius;
+  const hz = Math.abs(dz / pinSpan) * halfLength + radius;
+  return { id: part.id, kind: part.kind,
+    minX: cx - hx, maxX: cx + hx, minZ: cz - hz, maxZ: cz + hz };
+}
+
+/**
  * Arduino Uno is a separate PCB alongside the breadboard, not a 23-pin DIP.
  * Its pins now use independent socket IDs (mcu:<id>:<pin>), not breadboard
  * hole strips. The physical obstacle is only the actual 2.72×2.12 PCB.
@@ -108,6 +159,10 @@ function icBodyRect(part: PlacedPart): BoardRect | null {
 
 export function partObstacle(part: PlacedPart): BoardRect | null {
   if (isOffboardController(part)) return mcuBodyRect(part);
+  // Leads may be close together or occupy adjacent rows. Reserve the actual
+  // component shell instead of padding all the air between its terminal pins.
+  const smallBody = smallTwoPinBodyRect(part);
+  if (smallBody) return smallBody;
   if (LARGE_DIP.has(part.kind) || MEDIUM_DIP.has(part.kind) || (part.kind==='module' && expansionById(part.props.moduleId)?.footprint==='dip')) return icBodyRect(part);
   return pinBounds(part);
 }

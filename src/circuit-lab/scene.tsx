@@ -19,7 +19,7 @@ import { isOffboardController, isControllerTool, controllerPosition, constrainBe
 import { expansionById } from '@/circuit/expansion-catalog';
 import { planWireRoutes, wireRoute3DPoints, type RoutedWire } from "@/circuit/wire-routing";
 import { netConnected } from "@/circuit/display-guides";
-import { placementIsBlocked, partObstacle, collectPartObstacles, rectsOverlap } from "@/circuit/placement-obstacles";
+import { placementIsBlocked, pinConflict, partObstacle, collectPartObstacles, rectsOverlap } from "@/circuit/placement-obstacles";
 import {
   BreadboardBody,
   JumperWire,
@@ -567,6 +567,13 @@ function PlacementGhost() {
     return collectPartObstacles(parts, movingSelected ? selectedId ?? undefined : undefined)
       .filter((other) => rectsOverlap(footprint, other));
   }, [footprint, parts, movingSelected, selectedId]);
+  const invalidReason = preview && invalidPlacement
+    ? pinConflict(preview, parts, movingSelected ? selectedId ?? undefined : undefined)
+      ? "HOLE OCCUPIED"
+      : collisions.length > 0
+        ? "BODIES OVERLAP"
+        : "WIRE PATH BLOCKED"
+    : null;
   const markerColor = invalidPlacement ? "#fb7185" : "#22d3ee";
 
   const ghostGroup = useRef<THREE.Group>(null);
@@ -601,7 +608,7 @@ function PlacementGhost() {
               <div style={{padding: "5px 9px", fontSize: 10, fontWeight: 800, borderRadius: 7,
                 color: "#fecdd3", background: "rgba(3,9,25,.94)",
                 border: "1px solid #fb7185", boxShadow: "0 0 20px #fb718544"}}>
-                BLOCKED · MOVE PART
+                {invalidReason}
               </div>
             </Html>
           )}

@@ -1,4 +1,5 @@
 import { type GraphicsQuality, isGraphicsQuality } from '@/circuit-lab/graphics-quality';
+import { PhysicalBreadboard2D, PHYSICAL_2D_DROP_EVENT, PHYSICAL_2D_DRAG_EVENT, PHYSICAL_2D_DRAG_END_EVENT } from '@/circuit-lab/breadboard-2d';
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   ChevronLeft,
@@ -59,8 +60,10 @@ import {
 import type { HoleId } from '../circuit/types'
 import * as THREE from 'three'
 import { isControllerTool, constrainBenchPoint, type BenchPoint } from '@/circuit/offboard-controllers'
-import { WorkbenchDock } from '../circuit-lab/workbench-dock'
+
 import { StudioProperties } from '../circuit-lab/studio-properties'
+import { WorkbenchUtilities } from '../circuit-lab/workbench-utilities'
+import type { WorkbenchPanelTab } from '../circuit-lab/workbench-dock'
 
 const CircuitLab = lazy(() =>
   import('../circuit-lab/index').then((m) => ({ default: m.CircuitLab })),
@@ -1427,6 +1430,8 @@ export function CircuitEditorPage() {
   const [openArduinoCodeRequest, setOpenArduinoCodeRequest] = useState(0)
   const [openMonitorRequest, setOpenMonitorRequest] = useState(0)
   const [propertiesOpen, setPropertiesOpen] = useState(false)
+  const [utilitiesOpen, setUtilitiesOpen] = useState(false)
+  const [utilityTab, setUtilityTab] = useState<WorkbenchPanelTab>('monitor')
   const exitFocusMode = () => {
     if (!focusMode) return
     setPaletteOpen(focusLayoutRef.current.library)
@@ -1437,7 +1442,6 @@ export function CircuitEditorPage() {
   const showLibrary = (tab: 'parts' | 'circuits' | 'examples' = 'parts', kind?: string) => {
     setMoreKindsOpen(false)
     exitFocusMode()
-    setUse3D(true)
     setRibbonTab('insert')
     setRibbonCollapsed(false)
     setSidebarTab(tab)
@@ -1458,7 +1462,6 @@ export function CircuitEditorPage() {
       const menuWidth = 260
       setMoreKindsLeft(Math.max(10, Math.min(button.left - toolbar.left, toolbar.width - menuWidth - 10)))
     }
-    setUse3D(true)
     setPaletteOpen(false)
     setMoreKindsOpen(true)
   }
@@ -1475,10 +1478,34 @@ export function CircuitEditorPage() {
       focusLayoutRef.current = { library: paletteOpen, inspector: propertiesOpen, ribbon: ribbonCollapsed }
       setPaletteOpen(false)
       setPropertiesOpen(false)
+      setUtilitiesOpen(false)
       setRibbonCollapsed(true)
       setFocusMode(true)
     }
   }
+  const togglePropertiesPanel = () => {
+    exitFocusMode();
+    if (!propertiesOpen) setUtilitiesOpen(false);
+    setPropertiesOpen(!propertiesOpen);
+  };
+  // Each right-edge icon opens its own utility content. Clicking the currently
+  // open icon collapses the pane, returning the space to the circuit canvas.
+  const toggleUtilityPanel = (tab: WorkbenchPanelTab) => {
+    exitFocusMode();
+    if (utilitiesOpen && utilityTab === tab) {
+      setUtilitiesOpen(false);
+      return;
+    }
+    setPropertiesOpen(false);
+    setUtilityTab(tab);
+    useLab.getState().setGuideTarget(null);
+    setUtilitiesOpen(true);
+  };
+  const openUtilitiesPanel = () => {
+    exitFocusMode();
+    setPropertiesOpen(false);
+    setUtilitiesOpen(true);
+  };
   const [category, setCategory] = useState('All')
   useEffect(() => {
     if (ribbonTab !== 'insert' || ribbonCollapsed || focusMode) setMoreKindsOpen(false)
@@ -1551,7 +1578,7 @@ export function CircuitEditorPage() {
   // Wiring controls live in the Wiring tab, never in the Insert gallery.
   // This includes the W shortcut and wire tools launched from elsewhere.
   useEffect(() => {
-    if (use3D && activeTool === 'wire') {
+    if (activeTool === 'wire') {
       setRibbonTab('wiring')
       setPaletteOpen(false)
       setRibbonCollapsed(false)
@@ -1686,7 +1713,7 @@ export function CircuitEditorPage() {
       return
     }
 
-    if (!use3D || !useLab.getState().partDragEnabled) {
+    if (!useLab.getState().partDragEnabled) {
       setMoveMode(false)
       cameraCommand('move-mode', false)
       useLab.getState().setTool(tool)
@@ -1731,6 +1758,16 @@ export function CircuitEditorPage() {
       dragMovedRef.current = true
     }
 
+    const in2D = !use3D && (() => {
+      const target = document.querySelector('.physical-2d-canvas');
+      const r = target?.getBoundingClientRect();
+      return Boolean(r && event.clientX >= r.left && event.clientX <= r.right && event.clientY >= r.top && event.clientY <= r.bottom);
+    })();
+    if (in2D) {
+      window.dispatchEvent(new CustomEvent(PHYSICAL_2D_DRAG_EVENT, {detail:{tool:dragToolRef.current,clientX:event.clientX,clientY:event.clientY}}))
+      setDragPreview(prev => prev ? { ...prev, x:event.clientX, y:event.clientY, onBoard:true, moved:dragMovedRef.current, snappedHole:null, benchPoint:null } : prev);
+      return;
+    }
     const point = screenToBoardPoint(event.clientX, event.clientY)
     const hole = point
       ? nearestHole({ x: point.x, y: 0.34, z: point.z }, 0.55)
@@ -1764,6 +1801,20 @@ export function CircuitEditorPage() {
     dragToolRef.current = null
     dragMovedRef.current = false
 
+    // The physical 2D editor uses the SAME placePartAt/store action but needs
+    // its own SVG viewBox coordinates instead of the 3D camera raycaster.
+    if (!use3D) {
+      window.dispatchEvent(new Event(PHYSICAL_2D_DRAG_END_EVENT))
+      setDragPreview(null)
+      setHover(null)
+      useLab.getState().setHoverBenchPoint(null)
+      if (didDrag && tool) {
+        window.dispatchEvent(new CustomEvent(PHYSICAL_2D_DROP_EVENT, { detail: { tool, clientX:event.clientX, clientY:event.clientY } }))
+        setPaletteOpen(false)
+      }
+      window.setTimeout(() => useLab.getState().setPaletteDragging(false), didDrag ? 500 : 50)
+      return
+    }
     // Capture hover before clearing so drop still works if raycast is flaky.
     const controller=tool ? isControllerTool(tool):false
     const point=controller && didDrag ? screenToBoardPoint(event.clientX,event.clientY):null
@@ -1800,6 +1851,7 @@ export function CircuitEditorPage() {
       dragActiveRef.current = false
       dragToolRef.current = null
       dragMovedRef.current = false
+      window.dispatchEvent(new Event(PHYSICAL_2D_DRAG_END_EVENT))
       setDragPreview(null)
       setHover(null)
       useLab.getState().setHoverBenchPoint(null)
@@ -1840,6 +1892,7 @@ export function CircuitEditorPage() {
   const lastSelectedForInspectorRef = useRef<string | null>(null)
   useEffect(() => {
     if (selectedItem && selectedItem !== lastSelectedForInspectorRef.current && !focusMode) {
+      setUtilitiesOpen(false)
       setPropertiesOpen(true)
     }
     lastSelectedForInspectorRef.current = selectedItem
@@ -1926,13 +1979,13 @@ export function CircuitEditorPage() {
       if (e.ctrlKey && e.key === 'F1') {e.preventDefault();setRibbonCollapsed(v => !v);return}
       if (['INPUT','TEXTAREA','SELECT'].includes(target?.tagName || '') || target?.isContentEditable || e.ctrlKey || e.metaKey || e.altKey) return
       const key = e.key.toLowerCase()
-      if (key === 'p' && use3D) {e.preventDefault(); toggleMoveMode()}
+      if (key === 'p') {e.preventDefault(); toggleMoveMode()}
       if (key === 'v' || key === 'w') {
         // The 3D canvas handles the actual V/W tool shortcuts; synchronize
         // pan camera state so the tool always behaves as its button indicates.
         if (moveMode) {setMoveMode(false); cameraCommand('move-mode', false)}
       }
-      if (key === 'f' && use3D) {e.preventDefault(); cameraCommand('reset-view')}
+      if (key === 'f') {e.preventDefault(); cameraCommand('reset-view')}
       if (key === 'g' && use3D) {e.preventDefault(); cameraCommand('focus-circuit')}
       if (e.key === '?') {e.preventDefault(); setShowShortcuts((v) => !v)}
       if (e.key === 'Escape') {setPaletteOpen(false);setShowMore(false);setShowEditorSettings(false);setShowShortcuts(false); if (moveMode) {setMoveMode(false);cameraCommand('move-mode',false)}}
@@ -1990,7 +2043,7 @@ export function CircuitEditorPage() {
             <button type="button" className="editor-icon-btn editor-header-action" title="Editor settings" aria-label="Editor settings" aria-expanded={showEditorSettings} onClick={() => setShowEditorSettings(v=>!v)}><Settings2 size={19}/></button>
             {showEditorSettings && <div className="editor-more-menu editor-settings-menu" role="group" aria-label="Editor settings">
               <div className="editor-settings-heading">Workbench settings</div>
-              <button type="button" onClick={() => setPartDragEnabled(!partDragEnabled)} aria-pressed={partDragEnabled}><Move size={15}/>{partDragEnabled ? '3D component dragging: On' : '3D component dragging: Off'}</button>
+              <button type="button" onClick={() => setPartDragEnabled(!partDragEnabled)} aria-pressed={partDragEnabled}><Move size={15}/>{partDragEnabled ? 'Component dragging: On' : 'Component dragging: Off'}</button>
               <button type="button" onClick={() => useLab.getState().setShowWireFlow(!showWireFlow)} aria-pressed={showWireFlow}><Cable size={15}/>{showWireFlow ? 'Wire flow animation: On' : 'Wire flow animation: Off'}</button>
               <button type="button" onClick={() => useLab.getState().setFocusConnections(!focusConnections)} aria-pressed={focusConnections}><Focus size={15}/>{focusConnections ? 'Focus connections: On' : 'Focus connections: Off'}</button>
               <button type="button" onClick={() => {cameraCommand('focus-circuit');setShowEditorSettings(false)}}><Focus size={15}/> Focus placed components</button>
@@ -2007,25 +2060,25 @@ export function CircuitEditorPage() {
             ['simulation', 'Simulation'], ['view', 'View'],
           ] as const).map(([key, name]) => <button key={key} type="button" role="tab" id={`editor-ribbon-tab-${key}`} aria-controls="editor-ribbon-panel" aria-selected={ribbonTab === key} className={`editor-ribbon-tab ${ribbonTab === key ? 'active' : ''}`} onClick={() => {exitFocusMode();setRibbonTab(key);setRibbonCollapsed(false);setPaletteOpen(false)}}>{name}</button>)}
           <span className="editor-ribbon-tab-spacer"/>
-          <button type="button" className={`editor-ribbon-chrome ${focusMode ? 'active' : ''}`} aria-pressed={focusMode} onClick={toggleFocusMode} title="Focus on 3D models — hide side panels and ribbon"><Maximize2 size={16}/><span>Focus workbench</span></button>
+          <button type="button" className={`editor-ribbon-chrome ${focusMode ? 'active' : ''}`} aria-pressed={focusMode} onClick={toggleFocusMode} title="Focus on the workbench — hide panels and ribbon"><Maximize2 size={16}/><span>Focus workbench</span></button>
           <button type="button" className="editor-ribbon-chrome" onClick={() => {setRibbonCollapsed(v => !v);setPaletteOpen(false)}} aria-expanded={!ribbonCollapsed} aria-controls="editor-ribbon-panel" aria-label={ribbonCollapsed ? 'Expand ribbon' : 'Collapse ribbon'} title="Show or hide ribbon (Ctrl+F1)">{ribbonCollapsed ? <PanelTopOpen size={17}/> : <PanelTopClose size={17}/>}<span>{ribbonCollapsed ? 'Show ribbon' : 'Hide ribbon'}</span></button>
         </div>
         {!ribbonCollapsed && <div id="editor-ribbon-panel" className="editor-ribbon-panel" role="tabpanel" aria-labelledby={`editor-ribbon-tab-${ribbonTab}`}>
           {ribbonTab === 'home' && <>
             <div className="editor-ribbon-group" role="group" aria-label="Build tools"><div className="editor-ribbon-group-actions">
               <button type="button" className="editor-ribbon-primary" onClick={() => showLibrary('parts')}><CircuitBoard size={21}/><span>Parts library</span></button>
-              <EditorToolButton label="Select" shortcut="V" icon={<MousePointer2 size={19}/>} disabled={!use3D} active={activeTool === 'select' && !moveMode} onClick={() => toggleToolbarTool('select')}/>
-              <EditorToolButton label="Wire" shortcut="W" icon={<Cable size={19}/>} disabled={!use3D} active={activeTool === 'wire'} onClick={() => toggleToolbarTool('wire')}/>
-              <EditorToolButton label="Pan" shortcut="P" icon={<Hand size={19}/>} disabled={!use3D} active={moveMode} onClick={toggleMoveMode}/>
+              <EditorToolButton label="Select" shortcut="V" icon={<MousePointer2 size={19}/>}  active={activeTool === 'select' && !moveMode} onClick={() => toggleToolbarTool('select')}/>
+              <EditorToolButton label="Wire" shortcut="W" icon={<Cable size={19}/>}  active={activeTool === 'wire'} onClick={() => toggleToolbarTool('wire')}/>
+              <EditorToolButton label="Pan" shortcut="P" icon={<Hand size={19}/>}  active={moveMode} onClick={toggleMoveMode}/>
             </div><span className="editor-ribbon-group-label">Build &amp; edit</span></div>
             <div className="editor-ribbon-group" role="group" aria-label="Arrange parts"><div className="editor-ribbon-group-actions">
-              <EditorToolButton label="Rotate" shortcut="R" icon={<RotateCw size={18}/>} disabled={!use3D || !selectedItem || !parts.some(p=>p.id===selectedItem)} onClick={() => useLab.getState().rotateSelected()}/>
-              <EditorToolButton label="Delete" shortcut="Del" icon={<Trash2 size={19}/>} danger disabled={!use3D || !selectedItem} onClick={() => useLab.getState().deleteSelected()}/>
-              <EditorToolButton label="Tidy wires" icon={<Focus size={18}/>} disabled={!use3D || !wires.length} onClick={() => useLab.getState().autoTidyWires()}/>
+              <EditorToolButton label="Rotate" shortcut="R" icon={<RotateCw size={18}/>} disabled={ !selectedItem || !parts.some(p=>p.id===selectedItem)} onClick={() => useLab.getState().rotateSelected()}/>
+              <EditorToolButton label="Delete" shortcut="Del" icon={<Trash2 size={19}/>} danger disabled={ !selectedItem} onClick={() => useLab.getState().deleteSelected()}/>
+              <EditorToolButton label="Tidy wires" icon={<Focus size={18}/>} disabled={ !wires.length} onClick={() => useLab.getState().autoTidyWires()}/>
             </div><span className="editor-ribbon-group-label">Arrange</span></div>
             <div className="editor-ribbon-group" role="group" aria-label="History"><div className="editor-ribbon-group-actions">
-              <EditorToolButton label="Undo" shortcut="Ctrl+Z" icon={<Undo2 size={19}/>} disabled={!use3D || !canUndo} onClick={() => useLab.getState().undo()}/>
-              <EditorToolButton label="Redo" shortcut="Ctrl+Y" icon={<Redo2 size={19}/>} disabled={!use3D || !canRedo} onClick={() => useLab.getState().redo()}/>
+              <EditorToolButton label="Undo" shortcut="Ctrl+Z" icon={<Undo2 size={19}/>} disabled={ !canUndo} onClick={() => useLab.getState().undo()}/>
+              <EditorToolButton label="Redo" shortcut="Ctrl+Y" icon={<Redo2 size={19}/>} disabled={ !canRedo} onClick={() => useLab.getState().redo()}/>
             </div><span className="editor-ribbon-group-label">History</span></div>
             <div className="editor-ribbon-group" role="group" aria-label="Quick simulation"><div className="editor-ribbon-group-actions">
               <button type="button" className="editor-ribbon-run" onClick={() => {const lab=useLab.getState();if(!lab.powerOn)lab.togglePower();lab.runNow();setOpenMonitorRequest(request=>request+1)}}><Play size={20}/><span>Run</span></button>
@@ -2033,8 +2086,8 @@ export function CircuitEditorPage() {
               <button type="button" className="editor-ribbon-command" disabled={!parts.some(p=>p.kind==='mcu')} onClick={() => setOpenArduinoCodeRequest(request=>request+1)}><Code2 size={19}/><span>Code</span></button>
             </div><span className="editor-ribbon-group-label">Simulation</span></div>
             <div className="editor-ribbon-group" role="group" aria-label="Canvas framing"><div className="editor-ribbon-group-actions">
-              <EditorToolButton label="Fit board" shortcut="F" icon={<Maximize2 size={19}/>} disabled={!use3D} onClick={() => cameraCommand('reset-view')}/>
-              <EditorToolButton label="Focus parts" shortcut="G" icon={<Focus size={19}/>} disabled={!use3D} onClick={() => cameraCommand('focus-circuit')}/>
+              <EditorToolButton label="Fit board" shortcut="F" icon={<Maximize2 size={19}/>}  onClick={() => cameraCommand('reset-view')}/>
+              <EditorToolButton label="Focus parts" shortcut="G" icon={<Focus size={19}/>}  onClick={() => cameraCommand('focus-circuit')}/>
             </div><span className="editor-ribbon-group-label">Viewport</span></div>
           </>}
           {ribbonTab === 'insert' && <>
@@ -2057,8 +2110,8 @@ export function CircuitEditorPage() {
           {ribbonTab === 'wiring' && <>
             <div className="editor-ribbon-group" role="group" aria-label="Wiring commands"><div className="editor-ribbon-group-actions">
               {/* Choosing Solid or Jumper below enters Wire mode. W remains a shortcut. */}
-              <EditorToolButton label="Select" shortcut="V" icon={<MousePointer2 size={19}/>} disabled={!use3D} active={activeTool==='select'&&!moveMode} onClick={() => toggleToolbarTool('select')}/>
-              <EditorToolButton label="Auto tidy" icon={<Focus size={18}/>} disabled={!use3D||!wires.length} onClick={() => useLab.getState().autoTidyWires()}/>
+              <EditorToolButton label="Select" shortcut="V" icon={<MousePointer2 size={19}/>}  active={activeTool==='select'&&!moveMode} onClick={() => toggleToolbarTool('select')}/>
+              <EditorToolButton label="Auto tidy" icon={<Focus size={18}/>} disabled={!wires.length} onClick={() => useLab.getState().autoTidyWires()}/>
             </div><span className="editor-ribbon-group-label">Connections</span></div>
             <div className="editor-ribbon-group" role="group" aria-label="Wire style"><div className="editor-ribbon-group-actions">
               {(['solid','jumper'] as WireStyle[]).map(style => <button key={style} type="button" className={`editor-ribbon-command ${activeTool==='wire' && wireStyle===style?'active':''}`} aria-pressed={activeTool==='wire' && wireStyle===style} onClick={() => {
@@ -2068,7 +2121,7 @@ export function CircuitEditorPage() {
                 // A style is itself a wire tool. Don't cancel an already-picked
                 // endpoint when changing style midway through a connection.
                 if (lab.tool !== 'wire') selectTool('wire');
-              }} disabled={!use3D}><Cable size={18}/><span>{style==='solid'?'Solid':'Jumper'}</span></button>)}
+              }} ><Cable size={18}/><span>{style==='solid'?'Solid':'Jumper'}</span></button>)}
             </div><span className="editor-ribbon-group-label">Wire style</span></div>
             <div className="editor-ribbon-group" role="group" aria-label="Wire colors"><div className="editor-ribbon-color-picker">
               {(['red','black','blue','orange','green','yellow','white'] as WireColor[]).map(color => <button key={color} type="button" className={`editor-ribbon-color ${wireColor===color?'active':''}`} style={{'--wire-color': WIRE_HEX[color]} as React.CSSProperties} title={`${color} wire`} aria-label={`${color} wire`} aria-pressed={wireColor===color} onClick={() => useLab.getState().setWireColor(color)}><span/></button>)}
@@ -2094,19 +2147,19 @@ export function CircuitEditorPage() {
               <button type="button" className={`editor-ribbon-command ${!use3D?'active':''}`} aria-pressed={!use3D} onClick={() => setUse3D(false)}><CircuitBoard size={19}/><span>2D view</span></button>
             </div><span className="editor-ribbon-group-label">View mode</span></div>
             <div className="editor-ribbon-group" role="group" aria-label="Camera"><div className="editor-ribbon-group-actions">
-              <EditorToolButton label="Zoom in" icon={<ZoomIn size={19}/>} onClick={() => cameraCommand('zoom-in')} disabled={!use3D}/>
-              <EditorToolButton label="Zoom out" icon={<ZoomOut size={19}/>} onClick={() => cameraCommand('zoom-out')} disabled={!use3D}/>
-              <EditorToolButton label="Fit board" shortcut="F" icon={<Maximize2 size={19}/>} onClick={() => cameraCommand('reset-view')} disabled={!use3D}/>
-              <EditorToolButton label="Focus parts" shortcut="G" icon={<Focus size={19}/>} onClick={() => cameraCommand('focus-circuit')} disabled={!use3D}/>
+              <EditorToolButton label="Zoom in" icon={<ZoomIn size={19}/>} onClick={() => cameraCommand('zoom-in')} />
+              <EditorToolButton label="Zoom out" icon={<ZoomOut size={19}/>} onClick={() => cameraCommand('zoom-out')} />
+              <EditorToolButton label="Fit board" shortcut="F" icon={<Maximize2 size={19}/>} onClick={() => cameraCommand('reset-view')} />
+              <EditorToolButton label="Focus parts" shortcut="G" icon={<Focus size={19}/>} onClick={() => cameraCommand('focus-circuit')} />
               <EditorToolButton label="Fullscreen" icon={<Monitor size={19}/>} onClick={toggleFullscreen}/>
             </div><span className="editor-ribbon-group-label">Camera &amp; zoom</span></div>
             <div className="editor-ribbon-group" role="group" aria-label="Workspace panels"><div className="editor-ribbon-group-actions">
-              <button type="button" className={`editor-ribbon-command ${propertiesOpen?'active':''}`} aria-pressed={propertiesOpen} onClick={() => setPropertiesOpen(v=>!v)}><SlidersHorizontal size={19}/><span>Properties</span></button>
+              <button type="button" className={`editor-ribbon-command ${propertiesOpen?'active':''}`} aria-pressed={propertiesOpen} onClick={togglePropertiesPanel}><SlidersHorizontal size={19}/><span>Properties</span></button>
               <button type="button" className={`editor-ribbon-command ${focusMode?'active':''}`} aria-pressed={focusMode} onClick={toggleFocusMode}><Maximize2 size={19}/><span>Focus mode</span></button>
             </div><span className="editor-ribbon-group-label">Panels</span></div>
           </>}
         </div>}
-        {moreKindsOpen && use3D && ribbonTab === 'insert' && !ribbonCollapsed && !focusMode &&
+        {moreKindsOpen && ribbonTab === 'insert' && !ribbonCollapsed && !focusMode &&
           <div id="editor-more-kinds-menu" ref={moreKindsMenuRef} className="editor-more-kinds-menu" style={{ left: moreKindsLeft }} role="group" aria-label="More component kinds">
             <div className="editor-more-kinds-title">Other component kinds</div>
             {MORE_INSERT_KINDS.map(section =>
@@ -2115,7 +2168,7 @@ export function CircuitEditorPage() {
               </button>
             )}
           </div>}
-        {paletteOpen && use3D && ribbonTab === 'insert' && !ribbonCollapsed && !focusMode && <section id="editor-insert-gallery" ref={insertGalleryRef} className="editor-insert-gallery flex flex-col" aria-label="Insert components" role="dialog" aria-modal="false">
+        {paletteOpen && ribbonTab === 'insert' && !ribbonCollapsed && !focusMode && <section id="editor-insert-gallery" ref={insertGalleryRef} className="editor-insert-gallery flex flex-col" aria-label="Insert components" role="dialog" aria-modal="false">
           <div ref={insertGalleryBodyRef} className="editor-insert-gallery-body" aria-label="Scrollable Insert gallery">
           {(sidebarTab !== 'parts' || category === 'All') && <div className="editor-insert-gallery-head"><div><strong>{sidebarTab === 'parts' ? 'Insert components by kind' : sidebarTab === 'circuits' ? 'Circuit components' : 'Example circuits'}</strong><span>{sidebarTab === 'parts' ? `${paletteCount} components · ${PALETTE.length} kinds` : 'Select an item to open it'}</span></div><button type="button" aria-label="Close Insert gallery" title="Close Insert gallery" onClick={() => setPaletteOpen(false)}><PanelTopClose size={18}/></button></div>}
           {(sidebarTab !== 'parts' || category === 'All') && <div className="editor-insert-gallery-tabs" role="tablist" aria-label="Insert content"><button type="button" role="tab" aria-selected={sidebarTab==='parts'} className={sidebarTab==='parts'?'active':''} onClick={() => showLibrary('parts')}><CircuitBoard size={15}/> Parts</button><button type="button" role="tab" aria-selected={sidebarTab==='circuits'} className={sidebarTab==='circuits'?'active':''} onClick={() => showLibrary('circuits')}><BookOpen size={15}/> Circuits</button><button type="button" role="tab" aria-selected={sidebarTab==='examples'} className={sidebarTab==='examples'?'active':''} onClick={() => showLibrary('examples')}><LayoutGrid size={15}/> Examples</button></div>}
@@ -2194,7 +2247,7 @@ export function CircuitEditorPage() {
                       onClick={() => setUse3D(false)}
                       className="text-xs text-blue-400 hover:underline mt-2"
                     >
-                      Switch to 2D schematic
+                      Switch to 2D breadboard
                     </button>
                   </div>
                 }
@@ -2206,17 +2259,37 @@ export function CircuitEditorPage() {
             </LabErrorBoundary>
           ) : (
             <div className="absolute inset-0 overflow-hidden">
-              <div className="absolute right-4 top-3 z-10 text-[11px] text-slate-300 bg-[#0b2541] border border-cyan-500/30 rounded-lg px-3 py-2 flex items-center gap-3">
-                <span>Read-only 2D view of this breadboard</span>
-                <button type="button" onClick={() => navigate('/schematic')} className="text-cyan-300 hover:text-white underline">Open full 2D workspace</button>
-              </div>
-              <SchematicFallback />
+              <PhysicalBreadboard2D panMode={moveMode} />
             </div>
           )}
         </main>
-        <WorkbenchDock projectId={projectId} focusMode={focusMode} onExitFocusMode={toggleFocusMode} openArduinoCodeRequest={openArduinoCodeRequest} openMonitorRequest={openMonitorRequest} is3D={use3D} partDragEnabled={partDragEnabled} setPartDragEnabled={setPartDragEnabled} performanceMode={performanceMode} setPerformanceMode={(enabled) => changeGraphicsQuality(enabled ? "low" : "high")} graphicsQuality={graphicsQuality} onGraphicsQualityChange={changeGraphicsQuality} onStartWiring={() => {setUse3D(true);setRibbonTab('wiring');setRibbonCollapsed(false);setPaletteOpen(false);}}/>
         </div>
-        {use3D && <StudioProperties open={propertiesOpen} onToggle={()=>setPropertiesOpen(value=>!value)}/>}
+        <div className="editor-right-side-system">
+          <StudioProperties open={propertiesOpen} onToggle={togglePropertiesPanel}/>
+          <WorkbenchUtilities open={utilitiesOpen} tab={utilityTab} onTabChange={setUtilityTab} onClose={()=>setUtilitiesOpen(false)} onOpen={openUtilitiesPanel} projectId={projectId} openArduinoCodeRequest={openArduinoCodeRequest} openMonitorRequest={openMonitorRequest} is3D={use3D} partDragEnabled={partDragEnabled} setPartDragEnabled={setPartDragEnabled} performanceMode={performanceMode} setPerformanceMode={(enabled)=>changeGraphicsQuality(enabled?'low':'high')} graphicsQuality={graphicsQuality} onGraphicsQualityChange={changeGraphicsQuality} onStartWiring={()=>{setRibbonTab('wiring');setRibbonCollapsed(false);setPaletteOpen(false);}}/>
+          <nav className="editor-right-side-launchers" aria-label="Properties and workbench tools">
+            <button type="button" aria-label="Toggle Properties sidebar" title="Properties" aria-expanded={propertiesOpen} className={propertiesOpen?'active':''} onClick={togglePropertiesPanel}><SlidersHorizontal size={20}/><span>Properties</span></button>
+            <div className="editor-utility-launcher-group" role="group" aria-label="Circuit utility panels">
+              {([
+                { tab: 'monitor', label: 'Monitor', Icon: Monitor },
+                { tab: 'guide', label: 'Wiring Guide', Icon: Cable },
+                { tab: 'truth', label: 'Truth Table', Icon: LayoutGrid },
+                { tab: 'code', label: 'Arduino Code', Icon: Code2 },
+              ] as const).map(({ tab, label, Icon }) => (
+                <button
+                  type="button"
+                  key={tab}
+                  className={`editor-utility-launcher ${utilitiesOpen && utilityTab === tab ? 'active' : ''}`}
+                  aria-label={`Open ${label} panel`}
+                  aria-controls="editor-utilities-panel"
+                  aria-expanded={utilitiesOpen && utilityTab === tab}
+                  data-tooltip={label}
+                  onClick={() => toggleUtilityPanel(tab)}
+                ><Icon size={20}/></button>
+              ))}
+            </div>
+          </nav>
+        </div>
       </div>
 
       <HelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
@@ -2229,7 +2302,7 @@ export function CircuitEditorPage() {
 
       {/* The actual PartSwitch 3D geometry follows the pointer. On the board,
           the same geometry is rendered by PlacementGhost, snapped to the holes. */}
-      {dragPreview?.moved && !dragPreview.onBoard && (
+      {use3D && dragPreview?.moved && !dragPreview.onBoard && (
         <div
           className="pointer-events-none fixed z-[9999] -translate-x-1/2 -translate-y-1/2"
           style={{ left: dragPreview.x, top: dragPreview.y }}

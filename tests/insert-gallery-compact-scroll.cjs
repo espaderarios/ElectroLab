@@ -9,7 +9,7 @@ const page = fs.readFileSync(path.join(root, 'src/pages/CircuitEditorPage.tsx'),
 const css = fs.readFileSync(path.join(root, 'src/index.css'), 'utf8');
 assert.equal(ts.createSourceFile('CircuitEditorPage.tsx', page, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX).parseDiagnostics.length, 0, 'gallery JSX syntax valid');
 postcss.parse(css);
-const gallery = page.slice(page.indexOf('{paletteOpen && use3D && ribbonTab === \'insert\''), page.indexOf('</section>}', page.indexOf('{paletteOpen && use3D && ribbonTab === \'insert\'')));
+const gallery = page.slice(page.indexOf('{paletteOpen && ribbonTab === \'insert\''), page.indexOf('</section>}', page.indexOf('{paletteOpen && ribbonTab === \'insert\'')));
 assert.match(gallery, /ref=\{insertGalleryBodyRef\} className="editor-insert-gallery-body"/, 'every gallery control is inside the scroll container');
 assert.match(gallery, /\(sidebarTab !== 'parts' \|\| category === 'All'\) && <div className="editor-insert-gallery-head"/, 'no redundant title for specific component kinds');
 assert.match(gallery, /\(sidebarTab !== 'parts' \|\| category === 'All'\) && <div className="editor-insert-gallery-tabs"/, 'no duplicate Parts/Circuits/Examples when a kind is selected');
