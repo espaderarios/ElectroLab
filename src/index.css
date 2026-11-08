@@ -1772,3 +1772,412 @@ html.light .themed-workspace .dashboard-panel { box-shadow: 0 8px 24px var(--app
 .editor-reference-ui .editor-palette-filters button.active {
   color:#f5faff;
 }
+
+/* Only selected components show floating names; the DOM overlays never
+   cover or capture physical switch/button input. */
+.ece-circuit-lab .ece-selected-part-tooltip,
+.ece-circuit-lab .ece-selected-part-tooltip * {
+  pointer-events: none !important;
+  user-select: none;
+}
+.ece-circuit-lab .ece-selected-part-tooltip-content {
+  display: inline-block;
+  width: max-content;
+  max-width: 190px;
+  white-space: nowrap;
+  /* Move the entire label/card up and right, away from the clicked actuator. */
+  transform: translate(calc(50% + 18px), calc(-100% - 16px));
+  filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.45));
+}
+
+/* Unified simulator toolbar — Parts, Circuits and Examples share the
+   component-panel toggle's expanded space. When closed, only the toggle
+   stays visible and Code, Simulate and editing tools slide to the left.
+   Editing tools continue to scroll independently on narrow screens. */
+.editor-reference-ui .editor-actions {
+  display:flex;
+  align-items:center;
+  gap:12px;
+  min-height:66px;
+  overflow:visible;
+  padding:8px 14px;
+  background:#20222b!important;
+}
+.editor-reference-ui .editor-toolbar-library {
+  display:flex;
+  align-items:center;
+  flex:0 0 auto;
+  gap:8px;
+  min-width:0;
+}
+.editor-reference-ui .editor-toolbar-library .editor-palette-toggle {
+  flex:0 0 auto;
+  width:43px;
+  height:43px;
+  min-width:43px;
+  border-radius:11px;
+  background:#102d4d;
+  border:1px solid #5088c1;
+  color:#a8dcff;
+}
+.editor-reference-ui .editor-toolbar-library .editor-palette-toggle[aria-pressed="true"] {
+  background:#164d80;
+  border-color:#72b7ef;
+  color:#fff;
+  box-shadow:inset 0 0 0 1px #86bbec40;
+}
+.editor-reference-ui .editor-toolbar-library .editor-toolbar-divider {margin:0 5px;}
+.editor-reference-ui .editor-toolbar-library .editor-workspace-tabs {
+  display:flex;
+  flex:0 0 auto;
+  align-items:center;
+  gap:3px;
+  margin:0;
+  padding:4px;
+  border-radius:11px;
+  background:#282b34;
+  border:1px solid #3b4759;
+}
+.editor-reference-ui .editor-toolbar-library .editor-workspace-tabs button {
+  flex:0 0 auto;
+  min-height:35px;
+  padding:8px 11px;
+  font-size:12px;
+  line-height:1;
+  gap:7px;
+  border-radius:8px;
+}
+.editor-reference-ui .editor-toolbar-tools {
+  display:flex;
+  align-items:center;
+  flex:1 1 auto;
+  min-width:0;
+  gap:6px;
+  margin-left:auto;
+  padding:2px 0 4px;
+  overflow-x:auto;
+  overflow-y:hidden;
+  overscroll-behavior-x:contain;
+  scrollbar-width:thin;
+  scrollbar-color:#52677e transparent;
+}
+/* Expanded: Code and Simulate sit after the library tabs with breathing room.
+   Collapsed: the three tabs and divider are unmounted, so drop the spacer
+   and left auto-margin; Code, Simulate, Run and tools slide beside the toggle. */
+.editor-reference-ui .editor-toolbar-tools::before {content:"";flex:1 0 10px;}
+.editor-reference-ui .editor-actions.editor-library-collapsed {gap:8px;}
+.editor-reference-ui .editor-actions.editor-library-collapsed .editor-toolbar-tools {margin-left:0;}
+.editor-reference-ui .editor-actions.editor-library-collapsed .editor-toolbar-tools::before {display:none;}
+.editor-reference-ui .editor-toolbar-tools > * {flex-shrink:0;}
+.editor-reference-ui .editor-toolbar-tools .editor-studio-modes {margin-right:0;}
+.editor-reference-ui .editor-toolbar-tools .editor-studio-modes button {min-height:39px;}
+.editor-reference-ui .editor-toolbar-tools .editor-studio-run {min-height:39px;}
+/* Sidebar now begins with the useful component search/filters, not another
+   heading and duplicated set of tabs. Its existing scroll area stays intact. */
+.editor-reference-ui .editor-sidebar > .editor-palette-heading:first-child {padding-top:12px;}
+@media (max-width:1250px) {
+  .editor-reference-ui .editor-actions {gap:7px;padding-inline:9px;}
+  .editor-reference-ui .editor-toolbar-library {gap:5px;}
+  .editor-reference-ui .editor-toolbar-library .editor-workspace-tabs button {padding-inline:8px;font-size:11px;gap:5px;}
+  .editor-reference-ui .editor-toolbar-tools {gap:5px;}
+}
+@media (max-width:900px) {
+  .editor-reference-ui .editor-toolbar-library .editor-palette-toggle {width:38px;min-width:38px;height:38px;}
+  .editor-reference-ui .editor-toolbar-library .editor-workspace-tabs button {font-size:0;min-width:35px;justify-content:center;gap:0;padding-inline:9px;}
+  .editor-reference-ui .editor-toolbar-library .editor-workspace-tabs button svg {width:18px;height:18px;}
+  .editor-reference-ui .editor-actions {gap:5px;}
+}
+@media (max-width:480px) {
+  .editor-reference-ui .editor-actions {padding-inline:6px;min-height:60px;}
+  .editor-reference-ui .editor-toolbar-library {gap:3px;}
+  .editor-reference-ui .editor-toolbar-library .editor-toolbar-divider {margin-inline:1px;}
+  .editor-reference-ui .editor-toolbar-library .editor-workspace-tabs {padding:2px;gap:0;}
+  .editor-reference-ui .editor-toolbar-library .editor-workspace-tabs button {min-width:31px;padding:7px;}
+}
+
+@media (min-width:1600px) {
+  /* On a wide monitor, show readable three-column part cards without squeezing the workbench. */
+  .editor-reference-ui.editor-workspace .editor-sidebar {width:320px!important;}
+}
+
+/* Word-inspired contextual command ribbon (ElectroLab 3D, November 2026).
+   The compact top tabs keep the active workbench large; related controls share
+   a single scrollable command row instead of demanding permanent side panels. */
+.editor-reference-ui .editor-ribbon-tabs {
+  display:flex;align-items:center;gap:2px;min-height:37px;
+  padding:0 13px;background:#202630;border-bottom:1px solid #454d5c;
+  overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;scrollbar-color:#4d6580 transparent;
+}
+.editor-reference-ui .editor-ribbon-library-toggle {
+  display:inline-flex;align-items:center;gap:7px;min-height:31px;padding:5px 11px;margin-right:7px;
+  color:#d4e6fa;border:1px solid transparent;border-radius:7px;
+  font-size:11px;font-weight:750;white-space:nowrap;flex:none;
+}
+.editor-reference-ui .editor-ribbon-library-toggle:hover,
+.editor-reference-ui .editor-ribbon-library-toggle[aria-pressed="true"] {
+  border-color:#4d87c1;background:#183e63;color:#fff;
+}
+.editor-reference-ui .editor-ribbon-library-toggle svg {color:#8dcaff;}
+.editor-reference-ui .editor-ribbon-tab-divider {height:23px;width:1px;margin:0 9px 0 0;background:#45566c;flex:none;}
+.editor-reference-ui .editor-ribbon-tab {
+  display:flex;align-items:center;justify-content:center;align-self:stretch;flex:none;
+  padding:7px 15px 6px;border-bottom:2px solid transparent;
+  font-size:12px;font-weight:650;color:#c1cad8;white-space:nowrap;
+}
+.editor-reference-ui .editor-ribbon-tab:hover {background:#303947;color:#f6faff;}
+.editor-reference-ui .editor-ribbon-tab.active {color:#e3f2ff;background:#273b52;border-bottom-color:#7ab9f4;}
+.editor-reference-ui .editor-ribbon-tab-spacer {flex:1 0 9px;}
+.editor-reference-ui .editor-ribbon-chrome {
+  display:flex;align-items:center;gap:5px;flex:none;min-height:28px;padding:4px 9px;
+  color:#b8cce1;border:1px solid transparent;border-radius:6px;
+  font-size:10px;font-weight:650;white-space:nowrap;
+}
+.editor-reference-ui .editor-ribbon-chrome:hover,.editor-reference-ui .editor-ribbon-chrome.active {color:#fff;background:#26415c;border-color:#4f79a4;}
+.editor-reference-ui .editor-ribbon-panel {
+  display:flex;align-items:stretch;gap:0;min-height:83px;max-height:92px;
+  padding:5px 8px 4px;overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;
+  background:linear-gradient(180deg,#2e3440 0%,#252c36 100%);
+  border-bottom:1px solid #4e5c70;
+  scrollbar-width:thin;scrollbar-color:#657b96 transparent;
+}
+.editor-reference-ui .editor-ribbon-group {
+  display:flex;flex-direction:column;align-items:stretch;justify-content:space-between;
+  gap:2px;flex:none;padding:0 12px 0 9px;margin-right:3px;
+  border-right:1px solid #485365;
+}
+.editor-reference-ui .editor-ribbon-group:last-child {border-right:0;}
+.editor-reference-ui .editor-ribbon-group-actions {
+  display:flex;align-items:stretch;gap:3px;min-height:54px;
+}
+.editor-reference-ui .editor-ribbon-group-label {
+  display:block;text-align:center;color:#9eabbc;font-size:10px;line-height:13px;
+  font-weight:600;letter-spacing:.015em;white-space:nowrap;
+}
+.editor-reference-ui .editor-ribbon-panel .editor-toolbar-action,
+.editor-reference-ui .editor-ribbon-panel .editor-ribbon-command,
+.editor-reference-ui .editor-ribbon-panel .editor-ribbon-primary,
+.editor-reference-ui .editor-ribbon-panel .editor-ribbon-run {
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:5px;min-width:57px;min-height:53px;max-height:57px;
+  padding:5px 8px;border:1px solid transparent;border-radius:6px;
+  color:#d3ddeb;background:transparent;
+  font-size:10px;font-weight:650;line-height:1.1;white-space:nowrap;
+  transition:background .14s,border-color .14s;
+}
+.editor-reference-ui .editor-ribbon-panel .editor-toolbar-action > span {display:block!important;}
+.editor-reference-ui .editor-ribbon-panel .editor-toolbar-action:hover:not(:disabled),
+.editor-reference-ui .editor-ribbon-panel .editor-ribbon-command:hover:not(:disabled),
+.editor-reference-ui .editor-ribbon-panel .editor-ribbon-primary:hover,
+.editor-reference-ui .editor-ribbon-panel .editor-ribbon-run:hover {
+  background:#3a4b62;border-color:#607d9e;color:#fff;
+}
+.editor-reference-ui .editor-ribbon-panel .editor-toolbar-action.active,
+.editor-reference-ui .editor-ribbon-panel .editor-ribbon-command.active {
+  background:#1a4b7d;color:#f4faff;border-color:#7cb4e5;box-shadow:inset 0 0 0 1px #7bb9e344;
+}
+.editor-reference-ui .editor-ribbon-panel .editor-toolbar-action:disabled,
+.editor-reference-ui .editor-ribbon-panel .editor-ribbon-command:disabled {
+  opacity:.38;cursor:not-allowed;
+}
+.editor-reference-ui .editor-ribbon-panel .editor-ribbon-primary {
+  min-width:74px;color:#dff1ff;background:#173b5d;border-color:#4c7eaf;
+}
+.editor-reference-ui .editor-ribbon-panel .editor-ribbon-run {
+  min-width:59px;color:#effff8;background:#196547;border-color:#36a675;
+}
+.editor-reference-ui .editor-ribbon-panel .editor-ribbon-command.active svg {color:#dbeeff;}
+.editor-reference-ui .editor-ribbon-text-icon {font:750 22px/1 Georgia,serif;color:#afd9ff;}
+.editor-reference-ui .editor-ribbon-panel .editor-workspace-tabs.editor-ribbon-library-tabs {
+  display:flex;flex:none;gap:2px;align-items:stretch;margin:0;
+  border:0;background:transparent;padding:0;
+}
+.editor-reference-ui .editor-ribbon-panel .editor-workspace-tabs.editor-ribbon-library-tabs button {
+  display:flex;flex-direction:column;justify-content:center;gap:4px;
+  min-width:64px;min-height:52px;padding:5px 8px;font-size:10px;
+  color:#d1dce9;border:1px solid transparent;border-radius:6px;background:transparent;
+}
+.editor-reference-ui .editor-ribbon-panel .editor-workspace-tabs.editor-ribbon-library-tabs button.active {
+  background:#1a4b7d;border-color:#78b6e7;color:#fff;box-shadow:none;
+}
+.editor-reference-ui .editor-ribbon-color-picker {display:flex;align-items:center;gap:5px;min-height:54px;padding:0 6px;}
+.editor-reference-ui .editor-ribbon-color {
+  display:grid;place-items:center;width:24px;height:30px;flex:none;
+  border:1px solid transparent;border-radius:6px;
+}
+.editor-reference-ui .editor-ribbon-color span {width:16px;height:16px;border:1px solid #94a3b8;border-radius:50%;background:var(--wire-color);box-shadow:0 2px 4px #0005;}
+.editor-reference-ui .editor-ribbon-color.active {border-color:#acd6fb;background:#1b4a70;}
+.editor-reference-ui .editor-ribbon-color:hover {background:#405269;}
+/* Remove the existing always-on second toolbar styles. The ribbon command
+   sections are contextual, not horizontal duplicates of every editing tool. */
+.editor-reference-ui .editor-document-title {max-width:420px;}
+.editor-reference-ui .editor-toolbar-main {min-height:49px;padding-top:6px;padding-bottom:6px;}
+.editor-reference-ui .editor-sidebar {min-width:0;}
+.editor-reference-ui .editor-studio-properties.is-closed {width:39px;}
+.editor-reference-ui .editor-studio-properties.is-closed .editor-properties-header {padding:10px 5px 6px;flex-direction:column;gap:6px;}
+.editor-reference-ui .editor-studio-properties.is-closed .editor-properties-title {display:none;}
+.editor-reference-ui .editor-studio-properties.is-closed .editor-properties-header button {background:#273b51;border:1px solid #41668c;}
+.editor-reference-ui .editor-studio-properties.is-closed .editor-properties-reopen {display:none;}
+/* Large scene by default, overlays rather than squeezed 3D on small screens. */
+@media (max-width:1050px) {
+  .editor-reference-ui .editor-sidebar {width:min(280px,78vw)!important;position:absolute;left:0;top:0;bottom:0;z-index:13;box-shadow:10px 0 32px #0009;}
+  .editor-reference-ui .editor-body-layout {position:relative;}
+  .editor-reference-ui .editor-ribbon-chrome span {display:none;}
+  .editor-reference-ui .editor-ribbon-panel {min-height:77px;max-height:84px;}
+  .editor-reference-ui .editor-ribbon-group {padding-inline:6px;}
+}
+@media (max-width:640px) {
+  .editor-reference-ui .editor-ribbon-tabs {padding-inline:5px;}
+  .editor-reference-ui .editor-ribbon-tab {padding-inline:9px;font-size:11px;}
+  .editor-reference-ui .editor-ribbon-library-toggle {padding-inline:8px;margin-right:0;}
+  .editor-reference-ui .editor-ribbon-library-toggle span {display:none;}
+  .editor-reference-ui .editor-ribbon-group {margin-right:1px;}
+  .editor-reference-ui .editor-ribbon-panel .editor-ribbon-command,
+  .editor-reference-ui .editor-ribbon-panel .editor-toolbar-action {min-width:50px;padding-inline:4px;}
+}
+@media (prefers-reduced-motion:reduce) {
+  .editor-reference-ui .editor-ribbon-panel :is(button) {transition:none;}
+}
+/* On an empty project, show a single unobtrusive entry point instead of a
+   permanent parts drawer blocking the 3D canvas. */
+.editor-reference-ui .editor-insert-hint {
+  position:absolute;z-index:9;top:12px;left:14px;
+  display:inline-flex;align-items:center;gap:7px;padding:9px 12px;
+  border:1px solid #628db6;border-radius:10px;background:#193d61e8;
+  box-shadow:0 4px 16px #0005;color:#e4f1ff;font-size:11px;font-weight:700;
+}
+.editor-reference-ui .editor-insert-hint:hover {background:#255b88;border-color:#91c3ed;}
+
+/* Insert → Parts gallery (Word-style ribbon). No permanent component sidebar:
+   component kinds are ribbon commands, opening a floating gallery over the
+   canvas only while it is in use. Closing it restores the entire 3D width. */
+.editor-reference-ui .editor-topbar {position:relative;z-index:30;}
+.editor-reference-ui .editor-ribbon-panel .editor-insert-kind-button {min-width:77px;max-width:109px;}
+.editor-reference-ui .editor-ribbon-panel .editor-insert-kind-button > span {
+  white-space:normal;text-align:center;line-height:1.15;
+}
+.editor-reference-ui .editor-ribbon-panel .editor-ribbon-primary.active {background:#1a4b7d;border-color:#78b6e7;}
+.editor-reference-ui .editor-ribbon-panel .editor-insert-board-choice {
+  min-width:170px;max-width:220px;display:flex;align-items:center;gap:8px;
+  padding:5px 8px;color:#d1e7fc;
+}
+.editor-reference-ui .editor-insert-board-choice select {
+  width:158px;min-width:0;background:#222f40;color:#e5f3ff;
+  border:1px solid #526e8f;border-radius:7px;padding:8px 5px;font-size:11px;
+}
+.editor-reference-ui .editor-insert-gallery {
+  position:absolute;top:calc(100% + 4px);left:12px;z-index:80;
+  box-sizing:border-box;width:min(790px,calc(100vw - 24px));
+  max-height:min(69vh,590px);min-height:240px;overflow:hidden;
+  border:1px solid #5888b9;border-radius:12px;
+  color:#eaf3ff;background:linear-gradient(155deg,#272f3b,#1b2739 95%);
+  box-shadow:0 18px 55px #020916bb,0 0 0 1px #a1c7ff18;
+}
+.editor-reference-ui .editor-insert-gallery-head {
+  display:flex;align-items:center;justify-content:space-between;gap:14px;
+  padding:12px 14px 9px;border-bottom:1px solid #3b536f;
+}
+.editor-reference-ui .editor-insert-gallery-head > div {display:flex;flex-direction:column;gap:2px;min-width:0;}
+.editor-reference-ui .editor-insert-gallery-head strong {font-size:14px;letter-spacing:-.01em;}
+.editor-reference-ui .editor-insert-gallery-head span {font-size:10px;color:#afc6da;}
+.editor-reference-ui .editor-insert-gallery-head button {display:grid;place-items:center;border:1px solid #495e79;border-radius:7px;color:#d9ecff;width:29px;height:28px;flex:none;}
+.editor-reference-ui .editor-insert-gallery-head button:hover {background:#284a70;border-color:#84bbeb;}
+.editor-reference-ui .editor-insert-gallery-tabs {display:flex;align-items:center;gap:5px;padding:8px 13px 0;}
+.editor-reference-ui .editor-insert-gallery-tabs button {display:flex;align-items:center;gap:6px;padding:7px 11px;border:1px solid #455b74;border-radius:8px;color:#b7cddd;font-size:11px;font-weight:700;}
+.editor-reference-ui .editor-insert-gallery-tabs button.active {background:#1b4e80;color:#fff;border-color:#79b3ec;}
+.editor-reference-ui .editor-insert-gallery .editor-palette-heading {padding:9px 14px 5px;flex:none;background:transparent;}
+.editor-reference-ui .editor-insert-gallery .editor-palette-heading > div:first-child {margin-bottom:5px;}
+.editor-reference-ui .editor-insert-gallery .editor-palette-search {height:35px;font-size:12px;}
+.editor-reference-ui .editor-insert-gallery .editor-palette-filters {justify-content:flex-start;gap:6px;margin:6px 0;}
+.editor-reference-ui .editor-insert-gallery .editor-palette-filters button {flex:0 1 auto;padding:6px 14px;font-size:11px;}
+.editor-reference-ui .editor-insert-kind-list {
+  display:flex;align-items:center;flex-wrap:wrap;gap:5px;
+  max-height:100px;overflow-y:auto;margin:8px 0 5px;padding:1px;
+  scrollbar-width:thin;scrollbar-color:#5a7996 transparent;
+}
+.editor-reference-ui .editor-insert-kind-list button {
+  display:flex;align-items:center;gap:6px;padding:5px 8px;
+  color:#bccfe1;background:#303b4c;border:1px solid #445a72;
+  border-radius:6px;font-size:10px;font-weight:600;white-space:nowrap;
+}
+.editor-reference-ui .editor-insert-kind-list button:hover {border-color:#7cbbf5;color:#fff;}
+.editor-reference-ui .editor-insert-kind-list button.active {background:#1c5487;border-color:#85c4f6;color:#fff;}
+.editor-reference-ui .editor-insert-kind-list button span {opacity:.68;font-size:9px;}
+.editor-reference-ui .editor-insert-gallery .editor-palette-scroll {
+  padding:5px 14px 13px;flex:1;min-height:0;overflow-x:hidden;overflow-y:auto;
+}
+.editor-reference-ui .editor-insert-gallery .editor-palette-section {margin:8px 0 12px;}
+.editor-reference-ui .editor-insert-gallery .editor-palette-section-title {font-size:10px;}
+.editor-reference-ui .editor-insert-gallery .editor-parts-grid {
+  display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:9px;
+}
+.editor-reference-ui .editor-insert-gallery .editor-part-tile {min-height:90px;}
+.editor-reference-ui .editor-insert-gallery .editor-part-main {min-height:90px;}
+.editor-reference-ui .editor-insert-gallery .editor-part-label {font-size:11px;}
+.editor-reference-ui .editor-insert-gallery .editor-sidebar-list {padding-top:12px;}
+.editor-reference-ui .editor-insert-gallery .editor-example-item,
+.editor-reference-ui .editor-insert-gallery .editor-circuit-item {text-align:left;}
+@media(max-width:740px) {
+  .editor-reference-ui .editor-insert-gallery {top:calc(100% + 2px);left:6px;width:calc(100vw - 12px);max-height:min(66vh,540px);}
+  .editor-reference-ui .editor-insert-gallery .editor-parts-grid {grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;}
+  .editor-reference-ui .editor-insert-kind-list {max-height:75px;}
+  .editor-reference-ui .editor-ribbon-panel .editor-insert-kind-button {min-width:68px;max-width:81px;}
+}
+@media(max-width:420px) {
+  .editor-reference-ui .editor-insert-gallery .editor-parts-grid {grid-template-columns:repeat(2,minmax(0,1fr));}
+}
+
+/* One continuous Insert gallery scroll surface: the title, tabs, search box and
+   kind filters scroll away together instead of remaining sticky above the parts. */
+.editor-reference-ui .editor-insert-gallery-body {
+  flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;
+  overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#527ca4 transparent;
+}
+.editor-reference-ui .editor-insert-gallery-body .editor-palette-scroll {
+  flex:none;min-height:auto;overflow:visible;
+}
+.editor-reference-ui .editor-insert-gallery-body .editor-insert-kind-list {
+  max-height:none;overflow:visible;
+}
+.editor-reference-ui .editor-insert-gallery .editor-insert-search-close {
+  position:absolute;right:6px;top:50%;transform:translateY(-50%);
+  display:grid;place-items:center;width:28px;height:27px;
+  border:1px solid #49617d;border-radius:7px;color:#c6daee;
+  background:#283748;
+}
+.editor-reference-ui .editor-insert-gallery .editor-insert-search-close:hover {
+  color:#fff;background:#315777;border-color:#80b8e8;
+}
+.editor-reference-ui .editor-insert-gallery .editor-palette-search.editor-insert-kind-search {padding-right:44px;}
+.editor-reference-ui .editor-insert-gallery .editor-palette-heading {
+  padding-top:9px;padding-bottom:4px;
+}
+
+/* The More Kinds dropdown sits outside the ribbon's horizontal scroller,
+   so it stays visible without claiming permanent workbench space. */
+.editor-reference-ui .editor-more-kinds-menu {
+  position:absolute;top:calc(100% + 4px);z-index:95;
+  box-sizing:border-box;width:min(260px,calc(100vw - 20px));
+  max-height:min(58vh,440px);overflow-y:auto;overscroll-behavior:contain;
+  padding:6px;border:1px solid #5b83ac;border-radius:10px;
+  background:#222e3e;color:#eaf4ff;
+  box-shadow:0 14px 40px #030a18c9,0 0 0 1px #ffffff0b;
+  scrollbar-width:thin;scrollbar-color:#526e8a transparent;
+}
+.editor-reference-ui .editor-more-kinds-title {
+  padding:7px 9px 9px;font-size:11px;font-weight:750;letter-spacing:.025em;
+  color:#a9c5e1;border-bottom:1px solid #41576f;margin-bottom:4px;
+}
+.editor-reference-ui .editor-more-kinds-item {
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  width:100%;padding:10px 9px;text-align:left;border-radius:7px;
+  color:#e4eaf4;font-size:12px;font-weight:600;
+}
+.editor-reference-ui .editor-more-kinds-item:hover,
+.editor-reference-ui .editor-more-kinds-item:focus-visible,
+.editor-reference-ui .editor-more-kinds-item.active {
+  background:#244e79;color:#fff;outline:none;
+}
+.editor-reference-ui .editor-more-kinds-count {
+  min-width:26px;padding:2px 5px;text-align:center;font-size:10px;
+  background:#34465c;color:#c8ddf2;border-radius:12px;
+}

@@ -46,7 +46,7 @@ for (const [name,content] of [['scene.tsx',source],['CircuitEditorPage.tsx',page
 }
 assert.match(source,/lastFittedBoard\.current === boardId/,'resizing the canvas must preserve orbit and zoom');
 assert.match(source,/detail\.type === "focus-circuit"/);
-assert.match(page,/label="Focus components"/);
+assert.match(page,/label="Focus parts"/);
 assert.match(page,/\['G','Focus components'\]/);
 console.log(`Arduino LCD: ${routes.length} wires, ${Math.max(...heights).toFixed(2)} max height above breadboard, all routable: PASS`);
 console.log('Perspective framing, remembered zoom across dock/sidebar resizing, Focus components / Fit board: PASS');

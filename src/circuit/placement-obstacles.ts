@@ -1,6 +1,8 @@
 import { BOARD, holePosition, parseTerminalHole } from './breadboard';
 import { mcuBoardOrigin } from './mcu-headers';
+import { controllerDimensionsForPart, controllerPosition, isOffboardController } from './offboard-controllers';
 import type { HoleId, PlacedPart } from './types';
+import { expansionById } from './expansion-catalog';
 
 export type BoardRect = {
   id: string;
@@ -28,6 +30,7 @@ function rowRank(row: string): number {
 }
 
 function rectPadding(part: PlacedPart): RectPadding {
+  if (part.kind === 'module') return expansionById(part.props.moduleId)?.footprint === 'dip' ? {x:0.10,z:0.26} : {x:0.12,z:0.20};
   if (LARGE_DIP.has(part.kind)) return { x: 0.12, z: 0.34 };
   if (MEDIUM_DIP.has(part.kind)) return { x: 0.11, z: 0.28 };
   if (part.kind === 'seven-segment') return { x: 0.2, z: 0.5 };
@@ -75,8 +78,9 @@ function pinBounds(part: PlacedPart): BoardRect | null {
  * Position is shared with the rendered McuMesh model.
  */
 function mcuBodyRect(part: PlacedPart): BoardRect | null {
-  const [x,,z] = mcuBoardOrigin(part);
-  return { id:part.id,kind:part.kind,minX:x-1.36,maxX:x+1.36,minZ:z-1.06,maxZ:z+1.06 };
+  const {x,z} = controllerPosition(part);
+  const {width,depth} = controllerDimensionsForPart(part);
+  return { id:part.id,kind:part.kind,minX:x-width/2,maxX:x+width/2,minZ:z-depth/2,maxZ:z+depth/2 };
 }
 
 function icBodyRect(part: PlacedPart): BoardRect | null {
@@ -103,8 +107,8 @@ function icBodyRect(part: PlacedPart): BoardRect | null {
 }
 
 export function partObstacle(part: PlacedPart): BoardRect | null {
-  if (part.kind === 'mcu') return mcuBodyRect(part);
-  if (LARGE_DIP.has(part.kind) || MEDIUM_DIP.has(part.kind)) return icBodyRect(part);
+  if (isOffboardController(part)) return mcuBodyRect(part);
+  if (LARGE_DIP.has(part.kind) || MEDIUM_DIP.has(part.kind) || (part.kind==='module' && expansionById(part.props.moduleId)?.footprint==='dip')) return icBodyRect(part);
   return pinBounds(part);
 }
 
@@ -128,12 +132,12 @@ export function collidesWithExisting(part: PlacedPart, others: readonly PlacedPa
 export function pinConflict(part: PlacedPart, others: readonly PlacedPart[], ignoreId?: string): boolean {
   const used = new Set<string>();
   for (const other of others) {
-    if (other.id === ignoreId || other.kind === 'mcu') continue;
+    if (other.id === ignoreId || isOffboardController(other)) continue;
     for (const hole of Object.values(other.pins)) used.add(hole);
   }
   // An Arduino header is represented by virtual electrical net anchors,
   // not real leads inserted into the breadboard's F/J holes.
-  if (part.kind === 'mcu') return false;
+  if (isOffboardController(part)) return false;
   return Object.values(part.pins).some((hole) => used.has(hole));
 }
 
@@ -175,7 +179,7 @@ export function segmentRectDistance(
  * rendered by LogicGateMesh in parts-3d.tsx.
  */
 export function wireBodyObstacle(part: PlacedPart): BoardRect | null {
-  if (part.kind === 'mcu') return mcuBodyRect(part);
+  if (isOffboardController(part)) return mcuBodyRect(part);
   const holes = terminalPins(part);
   if (!holes.length) return null;
   const points = holes.map((hole) => {

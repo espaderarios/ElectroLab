@@ -18,13 +18,13 @@ for (const name of ['src/circuit-lab/workbench-dock.tsx','src/pages/CircuitEdito
 assert.match(dock,/editor-dock-handle-row/,'real bottom-edge handle is required');
 assert.match(dock,/Hide bottom controls/);
 assert.match(dock,/Show monitor & code/);
-assert.match(dock,/aria-expanded=\{expanded\}/,'expansion must be accessible');
-assert.match(dock,/expanded && <div id="editor-workbench-controls"><WorkbenchDockContent/,'heavy diagnostic content must unmount when hidden');
+assert.match(dock,/aria-expanded=\{visibleExpanded\}/,'expansion must be accessible');
+assert.match(dock,/visibleExpanded && <div id="editor-workbench-controls"><WorkbenchDockContent/,'heavy diagnostic content must unmount when hidden');
 assert.match(dock,/localStorage\.setItem\(DOCK_STORAGE_KEY/,'dock state must persist');
 assert.match(dock,/event\.altKey/,'keyboard shortcut must be guarded');
 assert.match(dock,/Fast 3D/,'rendering quality control must be reachable');
 assert.match(page,/<CircuitLab performanceMode=\{performanceMode\}/);
-assert.match(page,/<WorkbenchDock projectId=\{projectId\}/);
+assert.match(page,/<WorkbenchDock projectId=\{projectId\} focusMode=\{focusMode\}/);
 assert.match(lab,/<Canvas performanceMode=\{performanceMode\}/);
 assert.match(canvas,/dpr=\{performanceMode \? 1 : /,'Fast 3D must lower pixel ratio');
 assert.match(canvas,/shadows=\{!performanceMode\}/,'Fast 3D must turn off shadow mapping');

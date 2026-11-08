@@ -3,8 +3,10 @@
  * A header socket is NOT one of the breadboard's five-hole strips.
  * The serialized identity remains stable when the view/camera changes.
  */
-import { BOARD, colX, holePosition, holeStrip } from './breadboard';
+import { BOARD, holePosition, holeStrip } from './breadboard';
 import type { HoleId, PlacedPart, Wire } from './types';
+import { expansionById } from './expansion-catalog';
+import { controllerPosition, controllerBodyY, moduleHeaderPosition, parseModuleTerminal } from './offboard-controllers';
 
 export const UNO_DIGITAL = Array.from({length:14},(_,i)=>`d${i}`);
 export const UNO_ANALOG = Array.from({length:6},(_,i)=>`a${i}`);
@@ -24,13 +26,8 @@ export function parseMcuTerminal(id: HoleId): { partId: string; pin: string } | 
 export function isMcuTerminal(id: HoleId) {return parseMcuTerminal(id)!==null;}
 
 export function mcuBoardOrigin(part: PlacedPart): [number,number,number] {
-  const anchor = part.props.headerAnchor ?? DEFAULT_MCU_ANCHOR;
-  const m = /^[A-T](\d+)$/.exec(anchor);
-  const firstCol = m ? Number(m[1]) : 22;
-  // Legacy MCU models averaged 23 pins F(start)..F(start+22).
-  const centerX = colX(firstCol + 11) + 0.15;
-  const z = Math.min(0.3 - 1.75, -(BOARD.depth/2 + 1.12));
-  return [centerX, BOARD.height + 0.075/2 + 0.035, z];
+  const center = controllerPosition(part);
+  return [center.x, controllerBodyY, center.z];
 }
 export function mcuPinLocal(pin: string): [number,number,number] | null {
   const digital = UNO_DIGITAL.indexOf(pin);
@@ -55,6 +52,22 @@ export function terminalPosition(id:HoleId,parts:readonly PlacedPart[]): [number
     const xyz=p?mcuHeaderPosition(p,h.pin):null;
     if(xyz) return xyz;
     return [NaN,NaN,NaN];
+  }
+  const mod=parseModuleTerminal(id);
+  if (mod) {
+    const p=parts.find(part=>part.kind==='module'&&part.id===mod.partId);
+    return (p && moduleHeaderPosition(p,mod.pin)) ?? [NaN,NaN,NaN];
+  }
+  // Most expanded modules have their header sockets directly above their
+  // breadboard-connected leads. A wire clicked on one of these physical
+  // sockets must end at the socket opening, not hidden under the PCB.
+  // DIP packages keep their contacts at the breadboard socket height.
+  const module = parts.find(part => part.kind === 'module' &&
+    expansionById(part.props.moduleId)?.footprint !== 'dip' &&
+    Object.values(part.pins).includes(id));
+  if (module) {
+    const [x, , z] = holePosition(id);
+    return [x, BOARD.height + 0.225, z];
   }
   return holePosition(id);
 }

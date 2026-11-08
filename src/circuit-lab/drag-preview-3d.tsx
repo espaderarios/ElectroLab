@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { Canvas } from '@react-three/fiber'
 import * as THREE from 'three'
 import { BOARD, holePosition } from '@/circuit/breadboard'
-import { mcuBoardOrigin } from '@/circuit/mcu-headers'
+import { controllerPosition, controllerDimensionsForPart, isOffboardController } from '@/circuit/offboard-controllers'
 import type { ToolId } from '@/circuit/types'
 import { buildPreviewPart, useLab } from '@/store/lab'
 import { PartSwitch } from './parts-3d'
@@ -31,9 +31,10 @@ export function DraggedPart3D({ tool }: { tool: ToolId }) {
 
   const framing = useMemo(() => {
     if (!part) return { x: 0, z: 0, zoom: 52 }
-    if (part.kind === 'mcu') {
-      const [x,,z]=mcuBoardOrigin(part)
-      return {x,z,zoom:42}
+    if (isOffboardController(part)) {
+      const {x,z}=controllerPosition(part)
+      const {width}=controllerDimensionsForPart(part)
+      return {x,z,zoom:Math.max(25,Math.min(46,100/(width+1.2)))}
     }
     const points = Object.values(part.pins)
       .filter((hole) => hole && /^[A-T]\d+$/.test(hole))
@@ -67,7 +68,7 @@ export function DraggedPart3D({ tool }: { tool: ToolId }) {
         <hemisphereLight intensity={0.9} color="#eaf7ff" groundColor="#173152" />
         <directionalLight position={[4, 8, 5]} intensity={1.8} />
         {/* Move the actual world-space mesh to the preview camera's origin. */}
-        <group position={[-framing.x, -BOARD.height - 0.12, -framing.z]}>
+        <group position={[-framing.x, isOffboardController(part) ? -.10 : -BOARD.height - .12, -framing.z]}>
           <PartSwitch part={part} selected={false} sim={sim} />
         </group>
         <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.34, 0]}>

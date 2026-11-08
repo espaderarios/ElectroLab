@@ -36,7 +36,7 @@ assert.deepEqual([...new Set(purple)], [], `Studio theme still has purple: ${pur
 assert.match(tailwind,/const cobalt = \{/);
 assert.match(tailwind,/900:'#102d53'/);
 assert.match(tailwind,/violet:cobalt/);
-assert.match(page,/editor-studio-modes/);
+assert.match(page,/editor-ribbon-panel/);
 assert.match(dock,/editor-diagnostics-toolbar/);
 assert.doesNotMatch(dock,/Power On|Power Off|editor-power-actions/, 'Power buttons must not return to dock');
 assert.match(read('src/circuit/types.ts'),/red: "#c2413b"/, 'Real wire colors preserved');

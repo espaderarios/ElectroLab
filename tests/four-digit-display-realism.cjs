@@ -1,0 +1,25 @@
+/** Physical regression for the distinct, bare four-digit seven-segment display. */
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const ts = require('typescript');
+const root = path.resolve(__dirname, '..');
+const mesh = fs.readFileSync(path.join(root, 'src/circuit-lab/expansion-meshes.tsx'), 'utf8');
+const catalog = fs.readFileSync(path.join(root, 'src/circuit/expansion-catalog.ts'), 'utf8');
+const tree = ts.createSourceFile('expansion-meshes.tsx',mesh,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
+assert.equal(tree.parseDiagnostics.length,0,'four digit model TSX parses');
+const match = mesh.match(/const FOUR_DIGIT_SEGMENTS:[^=]*= \[([\s\S]*?)\];/);
+assert(match,'a physical seven segment definition exists');
+const labels = [...match[1].matchAll(/name:'([a-g])'/g)].map(m=>m[1]);
+assert.deepEqual(labels,['a','b','c','d','e','f','g'],'exactly seven physical segments per digit');
+assert.match(mesh,/Array\.from\(\{length:4\},\(_,digit\)=>\{/,'four separate digits');
+assert.match(mesh,/FOUR_DIGIT_SEGMENTS\.map\(seg=>/,'seven segments per digit');
+assert.match(mesh,/decimal point below and to the right of each digit/i,'independent decimal points');
+assert.match(mesh,/shape\.lineTo\(0\.42, 0\.10\)/,'chamfered segment polygon');
+assert.match(mesh,/if\(spec\.id==='display-4digit'\) return <FourDigitDisplayPackage/,'special housing, not generic screen/PCB');
+assert.match(mesh,/if\(spec\.id==='display-ledbar'\)/,'separate genuine bar graph');
+assert.match(mesh,/const width=Math\.max\(1\.18,w\), depth=\.56;/,'package does not cover DIP contacts along E/F');
+const record = catalog.split('\n').find(l=>l.includes("id:'display-4digit'"));
+assert(record && record.includes("pins:['a','b','c','d','e','f','g','dp','dig1','dig2','dig3','dig4']"),'12 separate physical pins retained');
+assert(record.includes("footprint:'dip'") && record.includes("behavior:'prototype'"),'physical DIP placement and truthful unimplemented multiplex behavior');
+console.log('Four-digit model: 4 × 7 polygon segments + decimal points, 12-pin DIP housing, no blue PCB, honest prototype: PASS');

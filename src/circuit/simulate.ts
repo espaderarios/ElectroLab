@@ -1,5 +1,6 @@
 import { getAllHoles, holeStrip } from "./breadboard";
 import { LOGIC_IC_PINOUTS } from "./logic-ics";
+import { expansionLogicOutputs, EXPANSION_LOGIC_POWER } from "./expansion-logic";
 import { SEVEN_SEGMENT_LED_NAMES, commonPin } from "./seven-segment";
 import type {
   HoleId,
@@ -461,9 +462,14 @@ export function simulate(input: {
     speakers: {},
     mcuPowered: false,
     shortCircuit: false,
+    supplyOverload: false,
+    sourceConflict: false,
   };
 
-  if (!input.powerOn) {
+  // With no active battery prototype, the original early-off fast path avoids
+  // building breadboard nets. A placed 18650 is an independent source: its
+  // own dead short can still be dangerous when the bench PSU is switched off.
+  if (!input.powerOn && !input.parts.some(p => p.kind === 'module' && p.props.moduleId === 'power-battery')) {
     const fuses: NonNullable<SimResult["fuses"]> = {};
     for (const part of input.parts) {
       if (part.kind !== "fuse") continue;
@@ -643,6 +649,56 @@ export function simulate(input: {
     negativeNode !== null &&
     positiveNode === negativeNode;
 
+  // The 18650 holder has a visible battery but no DC source stamp in the
+  // present one-PSU solver. Detect *direct* source mistakes through the
+  // actual breadboard/wire net topology instead of silently accepting them.
+  // This does not claim to solve Li-ion chemistry, charging or discharge.
+  const batteryFaultIds = new Set<string>();
+  const batteryFaultWarnings: string[] = [];
+  let sourceConflict = false;
+  let batteryShort = false;
+  const root = (hole?: HoleId) => {
+    if (!hole) return undefined;
+    const idx = indexOf.get(hole);
+    return idx === undefined ? undefined : uf.find(idx);
+  };
+  for (const part of input.parts) {
+    if (part.kind !== 'module' || part.props.moduleId !== 'power-battery') continue;
+    const bPlus = root(part.pins.plus);
+    const bMinus = root(part.pins.minus);
+    if (bPlus === undefined || bMinus === undefined) continue;
+    if (bPlus === bMinus) {
+      batteryShort = true;
+      batteryFaultIds.add(part.id);
+      batteryFaultWarnings.push(`BATTERY SHORT: ${part.id} 18650 positive and negative terminals are directly tied together.`);
+    } else if (input.powerOn && positiveNode !== null && negativeNode !== null &&
+      input.psuVoltage > 0.5) {
+      if (bPlus === negativeNode && bMinus === positiveNode) {
+        sourceConflict = true;
+        batteryFaultIds.add(part.id);
+        batteryFaultWarnings.push(`REVERSED SOURCES: ${part.id} 18650 cell is connected opposite to the bench supply. Disconnect before powering.`);
+      } else if (bPlus === positiveNode && bMinus === negativeNode) {
+        sourceConflict = true;
+        batteryFaultIds.add(part.id);
+        const mismatch = Math.abs(input.psuVoltage - 3.7) > 0.35;
+        batteryFaultWarnings.push(mismatch
+          ? `SOURCE CONFLICT: ${part.id} nominal 3.7 V 18650 cell is directly paralleled with a ${input.psuVoltage.toFixed(1)} V bench supply. A current-limited charger is required.`
+          : `UNCONTROLLED BATTERY CONNECTION: ${part.id} is directly paralleled with the bench supply even though nominal voltages match. Use a dedicated current-limited charger.`);
+      }
+    }
+  }
+  if (!input.powerOn) {
+    const fuses: NonNullable<SimResult['fuses']> = {};
+    for (const part of input.parts) {
+      if (part.kind !== 'fuse') continue;
+      const blown = Boolean(part.props.fuseBlown || input.prevBlownFuses?.[part.id]);
+      fuses[part.id] = {id:part.id,conducting:false,blown,current:0};
+    }
+    return {...empty,fuses,shortCircuit:batteryShort,
+      burned:Object.fromEntries([...batteryFaultIds].map(id=>[id,true])),
+      warnings:batteryFaultWarnings};
+  }
+
   // ============================================================
   // NODE LIST
   // ============================================================
@@ -801,10 +857,15 @@ export function simulate(input: {
 
       if (ia === undefined || ik === undefined) continue;
 
+      // Silicon / Schottky junction: forward drop plus small dynamic resistance.
+      // The generic resistor model incorrectly conducted in reverse and made
+      // the Schottky catalog choice electrically indistinguishable.
       elements.push({
         a: uf.find(ia),
         b: uf.find(ik),
-        resistance: 1000,
+        resistance: DIODE_RD,
+        forwardVoltage: part.props.forwardVoltage ??
+          (part.props.diodeType === "schottky" ? 0.3 : DIODE_VF),
         id: part.id,
       });
     }
@@ -1202,6 +1263,18 @@ export function simulate(input: {
       }
     }
 
+    // Expanded library devices with a combinational DC model use a very small
+    // equivalent logic supply draw (~1mA at 5V). All other new modules have
+    // high-impedance prototype pins and do NOT silently power, source or short
+    // their terminals. This avoids presenting a virtual connector as hardware.
+    if (part.kind === 'module' && part.props.moduleId && EXPANSION_LOGIC_POWER[part.props.moduleId]) {
+      const supply=EXPANSION_LOGIC_POWER[part.props.moduleId];
+      const v=pinNode(part.pins[supply.vcc]); const g=pinNode(part.pins[supply.gnd]);
+      if (v !== undefined && g !== undefined && v !== g) {
+        elements.push({a:v,b:g,resistance:5000,id:`${part.id}:logic-core`});
+      }
+    }
+
     // ----------------------------------------------------------
     // ARDUINO / MCU POWER LOAD
     // ----------------------------------------------------------
@@ -1272,6 +1345,33 @@ export function simulate(input: {
       const drivers: typeof elements = [];
       const truth: string[] = [];
       for (const part of input.parts) {
+        if (part.kind === 'module' && part.props.moduleId && EXPANSION_LOGIC_POWER[part.props.moduleId]) {
+          const moduleId=part.props.moduleId;
+          const supply=EXPANSION_LOGIC_POWER[moduleId];
+          const vccNode=pinNode(part.pins[supply.vcc]);
+          const gndNode=pinNode(part.pins[supply.gnd]);
+          const powered=vccNode!==undefined && gndNode!==undefined &&
+            (solved[vccNode]??0)-(solved[gndNode]??0)>=2;
+          if (!powered) {
+            logicGates[part.id]={output:0,powered:false};
+            truth.push(`${part.id}:off`);
+          } else {
+            const high=(pin:string)=>{
+              const n=pinNode(part.pins[pin]);
+              return n!==undefined && (solved[n]??0)-(solved[gndNode!]??0)>=2.5;
+            };
+            const outputs=expansionLogicOutputs(moduleId,high);
+            let first=true;
+            for (const [pin,value] of Object.entries(outputs)) {
+              const outputNode=pinNode(part.pins[pin]);
+              if(outputNode===undefined)continue;
+              if (first) {logicGates[part.id]={output:value?1:0,powered:true};first=false;}
+              truth.push(`${part.id}:${pin}:${Number(value)}`);
+              drivers.push({a:outputNode,b:value?vccNode!:gndNode!,resistance:30,id:`${part.id}:expanded-${pin}`});
+            }
+          }
+          continue;
+        }
         if (!gateKinds.has(part.kind)) continue;
         const pinout = LOGIC_IC_PINOUTS[part.kind as keyof typeof LOGIC_IC_PINOUTS];
         const vccNode = pinNode(part.pins.p14 ?? part.pins.vcc);
@@ -1971,7 +2071,7 @@ export function simulate(input: {
   const triacs: Record<string, TriacState> = {};
   const diacs: Record<string, DiacState> = {};
   const motors: Record<string, MotorState> = {};
-  const warnings: string[] = [];
+  const warnings: string[] = [...batteryFaultWarnings];
   let supplyCurrent = 0;
 
   // ============================================================
@@ -2068,11 +2168,15 @@ export function simulate(input: {
 
       const voltage = va - vk;
 
+      const vf = part.props.forwardVoltage ??
+        (part.props.diodeType === "schottky" ? 0.3 : DIODE_VF);
+      const current = voltage >= vf - 0.05
+        ? Math.max(0, (voltage - vf) / DIODE_RD) : 0;
       diodes[part.id] = {
         id: part.id,
-        on: voltage > 0.55,
+        on: current > 1e-6 && voltage >= vf - 0.06,
         forwardVoltage: voltage,
-        current: Math.abs(currents[part.id] ?? 0),
+        current,
       };
     }
 
@@ -3224,6 +3328,9 @@ export function simulate(input: {
       if (el.a === positiveNode || el.b === positiveNode) {
         const va = solved[el.a] ?? 0;
         const vb = solved[el.b] ?? 0;
+        // Reverse-biased junctions are open circuits. Do not count them as
+        // current drawn from the bench supply.
+        if (el.forwardVoltage !== undefined && va - vb < el.forwardVoltage - 0.05) continue;
         const i =
           (va - vb - (el.forwardVoltage ?? 0)) /
           Math.max(el.resistance, 1e-9);
@@ -3245,43 +3352,29 @@ export function simulate(input: {
     supplyCurrent = Math.abs(supplyCurrent) + lcdLoadA + oledLoadA;
   }
 
-  const burned: Record<string, boolean> = {};
-
-  // Components that have both terminals/power pins collapsed onto the PSU
-  // short node are physically across a hard short. Mark them burned so the
-  // existing smoke animation can react.
-  if (hardShort && positiveNode !== null) {
-    for (const part of input.parts) {
-      const candidatePins =
-        // A bench-supply hard short should trip the PSU protection model,
-        // not automatically destroy every powered module. Modules are only
-        // marked burned by their own overvoltage/overcurrent conditions.
-        part.kind === "mcu" || part.kind === "lcd"
-          ? []
-          : part.kind === "resistor" ||
-                part.kind === "led" ||
-                part.kind === "diode" ||
-                part.kind === "buzzer" ||
-                part.kind === "speaker" ||
-                part.kind === "inductor" ||
-                part.kind === "capacitor"
-              ? Object.values(part.pins).slice(0, 2)
-              : [];
-
-      if (candidatePins.length >= 2) {
-        const indices = candidatePins
-          .map((h) => h ? indexOf.get(h) : undefined)
-          .filter((n): n is number => n !== undefined);
-        if (indices.length >= 2) {
-          const n0 = uf.find(indices[0]);
-          const n1 = uf.find(indices[1]);
-          if (n0 === positiveNode && n1 === positiveNode) {
-            burned[part.id] = true;
-          }
-        }
-      }
-    }
+  // A finite low-impedance path can produce dangerous source current without
+  // any two breadboard nodes being *identical* in union-find (e.g. a coil,
+  // 0.1-ohm resistor, or conducting switch model). Compare the solved current
+  // with the bench supply rating; classify a near-short only if its implied
+  // resistance is also very small. Other heavy loads are supply overloads,
+  // not mislabeled as shorts.
+  const supplyOverload = !hardShort && Number.isFinite(supplyCurrent) &&
+    supplyCurrent > PSU_SHORT_CURRENT_A;
+  const effectiveOhms = supplyCurrent > 0
+    ? Math.abs(input.psuVoltage) / supplyCurrent : Number.POSITIVE_INFINITY;
+  const nearShort = supplyOverload && effectiveOhms <= 2.5;
+  if (nearShort) {
+    warnings.push(`SHORT CIRCUIT: supply path is about ${effectiveOhms.toFixed(3)} Ω and requests ${supplyCurrent.toFixed(2)} A; bench supply 2 A protection should engage.`);
+  } else if (supplyOverload) {
+    warnings.push(`SUPPLY OVERCURRENT: ${supplyCurrent.toFixed(2)} A exceeds the 2 A bench-supply rating. This load is not necessarily a short circuit.`);
   }
+
+  const burned: Record<string, boolean> = Object.fromEntries([...batteryFaultIds].map(id=>[id,true]));
+
+  // A hard short collapses the supply terminals and trips protection. It
+  // does NOT prove that every component connected to that net dissipated
+  // heat: the supply voltage is zero while protected. Only actual device
+  // stress below should set burned[id].
   for (const [id, led] of Object.entries(leds)) {
     if (led.overcurrent) burned[id] = true;
   }
@@ -3309,6 +3402,91 @@ export function simulate(input: {
   // Diodes: > 1 A treated as overcurrent
   for (const [id, d] of Object.entries(diodes)) {
     if (Math.abs(d.current ?? 0) > 1) burned[id] = true;
+  }
+
+  // Educational ratings for types that previously had no thermal checks.
+  // This applies to modeled DC branches only. Do not invent currents for
+  // prototype expansion parts whose internal electronics aren't simulated.
+  const thermalRatings: Partial<Record<PlacedPart['kind'], {maxA: number; maxW: number}>> = {
+    pot: {maxA: 0.2, maxW: 0.25},
+    ldr: {maxA: 0.1, maxW: 0.15},
+    thermistor: {maxA: 0.15, maxW: 0.25},
+    inductor: {maxA: 0.5, maxW: 1},
+    speaker: {maxA: 0.25, maxW: 0.5},
+    motor: {maxA: 2, maxW: 10},
+    transistor: {maxA: 0.5, maxW: 0.7},
+    mosfet: {maxA: 2, maxW: 2},
+    zener: {maxA: 0.15, maxW: 1},
+    'rgb-led': {maxA: 0.03, maxW: 0.085},
+    'seven-segment': {maxA: 0.03, maxW: 0.085},
+    not: {maxA: 0.04, maxW: 0.4},
+    and: {maxA: 0.04, maxW: 0.4},
+    or: {maxA: 0.04, maxW: 0.4},
+    nand: {maxA: 0.04, maxW: 0.4},
+    nor: {maxA: 0.04, maxW: 0.4},
+    xor: {maxA: 0.04, maxW: 0.4},
+    xnor: {maxA: 0.04, maxW: 0.4},
+    timer555: {maxA: 0.2, maxW: 0.5},
+    opamp: {maxA: 0.1, maxW: 0.5},
+    servo: {maxA: 0.8, maxW: 5},
+    optocoupler: {maxA: 0.04, maxW: 0.12},
+    regulator: {maxA: 1.5, maxW: 2.0},
+    relay: {maxA: 0.7, maxW: 2},
+    thyristor: {maxA: 1.5, maxW: 2},
+    triac: {maxA: 1.5, maxW: 2},
+    diac: {maxA: 0.1, maxW: 0.25},
+    module: {maxA: 0.07, maxW: 0.3}, // modeled logic only, never unmodeled prototype pins
+  };
+  for (const part of input.parts) {
+    const rating = thermalRatings[part.kind];
+    if (!rating) continue;
+    const branches = elements.filter(el => el.id === part.id || el.id.startsWith(`${part.id}:`));
+    for (const branch of branches) {
+      const va = solved[branch.a] ?? 0;
+      const vb = solved[branch.b] ?? 0;
+      const drop = va - vb;
+      const vf = branch.forwardVoltage;
+      // A reverse-biased diode is an open circuit, not a source of heat.
+      if (vf !== undefined && drop < vf - 0.05) continue;
+      const amps = Math.abs((drop - (vf ?? 0)) / Math.max(branch.resistance, 1e-9));
+      const watts = amps * Math.abs(drop);
+      if (amps > rating.maxA || watts > rating.maxW) {
+        burned[part.id] = true;
+        warnings.push(`${part.id} (${part.kind}): estimated ${amps.toFixed(3)} A / ${watts.toFixed(2)} W exceeds the educational device rating.`);
+        break;
+      }
+    }
+    // For parts with no internal DC model, conservative supply overvoltage
+    // is detectable from their VCC/GND sockets, but current faults are not.
+    if (part.kind === 'module' && part.pins.vcc && part.pins.gnd) {
+      const supplyV = voltageAt(part, 'vcc') - voltageAt(part, 'gnd');
+      if (supplyV > 6.0 || supplyV < -0.5) {
+        burned[part.id] = true;
+        warnings.push(`${part.id}: ${supplyV.toFixed(2)} V across VCC/GND exceeds the generic 5 V module supply envelope. This is a prototype-level warning.`);
+      }
+    }
+  }
+  // A capacitor carries no DC current in steady state, but its dielectric
+  // may fail under excessive voltage.
+  for (const part of input.parts) {
+    if (part.kind !== 'capacitor') continue;
+    const capV = Math.abs(voltageAt(part,'a') - voltageAt(part,'b'));
+    if (capV > (part.props.voltageRating ?? 25)) {
+      burned[part.id] = true;
+      warnings.push(`${part.id}: capacitor overvoltage (${capV.toFixed(2)} V).`);
+    }
+  }
+
+  // The standalone OLED electrical model specifies a 3.3 V maximum.
+  // Connectors are separate from visual modules; do not assume 5 V tolerant
+  // breakouts without a regulator in the simulated package.
+  for (const part of input.parts) {
+    if (part.kind !== 'oled') continue;
+    const v = voltageAt(part, 'vcc') - voltageAt(part, 'gnd');
+    if (v > OLED_MAX_V || v < -0.5) {
+      burned[part.id] = true;
+      warnings.push(`${part.id}: ${v.toFixed(2)} V exceeds the simulated SSD1306 OLED supply rating.`);
+    }
   }
 
   // Module-level electrical state. Keep the runtime state separate from the
@@ -3374,9 +3552,9 @@ export function simulate(input: {
   for (const el of elements) {
     const va = solved[el.a] ?? 0;
     const vb = solved[el.b] ?? 0;
-    const i = Math.abs(
-      (va - vb - (el.forwardVoltage ?? 0)) / Math.max(el.resistance, 1e-9),
-    );
+    const i = el.forwardVoltage !== undefined && va - vb < el.forwardVoltage - 0.05
+      ? 0
+      : Math.abs((va - vb - (el.forwardVoltage ?? 0)) / Math.max(el.resistance, 1e-9));
     nodeCurrentByUf.set(el.a, (nodeCurrentByUf.get(el.a) ?? 0) + i);
     nodeCurrentByUf.set(el.b, (nodeCurrentByUf.get(el.b) ?? 0) + i);
   }
@@ -3584,7 +3762,9 @@ export function simulate(input: {
     voltages,
     currents,
     nodeCurrents,
-    shortCircuit: hardShort,
+    shortCircuit: hardShort || nearShort || batteryShort,
+    supplyOverload,
+    sourceConflict,
 
     leds,
     diodes,

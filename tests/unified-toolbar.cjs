@@ -1,0 +1,13 @@
+const assert=require('node:assert/strict');const fs=require('node:fs');const path=require('node:path');
+const page=fs.readFileSync(path.resolve(__dirname,'../src/pages/CircuitEditorPage.tsx'),'utf8');
+const nav=page.slice(page.indexOf('<div className="editor-ribbon-tabs"'),page.indexOf('<div className="flex-1 flex overflow-hidden min-h-0 editor-body-layout">'));
+assert.ok(nav.includes('editor-ribbon-tab'), 'Word-like contextual tabs');
+assert.ok(nav.includes('editor-ribbon-group'), 'buttons arranged into labeled command groups');
+assert.ok(nav.includes('aria-label="Insert component kinds"'), 'components organized by kind in the Insert ribbon');
+assert.ok(nav.includes('ribbonTab === \'home\''), 'Home contains editing buttons');
+assert.ok(nav.includes('ribbonTab === \'insert\''), 'Insert contains component navigation');
+assert.ok(nav.includes('ribbonTab === \'wiring\''), 'Wiring contains its own editing controls');
+assert.ok(nav.includes('ribbonTab === \'simulation\''), 'Simulation has Run and Code');
+assert.ok(nav.includes('ribbonTab === \'view\''), 'View has camera and layout controls');
+assert.ok(!nav.includes('> Design</button>')&&!nav.includes('> Wiring</button>'), 'no redundant Design / Wiring mode buttons');
+console.log('Unified toolbar now contextual Word ribbon: PASS');

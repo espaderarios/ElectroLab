@@ -1,0 +1,11 @@
+const assert=require('node:assert/strict');const fs=require('node:fs');const path=require('node:path');
+const page=fs.readFileSync(path.resolve(__dirname,'../src/pages/CircuitEditorPage.tsx'),'utf8');
+const css=fs.readFileSync(path.resolve(__dirname,'../src/index.css'),'utf8');
+assert.match(page, /\{paletteOpen && use3D && ribbonTab === 'insert' && !ribbonCollapsed && !focusMode/,'Insert popover only while ribbon is open');
+assert.match(page, /setRibbonCollapsed\(v => !v\);setPaletteOpen\(false\)/,'collapsing ribbon hides popover');
+for(const tab of ['parts','circuits','examples']) assert.ok(page.includes(`showLibrary('${tab}')`) || page.includes(`toggleInsertGallery('${tab}')`),`${tab} still opens from Insert`);
+assert.doesNotMatch(page,/<aside id="editor-library-panel"/,'no library sidebar');
+assert.match(page,/\{!ribbonCollapsed && <div id="editor-ribbon-panel"/);
+assert.match(css,/\.editor-reference-ui \.editor-ribbon-tabs/);
+assert.match(css,/\.editor-reference-ui \.editor-insert-gallery/);
+console.log('Ribbon collapse closes the floating Insert gallery without reducing workbench width: PASS');

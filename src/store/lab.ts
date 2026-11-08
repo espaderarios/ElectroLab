@@ -10,12 +10,15 @@ import {
   type BoardPresetId,
 } from "@/circuit/breadboard";
 import { helloWorldPreset, type LabPreset } from "@/circuit/presets";
+import { componentVariantProps } from "@/circuit/component-variants";
+import { expansionById } from "@/circuit/expansion-catalog";
 import { LOGIC_IC_PINOUTS } from "@/circuit/logic-ics";
 import { SEVEN_SEGMENT_PINS } from "@/circuit/seven-segment";
 import { simulate } from "@/circuit/simulate";
 import { placementIsBlocked } from "@/circuit/placement-obstacles";
 import { planWireRoutes } from "@/circuit/wire-routing";
 import { mcuTerminalId, terminalPosition, upgradeMcuHeaders, UNO_HEADER_NAMES } from "@/circuit/mcu-headers";
+import { isControllerTool, isOffboardController, controllerPosition, constrainBenchPoint, defaultControllerPosition, moduleTerminalId, upgradeControllerHeaders, type BenchPoint } from '@/circuit/offboard-controllers';
 import { autoTidyWireBundle } from "@/circuit/tidy-wires";
 import type {
   HoleId,
@@ -212,6 +215,7 @@ interface LabState {
     tool: ToolId,
     anchor: HoleId,
     explicitPins?: Record<string, HoleId>,
+    benchPosition?: BenchPoint,
   ) => void;
 
   /** Mark palette drag in progress so hole-click does not double-place. */
@@ -267,6 +271,8 @@ interface LabState {
   setMcuCode: (id: string, code: string) => void;
 
   setHover: (hole: HoleId | null) => void;
+  hoverBenchPoint: BenchPoint | null;
+  setHoverBenchPoint: (point: BenchPoint | null) => void;
   dismissPlacementError: () => void;
   clickHole: (hole: HoleId) => void;
   select: (id: string | null) => void;
@@ -300,7 +306,7 @@ interface LabState {
    * Move the selected part so its footprint is re-anchored at `anchor`
    * (same relative pin layout as when first placed).
    */
-  moveSelectedTo: (anchor: HoleId) => void;
+  moveSelectedTo: (anchor: HoleId, benchPosition?: BenchPoint) => void;
   /** Toggle "click a hole to move the selected part" mode. */
   setMovingSelected: (active: boolean) => void;
   /** Begin editing a single pin: next hole click assigns that node. */
@@ -411,6 +417,7 @@ function runSimulation(state: {
 }
 
 function getTwoPinKind(tool: ToolId): PartKind | "wire" | null {
+  if (expansionById(tool)) return "module";
   switch (tool) {
     case "wire":
       return "wire";
@@ -422,6 +429,7 @@ function getTwoPinKind(tool: ToolId): PartKind | "wire" | null {
       return "led";
 
     case "diode":
+    case "diode-schottky":
       return "diode";
 
     case "switch":
@@ -429,12 +437,19 @@ function getTwoPinKind(tool: ToolId): PartKind | "wire" | null {
     case "switch-spdt":
     case "switch-dpst":
     case "switch-dpdt":
+    case "switch-reed":
+    case "switch-slide":
       return "switch";
 
     case "button":
+    case "button-blue":
+    case "button-white":
       return "button";
 
     case "capacitor":
+    case "capacitor-electrolytic":
+    case "capacitor-film":
+    case "capacitor-tantalum":
       return "capacitor";
 
     case "inductor":
@@ -508,6 +523,7 @@ function getTwoPinKind(tool: ToolId): PartKind | "wire" | null {
     case "regulator":
       return "regulator";
     case "fuse":
+    case "fuse-glass":
       return "fuse";
 
     default:
@@ -526,6 +542,10 @@ export function computePinLayout(
   const placement = getPlacement(tool);
   if (!placement) return null;
 
+  if (isControllerTool(tool) && placement.kind === 'module') {
+    const pins = Object.fromEntries(placement.pins.map(name => [name,moduleTerminalId('__preview__',name)]));
+    return {holes:Object.values(pins),pins,kind:placement.kind};
+  }
   const parsed = parseTerminalHole(anchor);
   if (!parsed && placement.kind !== "wire") {
     return null;
@@ -536,7 +556,7 @@ export function computePinLayout(
     holes.push(anchor);
     const next = offsetHole(anchor, 1) ?? anchor;
     holes.push(next);
-  } else if (DIP_KINDS.has(placement.kind)) {
+  } else if ((DIP_KINDS.has(placement.kind) || (placement.kind === "module" && ["dip", "header"].includes(expansionById(tool)?.footprint ?? "") && placement.pins.length % 2 === 0))) {
     // A DIP straddles the centre channel. With the package notch at the
     // left, the lower/near row is pins 1..n/2 and the upper/far row returns
     // the remaining pins from right to left, matching physical DIP numbering.
@@ -660,7 +680,8 @@ export function buildPreviewPart(
           : undefined,
       switchStyle: kind === "button" ? defaults?.switchStyle ?? "tactile-black" : undefined,
       mcuModel: kind === "mcu" ? "arduino-uno" : undefined,
-      headerAnchor: kind === "mcu" ? anchor : undefined,
+      headerAnchor: isControllerTool(tool) ? anchor : undefined,
+      benchPosition: isControllerTool(tool) ? defaultControllerPosition(anchor,kind==='mcu'?undefined:tool) : undefined,
       transistorModel:
         kind === "transistor" ? defaults?.transistorModel : undefined,
       thyristorModel:
@@ -673,6 +694,7 @@ export function buildPreviewPart(
           ? kind as PlacedPart["props"]["gateFamily"]
           : undefined,
       capacitorType: kind === "capacitor" ? "ceramic" : undefined,
+      ...componentVariantProps(tool),
     },
   };
 }
@@ -688,10 +710,10 @@ export function reanchorPartPins(
 ): Record<string, HoleId> | null {
   const parsed = parseTerminalHole(anchor);
   if (!parsed) return null;
-  if (part.kind === "mcu") return { ...part.pins };
+  if (isOffboardController(part)) return { ...part.pins };
 
-  if (DIP_KINDS.has(part.kind)) {
-    return computePinLayout(part.kind, anchor)?.pins ?? null;
+  if (DIP_KINDS.has(part.kind) || (part.kind === "module" && ["dip","header"].includes(expansionById(part.props.moduleId)?.footprint ?? "") && Object.keys(part.pins).length % 2 === 0)) {
+    return computePinLayout(part.kind === "module" ? (part.props.moduleId ?? "module-clock") : part.kind, anchor)?.pins ?? null;
   }
 
   const entries = Object.entries(part.pins).filter(
@@ -746,13 +768,15 @@ export function previewMovedPart(
   if (!newPins) return null;
   return {
     ...part,
-    id: "__move_preview__",
+    id: isOffboardController(part) ? part.id : "__move_preview__",
     pins: newPins,
-    props: { ...part.props, ...(part.kind === 'mcu' ? { headerAnchor: anchor } : {}) },
+    props: { ...part.props, ...(isOffboardController(part) ? { benchPosition: defaultControllerPosition(anchor,part.props.moduleId) } : {}) },
   };
 }
 
 function getPlacement(tool: ToolId) {
+  const expanded = expansionById(tool);
+  if (expanded) return {kind: "module" as const, pins: [...expanded.pins]};
   const kind = getTwoPinKind(tool);
   if (kind) {
     if (kind === "wire") return { kind, pins: ["a", "b"] };
@@ -878,7 +902,8 @@ function getPlacement(tool: ToolId) {
     if (kind === "switch") {
       switch (tool) {
         case "switch-spdt":
-          return { kind, pins: ["com", "no", "nc"] };
+        case "switch-slide":
+          return { kind, pins: ["no", "com", "nc"] };
         case "switch-dpst":
           return { kind, pins: ["a1", "b1", "a2", "b2"] };
         case "switch-dpdt":
@@ -973,6 +998,7 @@ export const useLab = create<LabState>((set, get) => ({
   pendingHoles: [],
 
   hoverHole: null,
+  hoverBenchPoint: null,
   placementError: null,
 
   selectedId: null,
@@ -1098,7 +1124,7 @@ export const useLab = create<LabState>((set, get) => ({
       pendingHoles: [],
     }),
 
-  placePartAt: (tool, anchor, explicitPins) => {
+  placePartAt: (tool, anchor, explicitPins, benchPosition) => {
     const state = get();
     const placement = getPlacement(tool);
     if (!placement) return;
@@ -1109,7 +1135,9 @@ export const useLab = create<LabState>((set, get) => ({
     // Skip dedupe when placing pin-by-pin with explicit holes.
     if (!explicitPins) {
       const now = Date.now();
-      const key = `${tool}:${anchor}`;
+      // Off-board controllers can be dropped at many distinct bench locations
+      // with the same fallback breadboard anchor. Dedupe only truly identical drops.
+      const key = `${tool}:${anchor}:${benchPosition ? `${Math.round(benchPosition.x*20)},${Math.round(benchPosition.z*20)}` : ''}`;
       if (
         now - _lastPlace.at < 350 &&
         _lastPlace.key === key
@@ -1216,14 +1244,15 @@ export const useLab = create<LabState>((set, get) => ({
             : undefined,
         switchType:
           placement.kind === "switch"
-            ? tool === "switch-spdt" ? "spdt" :
+            ? (tool === "switch-spdt" || tool === "switch-slide") ? "spdt" :
               tool === "switch-dpst" ? "dpst" :
               tool === "switch-dpdt" ? "dpdt" : "spst"
             : undefined,
         switchStyle:
           placement.kind === "button" ? state.switchStyle : undefined,
         mcuModel: placement.kind === "mcu" ? "arduino-uno" : undefined,
-        headerAnchor: placement.kind === "mcu" ? anchor : undefined,
+        headerAnchor: isControllerTool(tool) ? anchor : undefined,
+        benchPosition: isControllerTool(tool) ? constrainBenchPoint(benchPosition ?? defaultControllerPosition(anchor,tool==='mcu'?undefined:tool),tool==='mcu'?undefined:tool) : undefined,
         code: placement.kind === "mcu" ? DEFAULT_MCU_CODE : undefined,
         lcdCols: placement.kind === "lcd" ? 16 : undefined,
         lcdRows: placement.kind === "lcd" ? 2 : undefined,
@@ -1267,11 +1296,14 @@ export const useLab = create<LabState>((set, get) => ({
                                 : placement.kind === "mcu"
                                   ? "Arduino Uno"
                                   : undefined,
+        ...componentVariantProps(tool),
       },
     };
 
     if (part.kind === 'mcu') {
       part.pins = Object.fromEntries(UNO_HEADER_NAMES.map(name => [name, mcuTerminalId(part.id,name)]));
+    } else if (isOffboardController(part)) {
+      part.pins = Object.fromEntries(Object.keys(part.pins).map(name => [name,moduleTerminalId(part.id,name)]));
     }
 
     if (placementIsBlocked(part, state.parts)) {
@@ -1631,6 +1663,8 @@ export const useLab = create<LabState>((set, get) => ({
       switchStyle,
     }),
 
+  setHoverBenchPoint: (hoverBenchPoint) => set({ hoverBenchPoint }),
+
   setHover: (hoverHole) =>
     set({
       hoverHole,
@@ -1647,7 +1681,7 @@ export const useLab = create<LabState>((set, get) => ({
       // Delete tool: clicking a part or wire removes it immediately.
       if (state.tool === "delete" && selectedId) {
         const parts = state.parts.filter((p) => p.id !== selectedId);
-        const wires = state.wires.filter((w) => w.id !== selectedId && !w.a.startsWith(`mcu:${selectedId}:`) && !w.b.startsWith(`mcu:${selectedId}:`));
+        const wires = state.wires.filter((w) => w.id !== selectedId && !w.a.startsWith(`mcu:${selectedId}:`) && !w.b.startsWith(`mcu:${selectedId}:`) && !w.a.startsWith(`module:${selectedId}:`) && !w.b.startsWith(`module:${selectedId}:`));
         const next = {
           ...state,
           parts,
@@ -2146,7 +2180,8 @@ setSelectedCapacitance: (capacitance) =>
       if (circuit.boardId && circuit.boardId !== state.boardId) {
         setBoardPreset(circuit.boardId);
       }
-      const normalized = upgradeMcuHeaders(circuit.parts, circuit.wires);
+      const mcuNormalized = upgradeMcuHeaders(circuit.parts, circuit.wires);
+      const normalized = upgradeControllerHeaders(mcuNormalized.parts, mcuNormalized.wires);
       const changedEndpoints = normalized.wires.some((w,i) => w.a !== circuit.wires[i]?.a || w.b !== circuit.wires[i]?.b);
       // Migrated header paths need a new initial tidy geometry. This also
       // preserves the existing undo baseline for older premade projects.
@@ -2249,7 +2284,9 @@ setSelectedCapacitance: (capacitance) =>
       const wires = state.wires.filter(
         (wire) => wire.id !== state.selectedId &&
           !wire.a.startsWith(`mcu:${state.selectedId}:`) &&
-          !wire.b.startsWith(`mcu:${state.selectedId}:`)
+          !wire.b.startsWith(`mcu:${state.selectedId}:`) &&
+          !wire.a.startsWith(`module:${state.selectedId}:`) &&
+          !wire.b.startsWith(`module:${state.selectedId}:`)
       );
 
       const next = {
@@ -2337,23 +2374,25 @@ setSelectedCapacitance: (capacitance) =>
       tool: active ? "select" : get().tool,
     }),
 
-  moveSelectedTo: (anchor) => {
+  moveSelectedTo: (anchor, benchPosition) => {
     const state = get();
     if (!state.selectedId) return;
     const part = state.parts.find((p) => p.id === state.selectedId);
     if (!part) return;
 
-    const newPins = part.kind === 'mcu' ? part.pins : reanchorPartPins(part, anchor);
+    const controller = isOffboardController(part);
+    const newPins = controller ? part.pins : reanchorPartPins(part, anchor);
+    const nextBench = controller ? constrainBenchPoint(benchPosition ?? defaultControllerPosition(anchor,part.props.moduleId),part.props.moduleId) : undefined;
     if (!newPins) return;
     // Dropping at the original location is a no-op: do not create an undo step
     // or unnecessarily re-run simulation.
-    if (Object.entries(part.pins).every(([name, hole]) => newPins[name] === hole) && (part.kind !== "mcu" || part.props.headerAnchor === anchor)) {
+    if (Object.entries(part.pins).every(([name, hole]) => newPins[name] === hole) && (!controller || (controllerPosition(part).x === nextBench?.x && controllerPosition(part).z === nextBench?.z))) {
       set({ movingSelected: false });
       return;
     }
 
     // Keep props (including rotation) so orientation survives the move.
-    const movedPart = { ...part, pins: newPins, props: { ...part.props, ...(part.kind === 'mcu' ? {headerAnchor: anchor} : {}) } };
+    const movedPart = { ...part, pins: newPins, props: { ...part.props, ...(controller ? { benchPosition: nextBench, headerAnchor: benchPosition ? part.props.headerAnchor : anchor } : {}) } };
     if (placementIsBlocked(movedPart, state.parts, part.id)) {
       set({ placementError: "Cannot drop: the component would occupy another solid object." });
       return;
@@ -2382,7 +2421,7 @@ setSelectedCapacitance: (capacitance) =>
   },
 
   startPinEdit: (partId, pinName) =>
-    set((state) => state.parts.some(p => p.id === partId && p.kind === 'mcu') ? {} : ({
+    set((state) => state.parts.some(p => p.id === partId && isOffboardController(p)) ? {} : ({
       pinEditTarget: { partId, pinName },
       movingSelected: false,
       selectedId: partId,
@@ -2394,7 +2433,7 @@ setSelectedCapacitance: (capacitance) =>
   setPartPin: (partId, pinName, hole) => {
     const state = get();
     const part = state.parts.find((p) => p.id === partId);
-    if (!part || part.kind === "mcu" || !(pinName in part.pins)) return;
+    if (!part || isOffboardController(part) || !(pinName in part.pins)) return;
 
     const updatedPart = { ...part, pins: { ...part.pins, [pinName]: hole } };
     if (placementIsBlocked(updatedPart, state.parts, partId)) {
@@ -2617,15 +2656,18 @@ setSelectedCapacitance: (capacitance) =>
       }
 
       const [a, b] = holes;
-      if (a === b || holeStrip(a) === holeStrip(b) ||
-          state.wires.some((wire) => (wire.a === a && wire.b === b) || (wire.a === b && wire.b === a))) {
-        set({ pendingHole: null, pendingHoles: [] });
+      if (a === b || holeStrip(a) === holeStrip(b)) {
+        set({ placementError: 'These terminals are already connected by the same breadboard strip. Choose a different destination.', pendingHole: a, pendingHoles: [a] });
+        return;
+      }
+      if (state.wires.some((wire) => (wire.a === a && wire.b === b) || (wire.a === b && wire.b === a))) {
+        set({ placementError: 'A wire already connects those two terminals.', pendingHole: a, pendingHoles: [a] });
         return;
       }
       const wire: Wire = { id: uid("wire"), a, b, color: state.wireColor, style: state.wireStyle };
       const wires = [...state.wires, wire];
       if (planWireRoutes(wires, (id) => terminalPosition(id, state.parts), state.parts).slice(-1)[0]?.blocked) {
-        set({ placementError: "Wire cannot be routed without intersecting a solid part.", pendingHoles: [], pendingHole: null });
+        set({ placementError: "No safe path around the components for a solid wire. Switch to Jumper to arch over the parts, or choose a different endpoint.", pendingHoles: [a], pendingHole: a });
         return;
       }
       const next = { ...state, wires };

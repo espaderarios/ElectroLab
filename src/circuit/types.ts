@@ -49,7 +49,10 @@ export type SwitchType = "spst" | "spdt" | "dpst" | "dpdt";
 /** Active contact for an SPDT switch; SPST uses `closed` instead. */
 export type SwitchPosition = "open" | "no" | "nc";
 
+import type { ExpansionToolId } from "./expansion-catalog";
+
 export type ToolId =
+  | ExpansionToolId
   | "select"
   | "none"
   | "psu-positive"
@@ -60,13 +63,21 @@ export type ToolId =
   | "resistor"
   | "led"
   | "diode"
+  | "diode-schottky"
   | "switch"
   | "switch-spst"
   | "switch-spdt"
   | "switch-dpst"
   | "switch-dpdt"
+  | "switch-reed"
+  | "switch-slide"
   | "button"
+  | "button-blue"
+  | "button-white"
   | "capacitor"
+  | "capacitor-electrolytic"
+  | "capacitor-film"
+  | "capacitor-tantalum"
   | "inductor"
   | "buzzer"
   | "relay"
@@ -98,7 +109,8 @@ export type ToolId =
   | "thermistor"
   | "optocoupler"
   | "regulator"
-  | "fuse";
+  | "fuse"
+  | "fuse-glass";
 
 export type TransistorModelId =
   | "2n3904"   // TO-92 NPN
@@ -111,6 +123,7 @@ export type TransistorModelId =
   | "2n3055";  // TO-3 power NPN
 
 export type PartKind =
+  | "module"
   | "resistor"
   | "led"
   | "diode"
@@ -355,12 +368,20 @@ export interface PlacedPart {
     switchPosition?: SwitchPosition;
     /** Physical appearance of a two-terminal tactile push button. */
     switchStyle?: TactileSwitchStyle;
+    /** Physical style of an electrical component without changing its pin model. */
+    componentVariant?: "reed-switch" | "slide-spdt" | "glass-fuse";
 
     label?: string;
+    /** ID in the shared expansion catalog, for saved interactive 3D modules. */
+    moduleId?: ExpansionToolId;
+    /** Optional future simulator input; does not imply full firmware emulation. */
+    moduleValue?: number;
 
     mcuModel?: "arduino-uno" | "esp32";
     /** Breadboard anchor used only for positioning the off-board Uno PCB. */
     headerAnchor?: HoleId;
+    /** Physical center of an off-breadboard controller on the workbench. */
+    benchPosition?: { x: number; z: number };
 
     transistorModel?: TransistorModelId;
 
@@ -730,6 +751,10 @@ export interface SimResult {
 
   supplyCurrent: number;
   shortCircuit?: boolean;
+  /** Source output exceeds the educational 2 A bench-supply budget. */
+  supplyOverload?: boolean;
+  /** Directly incompatible battery/bench-supply source connections. */
+  sourceConflict?: boolean;
   lcdPowered: boolean;
   lcdText: string;
   /** Part ids that are thermally overloaded / "burned". */

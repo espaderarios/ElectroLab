@@ -22,7 +22,7 @@ assert.match(dock, /editor-power-current/, 'Keep live current status');
 assert.match(dock, /editor-graphics-quality/, 'Keep four quality presets');
 assert.match(dock, /editor-bench-drag/, 'Keep 3D dragging');
 assert.match(dock, /Show monitor & code/, 'Collapse hint should describe the remaining controls');
-assert.match(page, /editor-studio-run/, 'Top Run control must remain usable');
+assert.match(page, /editor-ribbon-run/, 'Top Run control must remain usable');
 assert.match(css, /\.editor-reference-ui \.editor-diagnostics-toolbar \.editor-dock-instruments/, 'Compact styling must be present');
 const oled = model.split('export function OledMesh(')[1].split('const TRANSISTOR_META')[0];
 assert.match(oled, /canvas\.width = 1024;/);

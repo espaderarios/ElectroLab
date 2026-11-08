@@ -37,26 +37,50 @@ import { wireRoute3DPoints, type RoutedWire } from "@/circuit/wire-routing";
 import * as simulationModule from "@/circuit/simulate";
 import { BreadboardSilkscreen, PrintedMark } from "./realistic-details";
 import { ArduinoPcbFinish } from "./pcb-finish";
+import { ReedSwitchMesh, SlideSwitchMesh } from "./component-variant-meshes";
+import { ExpansionPartMesh } from "./expansion-meshes";
 
 /**
- * Floating 3D component annotations are contextual, not part of the physical
- * model. The context is scoped to each individual component in PartSwitch, so
- * an idle breadboard has no cloud of labels or DOM overlays. Silkscreen drawn
- * onto meshes and LCD/OLED canvas textures are unaffected.
+ * Floating 3D component annotations appear only for the selected part,
+ * never on pointer hover. The per-part context keeps unselected components
+ * free of DOM label overlays while preserving physical silkscreen and LCD/OLED
+ * canvas textures.
  */
-const PartLabelHoverContext = React.createContext<boolean | null>(null);
+const PartLabelSelectionContext = React.createContext<boolean | null>(null);
 
 function Html(props: React.ComponentProps<typeof DreiHtml>) {
-  const hovered = React.useContext(PartLabelHoverContext);
-  if (hovered === false) return null;
-  return <DreiHtml {...props} />;
+  const componentSelected = React.useContext(PartLabelSelectionContext);
+  if (componentSelected === false) return null;
+
+  // Html overlays render in a DOM layer over WebGL.  An inner label with
+  // pointer-events:none isn't sufficient: the outer Drei wrapper can still
+  // swallow clicks on tiny switches and tactile buttons.  Keep the ENTIRE
+  // overlay click-through and place contextual labels away from the actuator.
+  if (componentSelected === true) {
+    return (
+      <DreiHtml
+        {...props}
+        className={[props.className, 'ece-selected-part-tooltip'].filter(Boolean).join(' ')}
+        style={{ pointerEvents: 'none' }}
+      >
+        <div
+          className="ece-selected-part-tooltip-content"
+          style={{ ...props.style, pointerEvents: 'none' }}
+          aria-hidden="true"
+        >
+          {props.children}
+        </div>
+      </DreiHtml>
+    );
+  }
+  return <DreiHtml {...props} style={{ ...props.style, pointerEvents: 'none' }} />;
 }
 
 /**
  * 3D hover events are not guaranteed to fire an exit when a pointer jumps
- * from a canvas to a toolbar or another HTML overlay. Keep pin tooltips
- * transient by clearing them at the DOM canvas boundary (and on window blur).
- * No permanent labels are mounted until the user hovers or picks a pin.
+ * from a canvas to a toolbar or another HTML overlay. Keep transient pin
+ * highlights clean across canvas boundaries; floating text is not hover-driven.
+ * Hover can still highlight a wiring socket, but does not display a label.
  */
 function useTransientPinHover() {
   const [hoveredPin, setHoveredPin] = useState<string | null>(null);
@@ -348,6 +372,7 @@ function SmokePuffs({
 
   return (
     <instancedMesh
+      raycast={() => null}
       ref={mesh}
       args={[undefined, undefined, count]}
       frustumCulled={false}
@@ -1744,7 +1769,7 @@ export function DiodeMesh({
           />
 
         <meshStandardMaterial
-          color={selected ? "#2f2f2f" : "#151515"}
+          color={selected ? "#2f2f2f" : part.props.diodeType === "schottky" ? "#253444" : "#151515"}
           roughness={0.48}
           metalness={0.02}
         />
@@ -1945,9 +1970,11 @@ export function DiodeMesh({
 function SwitchLever({
   closed,
   selected,
+  onActivate,
 }: {
   closed: boolean;
   selected: boolean;
+  onActivate: () => void;
 }) {
   const lever = useRef<THREE.Group>(null);
 
@@ -1963,7 +1990,13 @@ function SwitchLever({
   });
 
   return (
-    <group ref={lever}>
+    <group
+      ref={lever}
+      onClick={(event) => {
+        event.stopPropagation();
+        onActivate();
+      }}
+    >
 
       {/* BLUE ACTUATOR BASE */}
       <mesh
@@ -2135,6 +2168,12 @@ export function SwitchMesh({
   part: PlacedPart;
   selected: boolean;
 }) {
+  if (part.props.componentVariant === 'reed-switch') {
+    return <ReedSwitchMesh part={part} selected={selected} />;
+  }
+  if (part.props.componentVariant === 'slide-spdt') {
+    return <SlideSwitchMesh part={part} selected={selected} />;
+  }
   const switchType = part.props.switchType ?? (
     part.pins.com1 ? "dpdt" :
     part.pins.a1 ? "dpst" :
@@ -2385,6 +2424,16 @@ export function SwitchMesh({
         <SwitchLever
           closed={closed}
           selected={selected}
+          onActivate={() => {
+            const lab = useLab.getState();
+            if (lab.tool === 'delete') {
+              lab.select(part.id);
+              lab.deleteSelected();
+              return;
+            }
+            lab.toggleSwitch(part.id);
+            lab.select(part.id);
+          }}
         />
 
       </group>
@@ -3733,11 +3782,9 @@ export function ButtonMesh({ part, selected }: { part: PlacedPart; selected: boo
       lab.deleteSelected();
       return;
     }
-    if (lab.tool === "select" && lab.selectedId !== part.id) {
-      lab.select(part.id);
-      return;
-    }
-    // Already selected in select mode, or any other tool → press for simulation
+    // A tactile button should respond to the FIRST press, not require an
+    // initial selection click while its hover label appears above it.
+    if (lab.tool === "select") lab.select(part.id);
     try {
       (e.target as HTMLElement)?.setPointerCapture?.(e.pointerId as number);
     } catch {
@@ -5627,8 +5674,8 @@ export function McuMesh({
           />
         </mesh>
 
-        {/* Hover labels identify the actual electrical pin assigned to this part. */}
-        {hoveredPin === name && <DreiHtml position={[0,0.25,0]} center distanceFactor={6.5} style={{pointerEvents:'none',padding:'5px 8px',borderRadius:6,background:'rgba(7,20,38,.95)',color:'#e0f2fe',border:'1px solid #22d3ee',fontSize:10,whiteSpace:'nowrap',textAlign:'center',fontFamily:'ui-monospace,monospace',fontWeight:700}}>
+        {/* The pin name appears only after explicitly choosing it as a wire endpoint. */}
+        {selectedWireEndpoint === part.pins[name] && <DreiHtml position={[0,0.25,0]} center distanceFactor={6.5} style={{pointerEvents:'none',padding:'5px 8px',borderRadius:6,background:'rgba(7,20,38,.95)',color:'#e0f2fe',border:'1px solid #22d3ee',fontSize:10,whiteSpace:'nowrap',textAlign:'center',fontFamily:'ui-monospace,monospace',fontWeight:700}}>
           {displayPinLabel('mcu',name)}
           {tool === 'wire' && <div style={{fontSize:9,color:'#67e8f9'}}>{selectedWireEndpoint === part.pins[name] ? 'Start pin selected · choose destination' : 'Click socket to connect a wire'}</div>}
         </DreiHtml>}
@@ -5713,6 +5760,12 @@ export function McuMesh({
       ======================================================== */}
 
       <group position={origin}>
+        {/* Four rubber bench standoffs keep the Uno PCB off the table. */}
+        {[-1,1].flatMap(x=>[-1,1].map(z=><mesh key={`uno-foot-${x}-${z}`}
+          position={[x*(W/2-.22),-.069,z*(D/2-.23)]} castShadow>
+          <cylinderGeometry args={[.067,.073,.07,16]}/>
+          <meshStandardMaterial color="#25282c" roughness={.91} metalness={.03}/>
+        </mesh>))}
 
         {/* ------------------------------------------------------
             PCB BODY
@@ -7023,7 +7076,8 @@ export function LcdMesh({
   voltage: number;
   electricalState?: string;
 }) {
-  const { hoveredPin, setHoveredPin } = useTransientPinHover();
+  const { setHoveredPin } = useTransientPinHover();
+  const selectedWireEndpoint = useLab((s) => s.pendingHoles[0] ?? null);
   const pinEntries = Object.entries(part.pins);
   const pinVecs = pinEntries.map(([, id]) => vec(id));
 
@@ -7135,7 +7189,7 @@ export function LcdMesh({
         return (
           <group key={`lcd-pin-${index}`} onPointerOver={(e)=>{e.stopPropagation();setHoveredPin(pinEntries[index][0]);}} onPointerOut={(e)=>{e.stopPropagation();setHoveredPin(null);}}>
             <Lead from={pin} to={pinEnd} />
-            {hoveredPin === pinEntries[index][0] && <DreiHtml position={[pin.x,body.y+0.19,pin.z]} center distanceFactor={6} style={{pointerEvents:'none',padding:'4px 7px',borderRadius:6,background:'rgba(7,20,38,.94)',border:'1px solid #22d3ee',color:'#e0f2fe',fontSize:10,whiteSpace:'nowrap'}}>{displayPinLabel('lcd',pinEntries[index][0])}<div style={{color:'#67e8f9',fontSize:9}}>Hole {pinEntries[index][1]}</div></DreiHtml>}
+            {selectedWireEndpoint === pinEntries[index][1] && <DreiHtml position={[pin.x,body.y+0.19,pin.z]} center distanceFactor={6} style={{pointerEvents:'none',padding:'4px 7px',borderRadius:6,background:'rgba(7,20,38,.94)',border:'1px solid #22d3ee',color:'#e0f2fe',fontSize:10,whiteSpace:'nowrap'}}>{displayPinLabel('lcd',pinEntries[index][0])}<div style={{color:'#67e8f9',fontSize:9}}>Hole {pinEntries[index][1]}</div></DreiHtml>}
             <mesh position={[pin.x, body.y - 0.14, pin.z]} castShadow>
               <boxGeometry args={[0.03, 0.1, 0.03]} />
               <meshStandardMaterial
@@ -7175,7 +7229,7 @@ export function LcdMesh({
           />
         </mesh>
 
-        {/* The shared PartSwitch hover context controls this annotation. */}
+        {/* The shared PartSwitch selection context controls this annotation. */}
         <Html
           position={[0, 0.02, depth * 0.42]}
           center
@@ -7235,7 +7289,8 @@ export function OledMesh({
   powered: boolean;
   text: string;
 }) {
-  const { hoveredPin, setHoveredPin } = useTransientPinHover();
+  const { setHoveredPin } = useTransientPinHover();
+  const selectedWireEndpoint = useLab((s) => s.pendingHoles[0] ?? null);
   const pinEntries = Object.entries(part.pins);
   const pinVecs = pinEntries.map(([, id]) => vec(id));
   const body = pinVecs
@@ -7324,7 +7379,7 @@ export function OledMesh({
         return (
           <group key={`oled-pin-${index}`} onPointerOver={(e)=>{e.stopPropagation();setHoveredPin(pinEntries[index][0]);}} onPointerOut={(e)=>{e.stopPropagation();setHoveredPin(null);}}>
             <Lead from={pin} to={pinEnd} />
-            {hoveredPin === pinEntries[index][0] && <DreiHtml position={[pin.x,body.y+0.18,pin.z]} center distanceFactor={6} style={{pointerEvents:'none',padding:'4px 7px',borderRadius:6,background:'rgba(7,20,38,.94)',border:'1px solid #22d3ee',color:'#e0f2fe',fontSize:10,whiteSpace:'nowrap'}}>{displayPinLabel('oled',pinEntries[index][0])}<div style={{color:'#67e8f9',fontSize:9}}>Hole {pinEntries[index][1]}</div></DreiHtml>}
+            {selectedWireEndpoint === pinEntries[index][1] && <DreiHtml position={[pin.x,body.y+0.18,pin.z]} center distanceFactor={6} style={{pointerEvents:'none',padding:'4px 7px',borderRadius:6,background:'rgba(7,20,38,.94)',border:'1px solid #22d3ee',color:'#e0f2fe',fontSize:10,whiteSpace:'nowrap'}}>{displayPinLabel('oled',pinEntries[index][0])}<div style={{color:'#67e8f9',fontSize:9}}>Hole {pinEntries[index][1]}</div></DreiHtml>}
             <mesh position={[pin.x, body.y - 0.12, pin.z]} castShadow>
               <boxGeometry args={[0.03, 0.09, 0.03]} />
               <meshStandardMaterial color="#c9a227" metalness={0.9} roughness={0.25} />
@@ -9639,12 +9694,16 @@ function PartSwitchContent({
   part,
   selected,
   sim,
+  showLabels,
 }: {
   part: PlacedPart;
   selected: boolean;
   sim: SimResult;
+  showLabels: boolean;
 }) {
   switch (part.kind) {
+    case "module":
+      return <ExpansionPartMesh part={part} selected={selected} sim={sim} showSelectedLabel={showLabels}/>;
     case "resistor":
       return <ResistorMesh part={part} selected={selected} sim={sim} />;
     case "diode":
@@ -9783,45 +9842,39 @@ function PartSwitchContent({
   }
 }
 
-/** Exposes floating annotation labels only while the pointer is over a part. */
+/** Only the actively selected component may expose floating 3D labels. */
 export function PartSwitch({
   part,
   selected,
   sim,
+  showLabels = true,
 }: {
   part: PlacedPart;
   selected: boolean;
   sim: SimResult;
+  showLabels?: boolean;
 }) {
-  const [hovered, setHovered] = useState(false);
-  const tool = useLab((s) => s.tool);
-
-  useEffect(() => { setHovered(false); }, [tool]);
-  useEffect(() => {
-    if (!hovered) return;
-    const dismiss = () => setHovered(false);
-    const dismissOutside = (event: PointerEvent) => {
-      const canvas = document.querySelector<HTMLCanvasElement>(".ece-circuit-lab canvas");
-      if (!canvas || !canvas.contains(event.target as Node)) dismiss();
-    };
-    window.addEventListener("pointermove", dismissOutside, { passive: true });
-    window.addEventListener("blur", dismiss);
-    return () => {
-      window.removeEventListener("pointermove", dismissOutside);
-      window.removeEventListener("blur", dismiss);
-    };
-  }, [hovered]);
+  // Every renderable part can show thermal smoke if the DC model marks it
+  // damaged. A few legacy meshes already carry their own built-in emitter.
+  const builtInSmoke = ['resistor','led','buzzer','mcu','lcd'].includes(part.kind);
+  const smokePosition = useMemo(() => {
+    const pinPositions = Object.values(part.pins).filter(Boolean).map(hole => {
+      const coords = terminalPosition(hole, [part]);
+      return new THREE.Vector3(coords[0],coords[1],coords[2]);
+    });
+    if (!pinPositions.length) return new THREE.Vector3(0,BOARD.height+.2,0);
+    const center = pinPositions.reduce((acc,v) => acc.add(v),new THREE.Vector3()).multiplyScalar(1/pinPositions.length);
+    center.y = Math.max(BOARD.height + .19,center.y + .18);
+    return center;
+  },[part]);
 
   return (
-    <PartLabelHoverContext.Provider value={hovered}>
-      <group
-        onPointerOver={() => setHovered(true)}
-        onPointerMove={() => setHovered(true)}
-        onPointerOut={() => setHovered(false)}
-      >
-        <PartSwitchContent part={part} selected={selected} sim={sim} />
+    <PartLabelSelectionContext.Provider value={selected && showLabels}>
+      <group>
+        <PartSwitchContent part={part} selected={selected} sim={sim} showLabels={showLabels} />
+        {!builtInSmoke && Boolean(sim.burned?.[part.id]) && <SmokePuffs position={smokePosition} active />}
       </group>
-    </PartLabelHoverContext.Provider>
+    </PartLabelSelectionContext.Provider>
   );
 }
 
@@ -9863,6 +9916,7 @@ export function PowerSupply() {
   const neg = useLab((s) => s.psuNegative);
   const boardId = useLab((s) => s.boardId);
   const current = useLab((s) => Math.abs(s.sim.supplyCurrent));
+  const faultActive = useLab((s) => Boolean(s.sim.shortCircuit || s.sim.supplyOverload || s.sim.sourceConflict));
   const tex = useMemo(() => {
     const c = document.createElement("canvas");
     c.width = 256;
@@ -9987,6 +10041,11 @@ export function PowerSupply() {
         <Html position={[bodyW / 2 + 0.07, 0.71, 0.25]} transform distanceFactor={9} style={{pointerEvents:'none', color:'#cbd5e1', fontSize:'7px', fontFamily:'IBM Plex Mono, monospace', fontWeight:700, whiteSpace:'nowrap'}}>−</Html>
         <PowerStatusLight powered={powerOn} strength={flowStrength} />
       </group>
+      {/* Source protection indicator: visual fault cue, not a claim the
+          current-limited PSU itself is destroyed. */}
+      <SmokePuffs position={new THREE.Vector3(psuX,1.25,0)} active={powerOn && faultActive} />
+      {powerOn && faultActive && <Html position={[psuX,1.55,0]} center distanceFactor={7}
+        style={{pointerEvents:'none',color:'#fecaca',background:'rgba(69,10,10,.88)',padding:'4px 8px',fontWeight:800,borderRadius:5}}>⚠ PSU PROTECTION</Html>}
       <TubeWire a={jackRed} b={destPos} color="#c2413b" lift={1.1} radius={0.028} style="arc" />
       <TubeWire a={jackBlk} b={destNeg} color="#1a1d23" lift={1.1} radius={0.028} style="arc" />
       <CurrentFlow a={jackRed} b={destPos} active={flowing} color="#fff1f2" strength={flowStrength} />

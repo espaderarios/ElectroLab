@@ -35,7 +35,7 @@ export function SimulationConsole({fullAdder=false}: {fullAdder?:boolean}) {
   const carry = Number(a+b+cin>=2);
   const mcu = Object.values(sim.mcus??{})[0];
   const mcuState = mcu ? `${mcu.powered?'powered':'off'}${mcu.error?` · ${mcu.error}`:''}` : '';
-  const signature = JSON.stringify({powerOn, switches, display:display?.digit, mcuState, short:sim.shortCircuit});
+  const signature = JSON.stringify({powerOn, switches, display:display?.digit, mcuState, short:sim.shortCircuit, supplyOverload:sim.supplyOverload, sourceConflict:sim.sourceConflict});
 
   useEffect(()=>{
     if(lastSignature.current===signature)return;
@@ -48,6 +48,8 @@ export function SimulationConsole({fullAdder=false}: {fullAdder?:boolean}) {
     else if(mcu) messages.push(`Arduino ${mcuState || 'status unknown'} · output pins: ${Object.values(mcu.digital??{}).filter(Boolean).length} HIGH`);
     else messages.push(`Simulation running · ${parts.length} components`);
     if(sim.shortCircuit) messages.push('WARNING: short circuit detected');
+    if(sim.sourceConflict) messages.push('DANGER: incompatible power sources connected');
+    if(sim.supplyOverload) messages.push('WARNING: bench supply current budget exceeded');
     setRows(previous=>[...previous,...messages.map(text=>({id:nextId.current++,time:timeString(),text}))].slice(-80));
   },[signature]);
 

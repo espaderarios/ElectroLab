@@ -34,6 +34,7 @@ import { cn } from "@/lib/utils";
 import { logicPinLabel, LOGIC_IC_PINOUTS } from "@/circuit/logic-ics";
 import { SEVEN_SEGMENT_PIN_NUMBERS } from "@/circuit/seven-segment";
 import { displayPinLabel } from "@/circuit/display-guides";
+import { expansionById } from "@/circuit/expansion-catalog";
 import { WiringGuidePanel } from "./wiring-guide-panel";
 
 import {
@@ -3201,6 +3202,31 @@ export function LabOverlay({ showPalette = true, embedded = false }: { showPalet
             />
           </label>
         </div>
+
+          {selected!.kind === "module" && (() => {
+            const spec = expansionById(selected!.props.moduleId);
+            if (!spec) return null;
+            const isProbe = spec.behavior === 'dc-probe';
+            const referencePin = selected!.pins[spec.id === 'instrument-meter' ? 'com' : 'gnd'];
+            const referenceVoltage = sim.voltages[referencePin] ?? 0;
+            return <section style={{marginTop:14,padding:12,border:'1px solid rgba(77,139,196,.26)',background:'rgba(15,49,81,.27)',borderRadius:11}}>
+              <strong style={{display:'block',fontSize:12,color:'#c6e5fc'}}>{spec.name}</strong>
+              <div style={{fontSize:10,color:'#9fb1c4',marginTop:5,lineHeight:1.55}}>{spec.description}</div>
+              <div style={{marginTop:8,fontSize:10,fontWeight:700,color:spec.behavior==='prototype'?'#fbbf24':'#93c5fd'}}>
+                {spec.behavior==='prototype'?'3D + wireable terminals only · active behavior not implemented':spec.behavior==='dc-probe'?'Live DC instrument · no AC waveform history':'Simplified combinational DC logic (not a timing-accurate IC model)'}
+              </div>
+              {isProbe && <div style={{marginTop:12,display:'grid',gridTemplateColumns:'repeat(2,minmax(0,1fr))',gap:5}}>
+                {Object.entries(selected!.pins).filter(([name])=>name!=='gnd'&&name!=='com').map(([name,hole])=> {
+                  const v=(sim.voltages[hole]??0)-referenceVoltage;
+                  return <div key={name} style={{padding:7,background:'#0d2035',border:'1px solid #213c58',borderRadius:7}}>
+                    <div style={{fontSize:9,color:'#98aabb'}}>{name.toUpperCase()}</div>
+                    <strong style={{fontSize:12,color:'#a6e3d4',fontFamily:'monospace'}}>{spec.id==='instrument-logic'?(v>=2.5?'HIGH':v<=0.8?'LOW':'?'):`${v.toFixed(2)} V`}</strong>
+                  </div>;
+                })}
+              </div>}
+              <div style={{marginTop:9,fontSize:9,color:'#8aa2ba'}}>Pin connections, wire routing, drag, undo and project save work through the normal circuit model.</div>
+            </section>;
+          })()}
 
           {selected!.kind === "resistor" && (() => {
             const r = Math.max(1, Number(selected!.props.resistance ?? 1000));

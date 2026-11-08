@@ -14,7 +14,9 @@ import {
 } from "@/circuit/breadboard";
 import { buildPreviewPart, previewMovedPart, useLab, introducesWireObstruction } from "@/store/lab";
 import type { HoleId, PlacedPart, SimResult, ToolId, Wire } from "@/circuit/types";
-import { terminalPosition, mcuHeaderPosition } from "@/circuit/mcu-headers";
+import { terminalPosition } from "@/circuit/mcu-headers";
+import { isOffboardController, isControllerTool, controllerPosition, constrainBenchPoint } from '@/circuit/offboard-controllers';
+import { expansionById } from '@/circuit/expansion-catalog';
 import { planWireRoutes, wireRoute3DPoints, type RoutedWire } from "@/circuit/wire-routing";
 import { netConnected } from "@/circuit/display-guides";
 import { placementIsBlocked, partObstacle, collectPartObstacles, rectsOverlap } from "@/circuit/placement-obstacles";
@@ -91,7 +93,7 @@ function holeUnderPointer(clientX: number, clientY: number): HoleId | null {
 
 /** Stable "first" pin used as the footprint anchor when moving. */
 function firstPinHole(part: PlacedPart): HoleId | null {
-  if (part.kind === "mcu") return part.props.headerAnchor ?? "F22";
+  if (isOffboardController(part)) return part.props.headerAnchor ?? "F22";
   const entries = Object.entries(part.pins).filter(
     ([, h]) => h && /^[A-T]\d+$/.test(h),
   ) as [string, HoleId][];
@@ -108,8 +110,12 @@ function firstPinHole(part: PlacedPart): HoleId | null {
 const PLACEABLE_TOOLS = new Set<ToolId>([
   "resistor",
   "capacitor",
+  "capacitor-electrolytic",
+  "capacitor-film",
+  "capacitor-tantalum",
   "inductor",
   "diode",
+  "diode-schottky",
   "led",
   "transistor",
   "thyristor",
@@ -120,7 +126,11 @@ const PLACEABLE_TOOLS = new Set<ToolId>([
   "switch-spdt",
   "switch-dpst",
   "switch-dpdt",
+  "switch-slide",
+  "switch-reed",
   "button",
+  "button-blue",
+  "button-white",
   "relay",
   "pot",
   "buzzer",
@@ -141,6 +151,7 @@ const PLACEABLE_TOOLS = new Set<ToolId>([
   "ldr",
   "thermistor",
   "fuse",
+  "fuse-glass",
   "rgb-led",
   "servo",
   "seven-segment",
@@ -178,7 +189,7 @@ function PulseMarker({
   return (
     <group position={position}>
       {/* Soft filled disc so the hole is obviously marked */}
-      <mesh ref={disc} rotation={[-Math.PI / 2, 0, 0]}>
+      <mesh ref={disc} raycast={() => null} rotation={[-Math.PI / 2, 0, 0]}>
         <circleGeometry args={[radius * 0.72, 28]} />
         <meshBasicMaterial
           ref={discMat}
@@ -189,7 +200,7 @@ function PulseMarker({
         />
       </mesh>
       {/* Outer ring */}
-      <mesh ref={ring} rotation={[-Math.PI / 2, 0, 0]}>
+      <mesh ref={ring} raycast={() => null} rotation={[-Math.PI / 2, 0, 0]}>
         <ringGeometry args={[radius * 0.55, radius, 28]} />
         <meshBasicMaterial
           ref={material}
@@ -200,7 +211,7 @@ function PulseMarker({
         />
       </mesh>
       {selected && (
-        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.001, 0]}>
+        <mesh raycast={() => null} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.001, 0]}>
           <ringGeometry args={[radius * 0.95, radius * 1.18, 28]} />
           <meshBasicMaterial color={color} transparent opacity={0.45} depthWrite={false} />
         </mesh>
@@ -213,11 +224,16 @@ function HoverMarker() {
   const hover = useLab((s) => s.hoverHole);
   const pending = useLab((s) => s.pendingHoles);
   const probe = useLab((s) => s.probeHole);
+  const tool = useLab((s) => s.tool);
+  const partDragEnabled = useLab((s) => s.partDragEnabled);
   const parts = useLab((s) => s.parts);
   // Unique holes; selected/probe takes priority for styling
   const seen = new Set<string>();
   const items: { id: string; kind: "hover" | "pending" | "selected" }[] = [];
-  for (const id of pending) {
+  // Pin-by-pin placement (3D Drag off) and wire endpoints are persistent blue
+  // selections, not just hover effects. Other tools never show stale picks.
+  const showPicked = tool === "wire" || (!partDragEnabled && tool !== "select" && tool !== "none");
+  for (const id of showPicked ? pending : []) {
     if (id && !seen.has(id)) {
       seen.add(id);
       items.push({ id, kind: "pending" });
@@ -233,24 +249,23 @@ function HoverMarker() {
   return (
     <>
       {items.map((item, i) => {
-        const [x, ty, z] = terminalPosition(item.id,parts);
-        if (![x,ty,z].every(Number.isFinite)) return null;
-        // Position the hover ring at the visible Arduino header socket.
-        const y = ty + 0.055;
-        const color =
-          item.kind === "pending"
-            ? "#14b8a6"
-            : item.kind === "selected"
-              ? "#fbbf24"
-              : "#38bdf8";
+        const onBoard = !item.id.startsWith("mcu:") && !item.id.startsWith("module:");
+        const [x, ty, z] = onBoard ? holePosition(item.id) : terminalPosition(item.id, parts);
+        if (![x, ty, z].every(Number.isFinite)) return null;
+        // Well openings are raised above holePosition(), whose Y describes
+        // the electrical contact plane. Draw the ring above the visible rim.
+        // Controller/module headers instead use their physical socket height.
+        const y = onBoard ? BOARD.height + 0.098 : ty + 0.022;
+        const picked = item.kind === "pending";
+        const color = picked ? "#3b82f6" : item.kind === "selected" ? "#fbbf24" : "#7dd3fc";
         return (
           <PulseMarker
             key={`${item.id}-${item.kind}`}
             position={[x, y, z]}
             color={color}
             phase={i * 1.8}
-            radius={item.kind === "selected" ? 0.1 : 0.085}
-            selected={item.kind === "selected"}
+            radius={picked ? 0.09 : item.kind === "selected" ? 0.1 : 0.07}
+            selected={picked || item.kind === "selected"}
           />
         );
       })}
@@ -375,8 +390,11 @@ function CameraRig() {
   }, [camera, size.width, size.height]);
 
   const fitBoard = useCallback(() => {
-    fitRegion(-BOARD.width/2-0.85, BOARD.width/2+0.35,
-      -BOARD.depth/2-0.22, BOARD.depth/2+0.22);
+    const controllers = useLab.getState().parts.filter(isOffboardController);
+    const farNorth = controllers.length ? Math.min(...controllers.map(p=>controllerPosition(p).z-1.65)) : -BOARD.depth/2-.22;
+    const farSouth = controllers.length ? Math.max(...controllers.map(p=>controllerPosition(p).z+1.65)) : BOARD.depth/2+.22;
+    fitRegion(-BOARD.width/2-.85, BOARD.width/2+.35,
+      Math.min(-BOARD.depth/2-.22,farNorth),Math.max(BOARD.depth/2+.22,farSouth));
   }, [fitRegion]);
 
   const focusCircuit = useCallback(() => {
@@ -465,6 +483,8 @@ function PlacementGhost() {
   const partDragEnabled = useLab((s) => s.partDragEnabled);
   const tool = useLab((s) => s.tool);
   const hover = useLab((s) => s.hoverHole);
+  const hoverBench = useLab((s) => s.hoverBenchPoint);
+  const paletteDragging = useLab((s) => s.paletteDragging);
   const resistorValue = useLab((s) => s.resistorValue);
   const capacitorValue = useLab((s) => s.capacitorValue);
   const ledColor = useLab((s) => s.ledColor);
@@ -486,13 +506,17 @@ function PlacementGhost() {
       if (!part) return null;
       const anchor = hover ?? firstPinHole(part);
       if (!anchor) return null;
-      return previewMovedPart(part, anchor);
+      const moved = previewMovedPart(part, anchor);
+      if (moved && isOffboardController(part)) {
+        moved.props = {...moved.props, benchPosition:hoverBench ?? controllerPosition(part)};
+      }
+      return moved;
     }
 
-    if (!hover) return null;
-    if (!PLACEABLE_TOOLS.has(tool)) return null;
+    if (!PLACEABLE_TOOLS.has(tool) && !expansionById(tool)) return null;
+    if (!hover && !(isControllerTool(tool) && hoverBench)) return null;
 
-    return buildPreviewPart(tool, hover, {
+    const next = buildPreviewPart(tool, hover ?? 'F12', {
       resistorValue,
       capacitorValue,
       ledColor,
@@ -502,10 +526,16 @@ function PlacementGhost() {
       diacModel,
       motorModel,
     });
+    if (next && isOffboardController(next) && hoverBench) {
+      next.props.benchPosition=hoverBench;
+    }
+    return next;
   }, [
     partDragEnabled,
     tool,
     hover,
+    hoverBench,
+    paletteDragging,
     resistorValue,
     capacitorValue,
     ledColor,
@@ -556,7 +586,7 @@ function PlacementGhost() {
     <group ref={ghostGroup}>
       {/* True solid-object footprint, computed by the SAME predicate used for drop. */}
       {footprint && (
-        <group position={[(footprint.minX + footprint.maxX) / 2, BOARD.height + 0.09, (footprint.minZ + footprint.maxZ) / 2]}>
+        <group position={[(footprint.minX + footprint.maxX) / 2, isOffboardController(preview) ? .025 : BOARD.height + 0.09, (footprint.minZ + footprint.maxZ) / 2]}>
           <mesh rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
             <planeGeometry args={[footprint.maxX - footprint.minX, footprint.maxZ - footprint.minZ]} />
             <meshBasicMaterial color={markerColor} transparent opacity={0.13} depthWrite={false} side={THREE.DoubleSide} />
@@ -579,7 +609,7 @@ function PlacementGhost() {
       )}
       {collisions.map((other) => (
         <lineSegments key={`collision-${other.id}`}
-          position={[(other.minX + other.maxX) / 2, BOARD.height + 0.07, (other.minZ + other.maxZ) / 2]}
+          position={[(other.minX + other.maxX) / 2, other.kind === "mcu" || other.kind === "module" ? .045 : BOARD.height + .07, (other.minZ + other.maxZ) / 2]}
           raycast={() => null}>
           <edgesGeometry args={[new THREE.BoxGeometry(other.maxX - other.minX, 0.025, other.maxZ - other.minZ)]} />
           <lineBasicMaterial color="#f43f5e" transparent opacity={0.95} depthTest={false} />
@@ -587,13 +617,13 @@ function PlacementGhost() {
       ))}
       {/* Soft lift so the ghost reads as floating above the board */}
       <group position={[0, 0.04, 0]}>
-        <PartSwitch part={preview} selected sim={sim} />
+        <PartSwitch part={preview} selected sim={sim} showLabels={false} />
       </group>
       {/* Pin markers for every node of the ghost footprint */}
       {Object.entries(preview.pins).map(([pinName, holeId]) => {
-        const [x, y, z] = (preview.kind === 'mcu'
-          ? mcuHeaderPosition(preview, pinName)
-          : holePosition(holeId)) ?? [NaN, NaN, NaN];
+        const [x, y, z] = isOffboardController(preview)
+          ? terminalPosition(holeId,[preview])
+          : holePosition(holeId);
         if (![x,y,z].every(Number.isFinite)) return null;
         return (
           <mesh
@@ -630,6 +660,7 @@ function MovablePart({
   const tool = useLab((s) => s.tool);
   const select = useLab((s) => s.select);
   const setHover = useLab((s) => s.setHover);
+  const setHoverBenchPoint = useLab((s) => s.setHoverBenchPoint);
   const partDragEnabled = useLab((s) => s.partDragEnabled);
   const movingSelected = useLab((s) => s.movingSelected);
 
@@ -639,6 +670,8 @@ function MovablePart({
     startX: number;
     startY: number;
     partId: string;
+    controller: boolean;
+    moduleId?: string;
     // Displacement of the clicked surface point from the first pin.
     offsetX: number;
     offsetZ: number;
@@ -658,7 +691,11 @@ function MovablePart({
         x: point.x - d.offsetX,
         y: BOARD.height,
         z: point.z - d.offsetZ,
-      }, 0.37);
+      }, 0.55);
+    };
+    const getBench = (x:number,y:number,d:NonNullable<typeof dragRef.current>) => {
+      const point=screenToBoardPoint(x,y);
+      return point ? constrainBenchPoint({x:point.x-d.offsetX,z:point.z-d.offsetZ},d.moduleId) : null;
     };
 
     const onMove = (e: PointerEvent) => {
@@ -671,7 +708,10 @@ function MovablePart({
         lab.select(d.partId);
         lab.setMovingSelected(true);
       }
-      if (d.moving) setHover(getAnchor(e.clientX, e.clientY, d));
+      if (d.moving) {
+        if (d.controller) {setHoverBenchPoint(getBench(e.clientX,e.clientY,d));setHover(null);}
+        else {setHover(getAnchor(e.clientX,e.clientY,d));setHoverBenchPoint(null);}
+      }
     };
 
     const finish = (e: PointerEvent, canceled = false) => {
@@ -681,14 +721,15 @@ function MovablePart({
       dragRef.current = null;
       window.__ecePartDragging = false;
       if (d.moving) {
-        const hole = canceled ? null : getAnchor(e.clientX, e.clientY, d);
-        if (hole) {
+        const bench = !canceled && d.controller ? getBench(e.clientX,e.clientY,d) : null;
+        const hole = !canceled && !d.controller ? getAnchor(e.clientX, e.clientY, d) : null;
+        if (hole || bench) {
           const lab = useLab.getState();
           lab.select(d.partId);
-          lab.moveSelectedTo(hole);
+          lab.moveSelectedTo(hole ?? 'F12',bench ?? undefined);
         }
         useLab.getState().setMovingSelected(false);
-        setHover(null);
+        setHover(null);setHoverBenchPoint(null);
       }
     };
 
@@ -699,7 +740,7 @@ function MovablePart({
         dragRef.current = null;
         window.__ecePartDragging = false;
         useLab.getState().setMovingSelected(false);
-        setHover(null);
+        setHover(null);setHoverBenchPoint(null);
       }
     };
 
@@ -713,8 +754,9 @@ function MovablePart({
       window.removeEventListener('pointercancel', onCancel);
       window.removeEventListener('keydown', onEscape);
       if (dragRef.current) window.__ecePartDragging = false;
+      setHoverBenchPoint(null);
     };
-  }, [setHover, partDragEnabled]);
+  }, [setHover, setHoverBenchPoint, partDragEnabled]);
 
   return (
     <group
@@ -733,13 +775,16 @@ function MovablePart({
 
         const anchor = firstPinHole(part);
         const point = screenToBoardPoint(e.clientX, e.clientY);
-        const pinWorld = anchor ? holePosition(anchor) : null;
+        const controller=isOffboardController(part);
+        const pinWorld = controller ? (()=>{const pos=controllerPosition(part);return [pos.x,0,pos.z];})() : anchor ? holePosition(anchor) : null;
         dragRef.current = {
           active: true,
           moving: false,
           startX: e.clientX,
           startY: e.clientY,
           partId: part.id,
+          controller,
+          moduleId: part.props.moduleId,
           offsetX: point && pinWorld ? point.x - pinWorld[0] : 0,
           offsetZ: point && pinWorld ? point.z - pinWorld[2] : 0,
         };

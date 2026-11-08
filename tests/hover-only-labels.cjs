@@ -10,16 +10,16 @@ const editor = read('src/pages/CircuitEditorPage.tsx');
 const overlay = read('src/circuit-lab/overlay.tsx');
 const css = read('src/index.css');
 
-assert.match(parts, /const PartLabelHoverContext = React\.createContext<boolean \| null>\(null\)/);
+assert.match(parts, /const PartLabelSelectionContext = React\.createContext<boolean \| null>\(null\)/);
 assert.match(parts, /function Html\(props: React\.ComponentProps<typeof DreiHtml>\)/);
-assert.match(parts, /if \(hovered === false\) return null/, 'Idle part annotations must be unmounted, not hidden via opacity');
-assert.match(parts, /<PartLabelHoverContext\.Provider value=\{hovered\}>/);
-assert.match(parts, /onPointerMove=\{\(\) => setHovered\(true\)\}/);
-assert.match(parts, /onPointerOut=\{\(\) => setHovered\(false\)\}/);
-assert.match(parts, /window\.addEventListener\("pointermove", dismissOutside/, 'Hover labels clear when leaving the canvas');
-assert.match(parts, /hoveredPin === name && <DreiHtml/, 'Arduino header name requires hover');
-assert.match(parts, /hoveredPin === pinEntries\[index\]\[0\] && <DreiHtml/, 'Display pins require hover');
-assert.match(parts, /The shared PartSwitch hover context controls this annotation/);
+assert.match(parts, /if \(componentSelected === false\) return null/, 'Idle part annotations must be unmounted, not hidden via opacity');
+assert.match(parts, /<PartLabelSelectionContext\.Provider value=\{selected && showLabels\}>/);
+assert.doesNotMatch(parts, /onPointerMove=\{\(\) => setHovered\(true\)\}/);
+assert.doesNotMatch(parts, /onPointerOut=\{\(\) => setHovered\(false\)\}/);
+assert.doesNotMatch(parts, /window\.addEventListener\("pointermove", dismissOutside/, 'Component labels are never hover-state driven');
+assert.match(parts, /selectedWireEndpoint === part\.pins\[name\] && <DreiHtml/, 'Arduino pin name requires explicit endpoint selection');
+assert.match(parts, /selectedWireEndpoint === pinEntries\[index\]\[1\] && <DreiHtml/, 'Display pin names require explicit endpoint selection');
+assert.match(parts, /The shared PartSwitch selection context controls this annotation/);
 assert.match(parts, /new THREE\.CanvasTexture\(canvas\)/, 'LCD/OLED screen text must remain part of the 3D model');
 assert.doesNotMatch(editor, /<div className="editor-stage-hud/, 'Remove always-visible floating top-left help');
 assert.match(overlay, /tabIndex=\{0\}[\s\S]*?aria-label="Hover or focus for component placement instructions"/);
@@ -29,4 +29,4 @@ for (const f of ['src/circuit-lab/parts-3d.tsx', 'src/circuit-lab/overlay.tsx', 
   const tree = ts.createSourceFile(f, read(f), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   assert.equal(tree.parseDiagnostics.length, 0, `${f}: ${tree.parseDiagnostics.map(e => ts.flattenDiagnosticMessageText(e.messageText, ' ')).join('; ')}`);
 }
-console.log('Hover-only labels, transient pin tooltips, unobstructed workbench, real LCD/OLED text: PASS');
+console.log('Selected-only labels, explicit pin endpoint labels, unobstructed workbench, real LCD/OLED text: PASS');

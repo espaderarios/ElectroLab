@@ -34,7 +34,15 @@
     "test:clean-dock-screen": "node tests/clean-dock-screen.cjs",
     "test:navy-theme": "node tests/navy-blue-theme.cjs",
     "build:desktop": "tsc -b && vite build --mode desktop",
-    "test:gray-navy-pages": "node tests/gray-navy-pages.cjs"
+    "test:gray-navy-pages": "node tests/gray-navy-pages.cjs",
+    "test:components-expanded": "node tests/component-expansion.cjs",
+    "test:hover-click-target": "node tests/hover-click-target.cjs",
+    "test:all-components": "node tests/all-expanded-components.cjs && node tests/four-bit-adder.cjs",
+    "test:offboard": "node tests/offboard-controllers.cjs",
+    "test:toolbar-layout": "node tests/unified-toolbar.cjs && node tests/collapsible-toolbar.cjs",
+    "test:wiring-realism": "node tests/wiring-contact-realism.cjs",
+    "test:fourdigit-model": "node tests/four-digit-display-realism.cjs",
+    "test:faults": "node tests/short-circuit-thermal-smoke.cjs"
   },
   "dependencies": {
     "react": "^18.3.1",

@@ -37,8 +37,8 @@ assert.match(part, /function useTransientPinHover\(\)/);
 assert.match(part, /window\.addEventListener\("pointermove", clearOutsideCanvas/);
 assert.match(part, /window\.addEventListener\("blur", clear\)/);
 assert.match(part, /window\.removeEventListener\("pointermove", clearOutsideCanvas\)/);
-assert.match(part, /hoveredPin === name && <DreiHtml/, 'Arduino header tooltip should only mount while hovering');
-assert.match(part, /<PartLabelHoverContext\.Provider value=\{hovered\}>/, 'All component labels are contextual');
+assert.match(part, /selectedWireEndpoint === part\.pins\[name\] && <DreiHtml/, 'Arduino header tooltip appears after selecting a wire endpoint');
+assert.match(part, /<PartLabelSelectionContext\.Provider value=\{selected && showLabels\}>/, 'All component labels are contextual');
 
 // A syntax check catches inadvertent JSX breakage from conditional label edits.
 for (const file of ['src/pages/CircuitEditorPage.tsx', 'src/circuit-lab/parts-3d.tsx', 'src/circuit-lab/index.tsx']) {
@@ -46,4 +46,4 @@ for (const file of ['src/pages/CircuitEditorPage.tsx', 'src/circuit-lab/parts-3d
   const sf = ts.createSourceFile(abs, read(file), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   assert.equal(sf.parseDiagnostics.length, 0, `${file}: ${sf.parseDiagnostics.map(d => d.messageText).join(',')}`);
 }
-console.log('Select/Wire/Pan toggle-off, keyboard consistency, transient Arduino/LCD labels and JSX syntax: PASS');
+console.log('Select/Wire/Pan toggle-off, keyboard consistency, selection-only labels and JSX syntax: PASS');

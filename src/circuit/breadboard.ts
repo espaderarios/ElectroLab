@@ -269,7 +269,7 @@ export const ALL_HOLES = allHoles();
 
 export function holeStrip(id: HoleId): string {
   // External component terminals are independent sockets, never breadboard strips.
-  if (id.startsWith('mcu:')) return id;
+  if (id.startsWith('mcu:') || id.startsWith('module:')) return id;
   const rail = parseRailId(id);
   if (rail) {
     const seg = Math.max(1, BOARD.railSegment);

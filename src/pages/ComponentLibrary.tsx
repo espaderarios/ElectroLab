@@ -1,6 +1,7 @@
 import { ReactNode, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Plus, Search } from "lucide-react";
+import { EXPANSION_COMPONENTS } from "@/circuit/expansion-catalog";
 
 type LibPart = {
   name: string;
@@ -621,22 +622,30 @@ const FuseSymbol = () => (
 
 const COMPS: LibPart[] = [
   { name: "Resistor", desc: "Various values ±1%, ±5%", type: "Passive", tool: "resistor", symbol: <ResistorSymbol /> },
-  { name: "Capacitor", desc: "Ceramic, electrolytic, film", type: "Passive", tool: "capacitor", symbol: <CapacitorSymbol /> },
+  { name: "Ceramic capacitor", desc: "Disc capacitor · editable capacitance", type: "Passive", tool: "capacitor", symbol: <CapacitorSymbol /> },
+  { name: "Electrolytic 100µF 25V", desc: "Polarized radial aluminum cylinder", type: "Passive", tool: "capacitor-electrolytic", symbol: <CapacitorSymbol /> },
+  { name: "Film capacitor 100nF", desc: "Polyester film · 63 V", type: "Passive", tool: "capacitor-film", symbol: <CapacitorSymbol /> },
+  { name: "Tantalum capacitor 10µF", desc: "Polarized dipped bead · 16 V", type: "Passive", tool: "capacitor-tantalum", symbol: <CapacitorSymbol /> },
   { name: "Inductor", desc: "Simple winding model", type: "Passive", tool: "inductor", symbol: <InductorSymbol /> },
-  { name: "Diode", desc: "Silicon / Schottky / Zener", type: "Semiconductor", tool: "diode", symbol: <DiodeSymbol /> },
+  { name: "Silicon diode", desc: "Axial rectifier · 0.7 V", type: "Semiconductor", tool: "diode", symbol: <DiodeSymbol /> },
+  { name: "Schottky 1N5819", desc: "Low forward drop · 0.3 V", type: "Semiconductor", tool: "diode-schottky", symbol: <DiodeSymbol /> },
   { name: "LED", desc: "Red / green / yellow / blue", type: "Semiconductor", tool: "led", symbol: <LedSymbol /> },
   { name: "Transistor", desc: "2N3904, TIP31, 2N3055…", type: "Semiconductor", tool: "transistor", symbol: <TransistorSymbol /> },
   { name: "Thyristor (SCR)", desc: "2N5060, BT151, TYN612…", type: "Semiconductor", tool: "thyristor", symbol: <ThyristorSymbol /> },
   { name: "TRIAC", desc: "BT136, BT139, BTA16…", type: "Semiconductor", tool: "triac", symbol: <TriacSymbol /> },
   { name: "DIAC", desc: "DB3 / DB4 breakover trigger", type: "Semiconductor", tool: "diac", symbol: <DiacSymbol /> },
   { name: "Switch", desc: "SPST mechanical switch", type: "Electromechanical", tool: "switch", symbol: <SwitchSymbol /> },
+  { name: "SPDT slide switch", desc: "Three-pin sliding changeover contacts", type: "Electromechanical", tool: "switch-slide", symbol: <SwitchSymbol /> },
+  { name: "Magnetic reed switch", desc: "Two-pin glass capsule · manually toggled", type: "Electromechanical", tool: "switch-reed", symbol: <SwitchSymbol /> },
   { name: "Push button", desc: "Momentary contact", type: "Electromechanical", tool: "button", symbol: <PushButtonSymbol /> },
+  { name: "Blue tactile button", desc: "Momentary contact · blue cap", type: "Electromechanical", tool: "button-blue", symbol: <PushButtonSymbol /> },
+  { name: "White tactile button", desc: "Momentary contact · white cap", type: "Electromechanical", tool: "button-white", symbol: <PushButtonSymbol /> },
   { name: "Relay", desc: "Coil + COM/NO", type: "Electromechanical", tool: "relay", symbol: <RelaySymbol /> },
   { name: "DC Motor", desc: "Hobby motor with propeller", type: "Electromechanical", tool: "motor", symbol: <MotorSymbol /> },
   { name: "Potentiometer", desc: "Three-terminal divider", type: "Passive", tool: "pot", symbol: <PotentiometerSymbol /> },
   { name: "Buzzer", desc: "Piezo indicator", type: "Sources", tool: "buzzer", symbol: <BuzzerSymbol /> },
   { name: "Speaker", desc: "Dynamic speaker model", type: "Sources", tool: "speaker", symbol: <SpeakerSymbol /> },
-  { name: "MCU", desc: "Arduino Uno / ESP32", type: "Integrated Circuits", tool: "mcu", symbol: <McuSymbol /> },
+  { name: "Arduino Uno", desc: "Arduino Uno R3 development board", type: "Microcontrollers", tool: "mcu", symbol: <McuSymbol /> },
   { name: "LCD 16×2", desc: "HD44780-style display", type: "Integrated Circuits", tool: "lcd", symbol: <LcdSymbol /> },
   { name: "OLED", desc: "SSD1306-style I²C", type: "Integrated Circuits", tool: "oled", symbol: <OledSymbol /> },
   { name: "NOT IC", desc: "Inverter — Y = NOT A", type: "Integrated Circuits", tool: "not", symbol: <GateSymbol label="NOT" /> },
@@ -657,7 +666,15 @@ const COMPS: LibPart[] = [
   { name: "Thermistor", desc: "NTC temperature sensor", type: "Passive", tool: "thermistor", symbol: <ThermistorSymbol /> },
   { name: "Optocoupler", desc: "PC817 / 4N35 isolation", type: "Integrated Circuits", tool: "optocoupler", symbol: <OptocouplerSymbol /> },
   { name: "Voltage regulator", desc: "7805 / 7809 / 7812 / 3.3 V", type: "Integrated Circuits", tool: "regulator", symbol: <RegulatorSymbol /> },
-  { name: "Fuse", desc: "Resettable overcurrent link", type: "Passive", tool: "fuse", symbol: <FuseSymbol /> },
+  { name: "Fuse", desc: "Simulation overcurrent protection", type: "Passive", tool: "fuse", symbol: <FuseSymbol /> },
+  { name: "Glass fuse 500mA", desc: "Transparent cartridge · 0.5 A rating", type: "Passive", tool: "fuse-glass", symbol: <FuseSymbol /> },
+  ...EXPANSION_COMPONENTS.map(spec => ({
+    name: spec.name,
+    desc: `${spec.description} · ${spec.behavior === 'prototype' ? '3D/wiring preview' : 'Simplified DC simulation'}`,
+    type: spec.category,
+    tool: spec.id,
+    symbol: <span className="font-mono font-semibold text-base">{spec.shape === 'dip' ? 'DIP' : spec.shape === 'instrument' ? 'TEST' : spec.shape === 'microcontroller' ? 'MCU' : spec.shape === 'sensor' ? 'SNS' : 'PCB'}</span>,
+  })),
 ];
 
 const CATEGORIES = [
@@ -667,6 +684,7 @@ const CATEGORIES = [
   "Integrated Circuits",
   "Electromechanical",
   "Sources",
+  "Digital Logic", "Microcontrollers", "Sensors", "Inputs & Displays", "Motor Control", "Power Modules", "Instruments",
 ] as const;
 
 export function ComponentLibrary() {

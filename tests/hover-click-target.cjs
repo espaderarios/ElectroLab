@@ -1,0 +1,25 @@
+/** Hover cards must not hide or consume clicks intended for switch actuators. */
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const ts = require('typescript');
+const postcss = require('postcss');
+const root = path.resolve(__dirname, '..');
+const parts = fs.readFileSync(path.join(root, 'src/circuit-lab/parts-3d.tsx'), 'utf8');
+const css = fs.readFileSync(path.join(root, 'src/index.css'), 'utf8');
+const changed = ts.createSourceFile('parts-3d.tsx', parts, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+assert.equal(changed.parseDiagnostics.length, 0, 'New component code must be valid TSX');
+assert.match(parts, /if \(componentSelected === false\) return null/, 'Labels must require component selection');
+assert.match(parts, /className=\{\[props\.className, 'ece-selected-part-tooltip'\]/);
+assert.match(parts, /style=\{\{ pointerEvents: 'none' \}\}/, 'The actual Drei DOM wrapper must be click-through');
+assert.match(parts, /className="ece-selected-part-tooltip-content"/, 'Offset the entire visual label, not only its text');
+assert.match(parts, /onActivate=\{\(\) => \{[\s\S]*?lab\.toggleSwitch\(part\.id\);/, 'Clicking a switch actuator must toggle on the first click');
+assert.match(parts, /if \(lab\.tool === "select"\) lab\.select\(part\.id\);[\s\S]*?press\(true\);/, 'Tactile buttons must press on the first click');
+const sheet = postcss.parse(css);
+const anchor = sheet.nodes.find(n => n.type === 'rule' && n.selector.includes('.ece-selected-part-tooltip *'));
+assert.ok(anchor, 'The label and its DOM descendants must ignore pointer input');
+assert.match(anchor.toString(), /pointer-events:\s*none\s*!important/);
+const offset = sheet.nodes.find(n => n.type === 'rule' && n.selector.includes('.ece-selected-part-tooltip-content'));
+assert.ok(offset, 'The label must be offset from the switch actuator');
+assert.match(offset.toString(), /transform:\s*translate\(/);
+console.log('Selected label click targets: floating labels offset and click-through, switches/buttons remain interactive: PASS');

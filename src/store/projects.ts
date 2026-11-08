@@ -4,6 +4,7 @@ import type { BoardPresetId } from "@/circuit/breadboard";
 import type { HoleId, PlacedPart, Wire } from "@/circuit/types";
 import { uid } from "@/lib/utils";
 import { circuitHalfAdder, circuitFullAdder } from "@/circuit/adder-circuits";
+import { circuitFourBitAdder } from "@/circuit/four-bit-adder-demo";
 import { circuitArduinoLcd, circuitArduinoOled, circuitArduinoSevenSegment } from "@/circuit/display-examples";
 import { autoTidyWireBundle } from "@/circuit/tidy-wires";
 import { holePosition } from "@/circuit/breadboard";
@@ -292,6 +293,7 @@ export function freshPremadeCircuit(id: string): ProjectCircuit | null {
     case "arduino-seven-segment-demo": return circuitArduinoSevenSegment();
     case "half-adder": return circuitHalfAdder();
     case "full-adder": return circuitFullAdder();
+    case "four-bit-adder": return circuitFourBitAdder();
     default: return null;
   }
 }
@@ -327,6 +329,11 @@ const SEED_PROJECTS: ProjectRecord[] = [
     "Extended 1400-contact board, three input switches, XOR/AND/OR decoder and 7-segment display showing the correct result 0–3.",
     circuitFullAdder(),
     0,
+  ),
+  makeSeed(
+    "four-bit-adder", "4-Bit Binary Adder · 74HC283", "Draft",
+    "Eight input switches, DIP-16 74HC283, resistor pull-downs, four SUM LEDs and carry LED; 256 switch combinations.",
+    circuitFourBitAdder(), 0,
   ),
   makeSeed(
     "dc-motor",
@@ -671,7 +678,7 @@ export const useProjects = create<ProjectsState>()(
       name: "electrolab-projects-v4",
       // v10 moves the seven-segment Full Adder onto an extended 1400-contact board.
       // The previous Full Adder is backed up first, so user edits survive.
-      version: 10,
+      version: 11,
       migrate: (persistedState, fromVersion) => {
         const previous = (persistedState ?? {}) as Partial<ProjectsState>;
         const savedProjects = Array.isArray(previous.projects) ? previous.projects : [];
@@ -679,13 +686,14 @@ export const useProjects = create<ProjectsState>()(
           ...(fromVersion < 5 ? ["half-adder", "full-adder"] : []),
           ...(fromVersion < 6 ? ["arduino-lcd-demo", "arduino-oled-demo"] : []),
           ...(fromVersion < 7 ? ["arduino-seven-segment-demo"] : []),
+          ...(fromVersion < 11 ? ["four-bit-adder"] : []),
         ];
         const newSeeds = SEED_PROJECTS.filter(preset => eligibleIds.includes(preset.id))
           .filter(preset => !savedProjects.some(project => project.id === preset.id))
           .map(preset => ({ ...preset, circuit: cloneCircuit(preset.circuit) }));
         const exampleIds = new Set([
           'arduino-lcd-demo', 'arduino-oled-demo', 'arduino-seven-segment-demo',
-          'half-adder', 'full-adder',
+          'half-adder', 'full-adder', 'four-bit-adder',
         ]);
         // Persisted project records take priority over factory SEED_PROJECTS.
         // Updating the source alone will NOT replace an older stored Full Adder.

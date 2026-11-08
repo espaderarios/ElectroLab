@@ -1,0 +1,26 @@
+/** Insert ribbon: specific kinds show only Search + parts; All Parts scrolls all controls. */
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const ts = require('typescript');
+const postcss = require('postcss');
+const root = path.resolve(__dirname, '..');
+const page = fs.readFileSync(path.join(root, 'src/pages/CircuitEditorPage.tsx'), 'utf8');
+const css = fs.readFileSync(path.join(root, 'src/index.css'), 'utf8');
+assert.equal(ts.createSourceFile('CircuitEditorPage.tsx', page, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX).parseDiagnostics.length, 0, 'gallery JSX syntax valid');
+postcss.parse(css);
+const gallery = page.slice(page.indexOf('{paletteOpen && use3D && ribbonTab === \'insert\''), page.indexOf('</section>}', page.indexOf('{paletteOpen && use3D && ribbonTab === \'insert\'')));
+assert.match(gallery, /ref=\{insertGalleryBodyRef\} className="editor-insert-gallery-body"/, 'every gallery control is inside the scroll container');
+assert.match(gallery, /\(sidebarTab !== 'parts' \|\| category === 'All'\) && <div className="editor-insert-gallery-head"/, 'no redundant title for specific component kinds');
+assert.match(gallery, /\(sidebarTab !== 'parts' \|\| category === 'All'\) && <div className="editor-insert-gallery-tabs"/, 'no duplicate Parts/Circuits/Examples when a kind is selected');
+assert.match(gallery, /\{category === 'All' && <div className="flex justify-between/, 'component count and Tips are All-only');
+assert.match(gallery, /\{category === 'All' && <div className="editor-palette-filters"/, 'Favorites/Recent controls are All-only');
+assert.match(gallery, /\{category === 'All' && <div className="editor-insert-kind-list"/, 'kind chips are All-only');
+assert.match(gallery, /aria-label=\{`Search \$\{category === 'All'/, 'search works in All and specific kind mode');
+assert.match(gallery, /category !== 'All' && <button type="button" className="editor-insert-search-close"/, 'specific category still has an accessible close button');
+assert.match(gallery, /\['All','Favorites','Recent'\]\.includes\(category\)/, 'single kind does not repeat its title over the component cards');
+assert.match(page, /insertGalleryBodyRef\.current\?\.scrollTo\(\{ top: 0 \}\)/, 'changing kind returns scroll to search');
+assert.match(css, /\.editor-reference-ui \.editor-insert-gallery-body\s*\{[^}]*overflow-y:auto/s, 'gallery body scrolls as a single surface');
+assert.match(css, /\.editor-reference-ui \.editor-insert-gallery-body \.editor-palette-scroll\s*\{[^}]*overflow:visible/s, 'no competing nested scroll in card list');
+assert.match(css, /\.editor-reference-ui \.editor-insert-gallery-body \.editor-insert-kind-list\s*\{[^}]*overflow:visible/s, 'kind controls are swallowed by page scroll rather than their own scrollbar');
+console.log('Compact kind gallery and natural disappearing-on-scroll All Parts controls: PASS');

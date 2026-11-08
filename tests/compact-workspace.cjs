@@ -20,13 +20,13 @@ const latest = (selector, media = '') => blocks.filter(x => x.selector === selec
 const latestProperty = (selector, property, media = '') => blocks.filter(x => x.selector === selector && x.media === media && x.declarations[property] !== undefined).at(-1)?.declarations[property];
 // The studio workspace replaces the old single sidebar width map with a
 // genuinely three-column layout. Keep its narrower breakpoints under test.
-assert.equal(latest('.editor-reference-ui .editor-sidebar').declarations.width, '270px');
+assert.equal(latestProperty('.editor-reference-ui .editor-sidebar','width'), '270px');
 for (const [media, expected] of [
   ['(max-width:1500px)', '245px'],
   ['(max-width:1250px)', '218px'],
   ['(max-width:760px)', '186px'],
 ]) assert.equal(latest('.editor-reference-ui .editor-sidebar', media)?.declarations.width, expected, `sidebar width at ${media}`);
-assert.equal(latest('.editor-reference-ui .editor-studio-properties.is-closed').declarations.width, '42px');
+assert.equal(latestProperty('.editor-reference-ui .editor-studio-properties.is-closed','width'), '39px');
 assert.equal(latest('.editor-reference-ui .editor-diagnostics-body').declarations['max-height'], '132px');
 assert.equal(latestProperty('.editor-reference-ui .editor-bench-power','min-height'), '42px');
 assert.equal(latest('.editor-reference-ui .editor-parts-grid').declarations.gap, '6px');

@@ -50,7 +50,7 @@ export function SimulationResults() {
 
   const I = Math.abs(sim.supplyCurrent || 0)
   const status: 'Pass' | 'Warning' | 'Failed' = useMemo(() => {
-    if (sim.error || sim.shortCircuit) return 'Failed'
+    if (sim.error || sim.shortCircuit || sim.sourceConflict) return 'Failed'
     if ((sim.warnings && sim.warnings.length > 0) || (sim.burned && Object.keys(sim.burned).length))
       return 'Warning'
     if (!psuPositive || !psuNegative) return 'Warning'
@@ -263,7 +263,7 @@ export function SimulationResults() {
               {status === 'Pass'
                 ? 'Circuit solved with power applied.'
                 : status === 'Failed'
-                  ? sim.error || 'Short circuit or solver error.'
+                  ? sim.error || sim.warnings?.[0] || 'Power fault or solver error.'
                   : 'Completed with warnings — review measurements.'}
             </div>
           </div>

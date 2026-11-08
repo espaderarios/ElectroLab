@@ -29,6 +29,8 @@ export type RoutedWire = {
   blocked?: boolean;
   /** True if endpoints sit within their own component's access envelope. */
   portEscapes?: number;
+  /** A flexible jumper may cross solid parts by rising into a cable bridge. */
+  overhead?: boolean;
   /** Local overpass profile: only crossing sections rise, not the whole cable. */
   profile?: RoutePoint3D[];
 };
@@ -190,8 +192,13 @@ function detour(
 ): RoutePoint[] | null {
   const xs = new Set([rounding(start.x), rounding(end.x)]);
   const zs = new Set([rounding(start.z), rounding(end.z)]);
-  const xLimit = BOARD.width / 2 + 0.14;
-  const zLimit = BOARD.depth / 2 + 0.14;
+  // External Arduino / expansion-controller sockets can sit several units
+  // beyond the breadboard. The pathfinding window must include those real
+  // connection points and the safe corridor around their PCB bodies.
+  const xLimit = Math.max(BOARD.width / 2 + 0.20, Math.abs(start.x) + .6,
+    Math.abs(end.x) + .6, ...obstacles.flatMap(o=>[Math.abs(o.minX)+.15,Math.abs(o.maxX)+.15]));
+  const zLimit = Math.max(BOARD.depth / 2 + 0.20, Math.abs(start.z) + .6,
+    Math.abs(end.z) + .6, ...obstacles.flatMap(o=>[Math.abs(o.minZ)+.15,Math.abs(o.maxZ)+.15]));
   const offset = BODY_GAP + 0.026;
   for (const o of obstacles) {
     for (const x of [o.minX - offset, o.maxX + offset]) xs.add(rounding(x));
@@ -404,8 +411,16 @@ export function planWireRoutes(
       ? saved
       : choosePath(from[from.length - 1], to[to.length - 1], obstacles, planned);
     const style: WireStyle = wire.style === 'jumper' ? 'jumper' : 'solid';
-    const waypoints = routed ? tidy([...from.slice(0, -1), ...routed, ...to.slice(0, -1).reverse()]) : [a, b];
-    const blocked = !routed || !routeClear(routed, obstacles);
+    // If the workbench is crowded, a REAL insulated jumper may arch over
+    // the occupied area. A low-profile solid lead cannot, and stays blocked.
+    // This keeps electrical contacts usable without letting wires cut through
+    // plastic shells at breadboard height.
+    const overhead = !routed && style === 'jumper';
+    const bridge = overhead ? tidy([from[from.length-1],
+      {x: to[to.length-1].x, z: from[from.length-1].z}, to[to.length-1]]) : null;
+    const path = routed ?? bridge;
+    const waypoints = path ? tidy([...from.slice(0,-1), ...path, ...to.slice(0,-1).reverse()]) : [a,b];
+    const blocked = !path || (!overhead && !routeClear(path, obstacles));
     planned.push({
       id: wire.id,
       style,
@@ -416,13 +431,14 @@ export function planWireRoutes(
       crossings: blocked ? 0 : projectedContacts(waypoints, planned),
       blocked,
       portEscapes: (from.length - 1) + (to.length - 1),
+      overhead,
     });
   }
   // Solid wire stays close to the breadboard; jumper wires clear that layer.
   // All crossing-specific height changes live in a LOCAL overpass profile,
   // rather than raising an entire wire higher for every previous crossing.
   for (const route of planned) {
-    route.lift = route.style === 'jumper' ? 0.245 : 0.105;
+    route.lift = route.overhead ? 0.72 : route.style === 'jumper' ? 0.245 : 0.105;
     if (route.blocked) continue;
     const before = planned.slice(0, planned.indexOf(route));
     route.profile = buildLocalProfile(route, before);
@@ -440,12 +456,14 @@ export function wireRoute3DPoints(route: RoutedWire, boardHeight = BOARD.height)
   const first = route.waypoints[0];
   const last = route.waypoints[route.waypoints.length - 1];
   const plugY = boardHeight + STUB_HEIGHT;
-  // Breadboard socket plugs remain flush with the older visual baseline.
-  // Off-board Arduino header plugs rise from the actual socket height.
-  const startY = Number.isFinite(route.startY) && route.startY! > boardHeight + 0.10
-    ? route.startY! + STUB_HEIGHT : plugY;
-  const endY = Number.isFinite(route.endY) && route.endY! > boardHeight + 0.10
-    ? route.endY! + STUB_HEIGHT : plugY;
+  // A female header can be BELOW the breadboard's top surface when its PCB is
+  // supported by the workbench. Always terminate the insulated cable at the
+  // visible contact height, not at a fictitious breadboard-height plug.
+  const contactHeight = (height?:number) =>
+    !Number.isFinite(height) || Math.abs(height! - (boardHeight+.01)) < .025
+      ? plugY : height! + STUB_HEIGHT;
+  const startY = contactHeight(route.startY);
+  const endY = contactHeight(route.endY);
   if (route.blocked) {
     return [
       { ...first, y: startY },
@@ -455,5 +473,14 @@ export function wireRoute3DPoints(route: RoutedWire, boardHeight = BOARD.height)
   const center = route.profile?.length
     ? route.profile.map((p) => ({ ...p, y: boardHeight + p.y }))
     : route.waypoints.map((p) => ({ ...p, y: boardHeight + route.lift }));
+  // Raise cable near a tall terminal rather than drawing a low cable through
+  // the module enclosure. Preserve the same electrical endpoints and XY path.
+  if (center.length) {
+    center[0] = { ...center[0], y: Math.max(center[0].y, startY + 0.045) };
+    center[center.length - 1] = {
+      ...center[center.length - 1],
+      y: Math.max(center[center.length - 1].y, endY + 0.045),
+    };
+  }
   return [{ ...first, y: startY }, ...center, { ...last, y: endY }];
 }

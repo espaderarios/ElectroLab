@@ -17,10 +17,10 @@ for(const f of ['src/pages/CircuitEditorPage.tsx','src/circuit-lab/workbench-doc
  assert.equal(sf.parseDiagnostics.length,0,`${f} parses without errors`);
 }
 postcss.parse(css);
-assert.match(page,/className="editor-studio-modes"/);
-assert.match(page,/className="editor-studio-run"/);
+assert.match(page,/className="editor-ribbon-panel"/);
+assert.match(page,/className="editor-ribbon-run"/);
 assert.match(page,/lab\.powerOn\)lab\.togglePower\(\);lab\.runNow\(\)/,'Run must actually run the simulation');
-assert.match(page,/aria-label="Component library"/);
+assert.match(page,/aria-label="Insert components"/,'component gallery is in Insert ribbon');
 assert.match(page,/<StudioProperties open=\{propertiesOpen\}/);
 assert.match(page,/openMonitorRequest=\{openMonitorRequest\}/);
 assert.match(overlay,/createPortal/);

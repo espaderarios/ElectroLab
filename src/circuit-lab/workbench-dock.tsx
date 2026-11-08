@@ -11,6 +11,8 @@ type Tab = 'monitor' | 'guide' | 'truth' | 'code';
 
 type Props = {
   projectId?: string;
+  focusMode?: boolean;
+  onExitFocusMode?: () => void;
   openArduinoCodeRequest?: number;
   openMonitorRequest?: number;
   is3D: boolean;
@@ -58,10 +60,10 @@ export function WorkbenchDock(props: Props) {
   });
   // Code and Simulation shortcuts expand the dock automatically.
   useEffect(() => {
-    if ((props.openArduinoCodeRequest ?? 0) > 0) setExpanded(true);
+    if ((props.openArduinoCodeRequest ?? 0) > 0) { setExpanded(true); if (props.focusMode) props.onExitFocusMode?.(); }
   }, [props.openArduinoCodeRequest]);
   useEffect(() => {
-    if ((props.openMonitorRequest ?? 0) > 0) setExpanded(true);
+    if ((props.openMonitorRequest ?? 0) > 0) { setExpanded(true); if (props.focusMode) props.onExitFocusMode?.(); }
   }, [props.openMonitorRequest]);
 
   useEffect(() => {
@@ -76,19 +78,21 @@ export function WorkbenchDock(props: Props) {
       if (!event.altKey || event.ctrlKey || event.metaKey || event.key.toLowerCase() !== 'b' ||
           ['INPUT','TEXTAREA','SELECT'].includes(target?.tagName ?? '') || target?.isContentEditable) return;
       event.preventDefault();
-      setExpanded(value => !value);
+      if (props.focusMode) { props.onExitFocusMode?.(); setExpanded(true) }
+      else setExpanded(value => !value);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, [props.focusMode, props.onExitFocusMode]);
 
-  return <section className={`editor-bench-dock ${expanded ? 'expanded' : 'collapsed'}`} aria-label="Power and circuit diagnostics">
-    {expanded && <div id="editor-workbench-controls"><WorkbenchDockContent {...props}/></div>}
+  const visibleExpanded = expanded && !props.focusMode;
+  return <section className={`editor-bench-dock ${visibleExpanded ? 'expanded' : 'collapsed'}`} aria-label="Power and circuit diagnostics">
+    {visibleExpanded && <div id="editor-workbench-controls"><WorkbenchDockContent {...props}/></div>}
     <div className="editor-dock-handle-row">
-      <button type="button" className="editor-dock-handle" aria-label={expanded ? 'Hide bottom workbench controls' : 'Show bottom workbench controls'}
-        aria-expanded={expanded} title="Toggle bottom controls (Alt+B)" onClick={() => setExpanded(value => !value)}>
-        {expanded ? <ChevronDown size={17}/> : <ChevronUp size={17}/>}
-        <span>{expanded ? 'Hide bottom controls' : 'Show monitor & code'}</span>
+      <button type="button" className="editor-dock-handle" aria-label={visibleExpanded ? 'Hide bottom workbench controls' : 'Show bottom workbench controls'}
+        aria-expanded={visibleExpanded} title="Toggle bottom controls (Alt+B)" onClick={() => { if (props.focusMode) { props.onExitFocusMode?.(); setExpanded(true) } else setExpanded(value => !value) }}>
+        {visibleExpanded ? <ChevronDown size={17}/> : <ChevronUp size={17}/>}
+        <span>{visibleExpanded ? 'Hide bottom controls' : 'Show monitor & code'}</span>
       </button>
     </div>
   </section>;
