@@ -32,7 +32,9 @@
     "test:studio-workspace": "node tests/studio-workspace.cjs",
     "test:realism": "node tests/realistic-rendering.cjs",
     "test:clean-dock-screen": "node tests/clean-dock-screen.cjs",
-    "test:navy-theme": "node tests/navy-blue-theme.cjs"
+    "test:navy-theme": "node tests/navy-blue-theme.cjs",
+    "build:desktop": "tsc -b && vite build --mode desktop",
+    "test:gray-navy-pages": "node tests/gray-navy-pages.cjs"
   },
   "dependencies": {
     "react": "^18.3.1",

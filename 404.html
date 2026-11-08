@@ -1,19 +1,24 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ElectroLab</title>
+    <meta name="theme-color" content="#242630" />
+    <title>ElectroLab — Opening project</title>
     <script>
       (function () {
-        var path = window.location.pathname;
-        var base = path.indexOf('/ElectroLab') === 0 ? '/ElectroLab/' : '/';
-        sessionStorage.setItem('spa-redirect', path + window.location.search + window.location.hash);
-        window.location.replace(base);
+        // Used only if Pages publishes the repository/branch instead of the
+        // GitHub Actions dist artifact. The Actions 404 is the built SPA HTML.
+        var base = '/ElectroLab/';
+        var route = location.pathname + location.search + location.hash;
+        try {
+          if (location.pathname.indexOf(base) === 0) {
+            sessionStorage.setItem('electrolab:spa-return-v1', route);
+          }
+        } catch (ignored) { /* storage may be disabled */ }
+        location.replace(base);
       })();
     </script>
   </head>
-  <body>
-    Redirecting to ElectroLab…
-  </body>
+  <body>Opening ElectroLab…</body>
 </html>

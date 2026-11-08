@@ -46,7 +46,7 @@ export default function App() {
     root.classList.toggle("light", !darkMode);
     root.dataset.theme = darkMode ? "dark" : "light";
     root.style.colorScheme = darkMode ? "dark" : "light";
-    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", darkMode ? "#050f22" : "#edf5fc");
+    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", darkMode ? "#242630" : "#edf5fc");
   }, [darkMode]);
 
   useEffect(() => {
@@ -65,7 +65,7 @@ export default function App() {
     <div
       className={`electrolab-app h-screen flex overflow-hidden ${
         isFullScreen
-          ? "electrolab-workspace bg-[#030b1b] text-slate-200"
+          ? "electrolab-workspace bg-[#191c24] text-slate-200"
           : "themed-workspace theme-surface bg-[var(--app-bg)] text-[var(--app-text)]"
       }`}
     >

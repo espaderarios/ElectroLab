@@ -38,7 +38,10 @@ jobs:
         run: npm run build
 
       # GitHub Pages has no SPA fallback for React Router routes.
-      # Serving the built app as 404.html lets BrowserRouter handle direct loads/reloads.
+      # Built assets use the absolute /ElectroLab/ base. A copy of the built
+      # HTML keeps direct /ElectroLab/editor/:projectId links functional on Pages.
+      # GitHub Pages may still return HTTP 404 for the initial deep-link document;
+      # this fallback renders the React route, with JS/CSS loaded successfully.
       - name: Add SPA fallback
         run: cp dist/index.html dist/404.html
 

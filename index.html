@@ -1,9 +1,22 @@
 <!doctype html>
 <html lang="en" class="dark">
   <head>
+    <!-- Restore a deep link when a branch-based Pages 404 redirects to the app root. -->
+    <script>
+      (function () {
+        try {
+          var key = 'electrolab:spa-return-v1';
+          var route = sessionStorage.getItem(key);
+          if (route && route.indexOf('/ElectroLab/') === 0) {
+            sessionStorage.removeItem(key);
+            history.replaceState(history.state, '', route);
+          }
+        } catch (ignored) { /* storage may be disabled */ }
+      })();
+    </script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#050f22" />
+    <meta name="theme-color" content="#242630" />
     <meta name="description" content="ElectroLab — luminous electronics learning, simulation, and engineering workspace." />
     <link rel="icon" type="image/png" href="./favicon.png" />
     <title>ElectroLab | Engineering Workspace</title>

@@ -1390,13 +1390,13 @@ html.light .themed-workspace .dashboard-panel { box-shadow: 0 8px 24px var(--app
 .editor-reference-ui.editor-workspace {
   --studio-accent:#2a65ab;
   --studio-accent-soft:#91c2f0;
-  --studio-surface:#1c293c;
-  --studio-line:#37516c;
-  background:#111d2f!important;
-  color:#f0eef7;
+  --studio-surface:#22252e;
+  --studio-line:#3d4250;
+  background:#191c24!important;
+  color:#edf0f5;
 }
 .editor-reference-ui .editor-topbar {
-  background:linear-gradient(180deg,#1c2b41,#142138)!important;
+  background:linear-gradient(180deg,#242630,#1b1e26)!important;
   border-bottom:1px solid #3b3c49!important;
   box-shadow:0 3px 20px #08091140!important;
 }
@@ -1410,7 +1410,7 @@ html.light .themed-workspace .dashboard-panel { box-shadow: 0 8px 24px var(--app
 .editor-reference-ui .editor-project-meta {color:#abb3c2;}
 .editor-reference-ui .editor-actions {
   min-height:53px;
-  background:#17263a!important;
+  background:#20222b!important;
   padding:7px 12px;
   gap:6px;
   scrollbar-width:thin;
@@ -1420,7 +1420,7 @@ html.light .themed-workspace .dashboard-panel { box-shadow: 0 8px 24px var(--app
 .editor-reference-ui .editor-studio-run {
   display:inline-flex;align-items:center;justify-content:center;gap:8px;
   color:#d2d3df;
-  background:#23354c;
+  background:#2a2c37;
   border:1px solid #484955;
   border-radius:9px;
   min-height:37px;
@@ -1443,17 +1443,17 @@ html.light .themed-workspace .dashboard-panel { box-shadow: 0 8px 24px var(--app
 .editor-reference-ui .editor-toolbar-action,
 .editor-reference-ui .editor-palette-toggle,
 .editor-reference-ui .editor-header-action,
-.editor-reference-ui .editor-more-trigger {background:#23354d;border-color:#434955;color:#d2d7e4;}
+.editor-reference-ui .editor-more-trigger {background:#292c36;border-color:#434955;color:#d2d7e4;}
 .editor-reference-ui .editor-toolbar-action.active {background:#1d497a;color:#fff;border-color:#75b1f0;box-shadow:0 0 0 1px #72b3ec77,0 0 14px #286db63b;}
 .editor-reference-ui .editor-main-action {background:linear-gradient(135deg,#2465a4,#153d70);border-color:#65a5e1;color:#f4faff;}
 .editor-reference-ui .editor-arduino-code-shortcut {background:#263650;border-color:#385a7e;color:#d8e9fc;}
 .editor-reference-ui .editor-view-switch {background:#292b36;border-color:#3b4a5d;}
 .editor-reference-ui .editor-view-switch button.active {background:linear-gradient(120deg,#2765aa,#163f75);box-shadow:0 2px 13px #347fce60;}
 .editor-reference-ui .editor-toolbar-hint {display:none;}
-.editor-reference-ui .editor-body-layout {background:#1a2839;gap:0;}
+.editor-reference-ui .editor-body-layout {background:#1d2027;gap:0;}
 .editor-reference-ui .editor-sidebar {
   width:270px!important;
-  background:linear-gradient(160deg,#1e2c3e,#172538 80%)!important;
+  background:linear-gradient(160deg,#232630,#1f232d 80%)!important;
   border-color:#3b4150!important;
   box-shadow:4px 0 16px #11121930;
 }
@@ -1468,13 +1468,13 @@ html.light .themed-workspace .dashboard-panel { box-shadow: 0 8px 24px var(--app
 .editor-reference-ui .editor-properties-header button {display:grid;place-items:center;border-radius:7px;width:29px;height:29px;color:#bac0cc;}
 .editor-reference-ui .editor-studio-sidebar-heading button:hover,
 .editor-reference-ui .editor-properties-header button:hover {background:#273c57;color:#e1efff;}
-.editor-reference-ui .editor-workspace-tabs {margin:6px 10px 0;padding:3px;border-color:#3b4759;background:#1e3047;}
+.editor-reference-ui .editor-workspace-tabs {margin:6px 10px 0;padding:3px;border-color:#3b4759;background:#282b34;}
 .editor-reference-ui .editor-workspace-tabs button {font-size:10px;padding:8px 8px;gap:5px;flex:1;justify-content:center;}
 .editor-reference-ui .editor-workspace-tabs button.active {background:linear-gradient(130deg,#1b518b,#143864);box-shadow:inset 0 0 0 1px #6da9e76b;color:white;}
 .editor-reference-ui .editor-palette-heading {background:transparent;padding:11px 11px 7px;}
 .editor-reference-ui .editor-palette-heading .font-semibold {font-size:12px;color:#dbdce8;}
-.editor-reference-ui .editor-palette-search {background:#22344b;border:1px solid #494d59;border-radius:8px;color:#e7e7f5;}
-.editor-reference-ui .editor-palette-filters button {background:#22354c;border-color:#434857;color:#c4c9d6;}
+.editor-reference-ui .editor-palette-search {background:#292c37;border:1px solid #494d59;border-radius:8px;color:#e7e7f5;}
+.editor-reference-ui .editor-palette-filters button {background:#292d37;border-color:#434857;color:#c4c9d6;}
 .editor-reference-ui .editor-palette-filters button.active {background:linear-gradient(130deg,#1f4c83,#13365f);border-color:#74abe2;color:white;}
 .editor-reference-ui .editor-category-select {background:#2b2e3a;color:#e2e2f0;border:1px solid #454a59;}
 .editor-reference-ui .editor-palette-section-title {color:#cbd0dc;}
@@ -1483,7 +1483,7 @@ html.light .themed-workspace .dashboard-panel { box-shadow: 0 8px 24px var(--app
 .editor-reference-ui .editor-part-tile.active {border-color:#82baf4;background:#1d3e65;}
 .editor-reference-ui .editor-part-symbol {background:#232633;border-color:#37516f;color:#cde1f7;}
 .editor-reference-ui .editor-part-label {color:#e3e5ee;}
-.editor-reference-ui .editor-board-choice {background:#1b2b40;border-top:1px solid #464756;}
+.editor-reference-ui .editor-board-choice {background:#252832;border-top:1px solid #464756;}
 .editor-reference-ui .editor-wire-controls {background:#1e2f45;border-color:#3b6799;}
 .editor-reference-ui .editor-main-stack {background:#282f39;min-width:0;}
 .editor-reference-ui .editor-board-stage {
@@ -1509,7 +1509,7 @@ html.light .themed-workspace .dashboard-panel { box-shadow: 0 8px 24px var(--app
   display:flex;
   flex-direction:column;
   border-left:1px solid #454655;
-  background:linear-gradient(170deg,#1e2d42,#172539 78%);
+  background:linear-gradient(170deg,#282a35,#21232e 78%);
   color:#eef0f6;
   box-shadow:-5px 0 20px #1010192a;
   position:relative;
@@ -1524,12 +1524,12 @@ html.light .themed-workspace .dashboard-panel { box-shadow: 0 8px 24px var(--app
 .editor-reference-ui .editor-studio-properties.is-closed .editor-properties-title strong {display:none;}
 .editor-reference-ui .editor-properties-reopen {padding:10px;color:#b4d7f8;}
 .editor-reference-ui .editor-properties-tabs {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:3px;padding:10px 10px 7px;}
-.editor-reference-ui .editor-properties-tabs button {background:#25364c;border:1px solid #464a57;border-radius:7px;color:#c7c9d7;padding:8px 1px;font-size:10px;font-weight:720;white-space:nowrap;}
+.editor-reference-ui .editor-properties-tabs button {background:#2c2f3a;border:1px solid #464a57;border-radius:7px;color:#c7c9d7;padding:8px 1px;font-size:10px;font-weight:720;white-space:nowrap;}
 .editor-reference-ui .editor-properties-tabs button.active {background:#1c4e88;border-color:#70a8e8;color:#fff;box-shadow:inset 0 1px 0 #83baf144;}
-.editor-reference-ui .editor-properties-subject {display:flex;gap:10px;align-items:center;margin:3px 10px 9px;padding:10px;background:#25374d;border:1px solid #454957;border-radius:10px;min-width:0;}
+.editor-reference-ui .editor-properties-subject {display:flex;gap:10px;align-items:center;margin:3px 10px 9px;padding:10px;background:#30333e;border:1px solid #454957;border-radius:10px;min-width:0;}
 .editor-reference-ui .editor-properties-subject-icon {width:39px;height:39px;flex:0 0 39px;border-radius:9px;background:#272c38;color:#8bbdec;display:grid;place-items:center;}
 .editor-reference-ui .editor-properties-subject div {min-width:0;}
-.editor-reference-ui .editor-properties-subject strong {display:block;color:#f6f5fc;font-size:12px;overflow-wrap:anywhere;}
+.editor-reference-ui .editor-properties-subject strong {display:block;color:#f2f5fa;font-size:12px;overflow-wrap:anywhere;}
 .editor-reference-ui .editor-properties-subject small {display:block;color:#aaadbf;font-size:10px;margin-top:3px;line-height:1.4;}
 .editor-reference-ui .editor-properties-scroll {min-height:0;flex:1;overflow-y:auto;overflow-x:hidden;padding:0 10px 12px;scrollbar-width:thin;scrollbar-color:#405e7d transparent;}
 .editor-reference-ui .editor-properties-scroll .lab-component-inspector {
@@ -1551,7 +1551,7 @@ html.light .themed-workspace .dashboard-panel { box-shadow: 0 8px 24px var(--app
 .editor-reference-ui .editor-properties-scroll .lab-component-inspector input,
 .editor-reference-ui .editor-properties-scroll .lab-component-inspector select,
 .editor-reference-ui .editor-properties-scroll .lab-component-inspector textarea {
-  background:#1e3047!important;color:#f1edfc!important;border:1px solid #4a6078!important;
+  background:#282b36!important;color:#f1edfc!important;border:1px solid #4a6078!important;
 }
 .editor-reference-ui .editor-properties-scroll .lab-component-inspector button:hover {filter:brightness(1.14);}
 .editor-reference-ui .editor-properties-scroll .lab-inspector-close {margin:0 0 6px 6px;background:#26364b;border-radius:7px;}
@@ -1560,42 +1560,42 @@ html.light .themed-workspace .dashboard-panel { box-shadow: 0 8px 24px var(--app
 .editor-reference-ui .editor-properties-empty svg {color:#77a9df;}
 .editor-reference-ui .editor-properties-empty strong {color:#fff;font-size:13px;}
 .editor-reference-ui .editor-properties-options {padding:5px 2px 12px;display:grid;gap:11px;font-size:11px;color:#c4c3d3;}
-.editor-reference-ui .editor-properties-options h3 {display:flex;gap:8px;align-items:center;color:#f3edff;font-size:13px;font-weight:750;}
+.editor-reference-ui .editor-properties-options h3 {display:flex;gap:8px;align-items:center;color:#eef3f8;font-size:13px;font-weight:750;}
 .editor-reference-ui .editor-properties-options p {line-height:1.55;}
 .editor-reference-ui .editor-properties-option-caption {color:#b4c7df;font-weight:700;}
 .editor-reference-ui .editor-properties-segments {display:grid;grid-template-columns:1fr 1fr;gap:5px;}
-.editor-reference-ui .editor-properties-segments button {padding:9px;background:#263a53;border:1px solid #4f5060;border-radius:7px;}
-.editor-reference-ui .editor-properties-segments button.active {border-color:#79aee9;color:#f5eaff;background:#204b78;}
+.editor-reference-ui .editor-properties-segments button {padding:9px;background:#30323d;border:1px solid #4f5060;border-radius:7px;}
+.editor-reference-ui .editor-properties-segments button.active {border-color:#79aee9;color:#ecf3fc;background:#204b78;}
 .editor-reference-ui .editor-properties-color-row {display:flex;flex-wrap:wrap;gap:7px;}
 .editor-reference-ui .editor-properties-color-row button {height:23px;width:23px;border:2px solid #717686;border-radius:50%;}
 .editor-reference-ui .editor-properties-color-row button.active {outline:2px solid #86b9ed;outline-offset:2px;}
 .editor-reference-ui .editor-properties-primary {display:flex;align-items:center;justify-content:center;gap:7px;padding:10px;background:#1d497b;border:1px solid #5f99d4;border-radius:8px;color:white;font-weight:700;}
 .editor-reference-ui .editor-properties-stat {display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #3d3e4b;padding:6px 0;gap:10px;}
-.editor-reference-ui .editor-properties-stat strong {color:#f5ebff;}
+.editor-reference-ui .editor-properties-stat strong {color:#eaf0f8;}
 .editor-reference-ui .editor-properties-note {color:#9296a9;font-size:10px;line-height:1.5;}
 
 /* Code Terminal / simulation event console split, no fake Serial.print output. */
-.editor-reference-ui .editor-bench-dock {background:#17263a!important;border-top:1px solid #3e414e;}
-.editor-reference-ui .editor-bench-power {background:#203148;border:1px solid #404453;}
-.editor-reference-ui .editor-diagnostics {background:#1a293d;border-color:#424553;}
-.editor-reference-ui .editor-diagnostics-tabs {background:#19283d;border-bottom-color:#444453;}
-.editor-reference-ui .editor-diagnostics-tabs button {background:#283b54;border-color:#3b526b;color:#cdd1df;}
+.editor-reference-ui .editor-bench-dock {background:#20222b!important;border-top:1px solid #3e414e;}
+.editor-reference-ui .editor-bench-power {background:#282d38;border:1px solid #404453;}
+.editor-reference-ui .editor-diagnostics {background:#242730;border-color:#424553;}
+.editor-reference-ui .editor-diagnostics-tabs {background:#242731;border-bottom-color:#444453;}
+.editor-reference-ui .editor-diagnostics-tabs button {background:#303341;border-color:#3b526b;color:#cdd1df;}
 .editor-reference-ui .editor-diagnostics-tabs button.active {background:#1d4d86;border-color:#7cb2ee;box-shadow:none;}
 .editor-reference-ui .editor-studio-code-split {display:grid;grid-template-columns:minmax(0,1.22fr) minmax(0,.94fr);gap:10px;align-items:stretch;min-height:0;}
-.editor-reference-ui .editor-studio-code-split .editor-arduino-code-panel {background:#203047;border:1px solid #454956;border-radius:10px;padding:8px;min-height:0;max-width:100%;overflow:hidden;}
+.editor-reference-ui .editor-studio-code-split .editor-arduino-code-panel {background:#272b36;border:1px solid #454956;border-radius:10px;padding:8px;min-height:0;max-width:100%;overflow:hidden;}
 .editor-reference-ui .editor-studio-code-split .editor-arduino-code-toolbar {align-items:flex-start;gap:7px;}
 .editor-reference-ui .editor-studio-code-split .editor-arduino-editor-label {display:none;}
 .editor-reference-ui .editor-studio-code-split .editor-arduino-code-textarea {
   min-height:155px;max-height:215px;
-  resize:vertical;background:#101c2e;border-color:#45465b;border-radius:7px;
-  color:#eee7ff;font:11px/1.65 ui-monospace,SFMono-Regular,Consolas,monospace;
+  resize:vertical;background:#161922;border-color:#45465b;border-radius:7px;
+  color:#e6edf7;font:11px/1.65 ui-monospace,SFMono-Regular,Consolas,monospace;
 }
 .editor-reference-ui .editor-studio-code-split .editor-arduino-code-heading svg {color:#86bcec;}
 .editor-reference-ui .editor-studio-code-split .editor-arduino-code-actions .editor-arduino-run {background:#21845f;border-color:#4bba88;}
 .editor-reference-ui .editor-studio-code-split .editor-arduino-code-footer {font-size:9px;}
 .editor-reference-ui .editor-simulation-console {
   display:flex;flex-direction:column;min-height:0;overflow:hidden;
-  background:#1d2b3d;border:1px solid #444754;border-radius:10px;color:#e8e8ef;
+  background:#262a33;border:1px solid #444754;border-radius:10px;color:#e8e8ef;
 }
 .editor-reference-ui .editor-console-heading {display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 10px;border-bottom:1px solid #444858;}
 .editor-reference-ui .editor-console-heading strong {display:flex;align-items:center;gap:8px;font-size:11px;white-space:nowrap;}
@@ -1607,7 +1607,7 @@ html.light .themed-workspace .dashboard-panel { box-shadow: 0 8px 24px var(--app
 .editor-reference-ui .editor-console-dot.running {background:#43db8d;box-shadow:0 0 7px #43db8d8c;}
 .editor-reference-ui .editor-console-log {
   flex:1;overflow:auto;min-height:135px;max-height:235px;padding:9px 11px;
-  background:#101c2d;color:#cfdaed;scrollbar-width:thin;
+  background:#151922;color:#cfdaed;scrollbar-width:thin;
   font:10px/1.75 ui-monospace,SFMono-Regular,Consolas,monospace;
 }
 .editor-reference-ui .editor-console-log p {color:#9ca3af;font-size:10px;margin-top:14px;}
@@ -1658,13 +1658,13 @@ html.light .themed-workspace .dashboard-panel { box-shadow: 0 8px 24px var(--app
    widths instead of covering the components or forcing the power dock offscreen. */
 .editor-reference-ui .editor-graphics-quality {
   display: inline-flex; align-items: center; gap: 6px; min-width: 0;
-  font-size: 11px; font-weight: 650; color: #d5d1e7;
+  font-size: 11px; font-weight: 650; color: #d5dbe8;
   padding: 3px 7px; border: 1px solid #3b536c; border-radius: 8px;
   background: #242631; white-space: nowrap;
 }
 .editor-reference-ui .editor-graphics-quality select {
   appearance: auto; width: 135px; min-width: 0; border: 0; outline-offset: 2px;
-  color: #f1eaff; background: #252532; font-size: 11px; font-weight: 650;
+  color: #eaf0f8; background: #252532; font-size: 11px; font-weight: 650;
 }
 .editor-reference-ui .editor-graphics-quality select:focus-visible {outline: 2px solid #91c1f2;}
 .editor-reference-ui .editor-graphics-quality select:disabled {opacity: .5;}

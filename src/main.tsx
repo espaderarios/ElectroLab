@@ -5,7 +5,9 @@ import App from './App'
 import './index.css'
 import './styles.css'
 
-const basename = window.location.hostname === 'espaderarios.github.io'
+// Use the same routing base as the assets. Dev and desktop stay at /;
+// GitHub Pages lives under /ElectroLab/ and supports direct /editor/:id loads.
+const basename = import.meta.env.BASE_URL.startsWith('/ElectroLab/')
   ? '/ElectroLab'
   : undefined
 

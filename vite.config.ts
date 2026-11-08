@@ -2,9 +2,11 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 
-export default defineConfig({
+export default defineConfig(({ command, mode }) => ({
   plugins: [react()],
-  base: './',
+  // GitHub Pages serves from /ElectroLab/, including direct editor deep links.
+  // Desktop builds must use relative URLs for the Tauri file/protocol bundle.
+  base: command === 'serve' ? '/' : mode === 'desktop' ? './' : '/ElectroLab/',
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
@@ -21,4 +23,4 @@ export default defineConfig({
   build: {
     chunkSizeWarningLimit: 2000,
   },
-})
+}))

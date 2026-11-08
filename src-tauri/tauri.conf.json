@@ -5,7 +5,7 @@
   "identifier": "tech.electrolab.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
-    "beforeBuildCommand": "npm run build",
+    "beforeBuildCommand": "npm run build:desktop",
     "devUrl": "http://localhost:5173",
     "frontendDist": "../dist"
   },
